@@ -101,9 +101,73 @@ namespace CodeplugBuilder.Core
         }
     }
 
+    /// <summary>A highway from Natural Earth's roads (Geo/roads.gz): one or more lines, drawn on the map.</summary>
+    public sealed class GeoRoad
+    {
+        /// <summary>True for major highways (interstates, motorways), false for secondary ones (US routes, main roads).</summary>
+        public bool Major { get; internal set; }
+        /// <summary>"I-35", "US 83", "A7"; empty when the data has no number.</summary>
+        public string Label { get; internal set; }
+        /// <summary>Lines as interleaved lon, lat pairs.</summary>
+        public float[][] Lines { get; internal set; }
+        public float MinLon { get; internal set; }
+        public float MinLat { get; internal set; }
+        public float MaxLon { get; internal set; }
+        public float MaxLat { get; internal set; }
+
+        public const string ResourceName = "CodeplugBuilder.Geo.roads.gz";
+
+        public static List<GeoRoad> Load(Stream gzip)
+        {
+            var list = new List<GeoRoad>();
+            using (var gz = new GZipStream(gzip, CompressionMode.Decompress, true))
+            using (var r = new BinaryReader(new BufferedStream(gz, 1 << 16), Encoding.UTF8))
+            {
+                if (Encoding.ASCII.GetString(r.ReadBytes(5)) != "CPROD") throw new InvalidDataException("Not a road file");
+                int version = r.ReadByte();
+                if (version != 1) throw new InvalidDataException("Unknown road file version " + version);
+                int count = (int)GeoAtlas.ReadVarInt(r);
+                for (int i = 0; i < count; i++)
+                {
+                    var road = new GeoRoad { Major = r.ReadByte() == 0, Label = r.ReadString() };
+                    int parts = (int)GeoAtlas.ReadVarInt(r);
+                    road.Lines = new float[parts][];
+                    float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+                    for (int k = 0; k < parts; k++)
+                    {
+                        int n = (int)GeoAtlas.ReadVarInt(r);
+                        var pts = new float[n * 2];
+                        long x = 0, y = 0;
+                        for (int j = 0; j < n; j++)
+                        {
+                            x += GeoAtlas.ReadZigZag(r);
+                            y += GeoAtlas.ReadZigZag(r);
+                            float fx = (float)(x / 10000.0), fy = (float)(y / 10000.0);
+                            pts[2 * j] = fx; pts[2 * j + 1] = fy;
+                            if (fx < minX) minX = fx;
+                            if (fx > maxX) maxX = fx;
+                            if (fy < minY) minY = fy;
+                            if (fy > maxY) maxY = fy;
+                        }
+                        road.Lines[k] = pts;
+                    }
+                    road.MinLon = minX; road.MinLat = minY; road.MaxLon = maxX; road.MaxLat = maxY;
+                    list.Add(road);
+                }
+            }
+            return list;
+        }
+    }
+
     public sealed class GeoAtlas
     {
         public const string ResourceName = "CodeplugBuilder.Geo.atlas.gz";
+
+        /// <summary>Highways for the map (empty if the roads file isn't embedded).</summary>
+        public List<GeoRoad> Roads { get; } = new List<GeoRoad>();
+
+        internal static long ReadVarInt(BinaryReader r) { return VarInt(r); }
+        internal static long ReadZigZag(BinaryReader r) { return ZigZag(r); }
 
         public List<GeoArea> Countries { get; } = new List<GeoArea>();
         public List<GeoArea> States { get; } = new List<GeoArea>();
@@ -127,7 +191,11 @@ namespace CodeplugBuilder.Core
                 using (var s = typeof(GeoAtlas).Assembly.GetManifestResourceStream(ResourceName))
                 {
                     if (s == null) throw new InvalidOperationException("Missing built-in map " + ResourceName);
-                    return builtIn = Load(s);
+                    var atlas = Load(s);
+                    using (var roads = typeof(GeoAtlas).Assembly.GetManifestResourceStream(GeoRoad.ResourceName))
+                        if (roads != null)
+                            try { atlas.Roads.AddRange(GeoRoad.Load(roads)); } catch (InvalidDataException) { } // the map works without roads
+                    return builtIn = atlas;
                 }
             }
         }

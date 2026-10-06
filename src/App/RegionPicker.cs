@@ -16,6 +16,7 @@ namespace CodeplugBuilder.App
     {
         public readonly RegionMap Map;
         readonly RadioButton optCountry, optState, optCounty;
+        readonly CheckBox chkRoads;
         readonly TextBox txtFind;
         readonly Label lblStatus;
         Dictionary<string, GeoArea> byName;
@@ -34,7 +35,9 @@ namespace CodeplugBuilder.App
             loading = true;
             optState.Checked = true; // the map's default level; Map doesn't exist yet
             loading = false;
-            var levelRow = Ui.Row(Ui.Label("Pick"), optCountry, optState, optCounty);
+            chkRoads = new CheckBox { Text = "Highways", AutoSize = true, Checked = true, Margin = new Padding(Ui.S(12), Ui.S(6), 3, 3) };
+            chkRoads.CheckedChanged += (s, e) => Map.ShowRoads = chkRoads.Checked;
+            var levelRow = Ui.Row(Ui.Label("Pick"), optCountry, optState, optCounty, chkRoads);
             levelRow.Dock = DockStyle.None;
             levelRow.WrapContents = false;
             levelRow.Anchor = AnchorStyles.Left;
@@ -97,6 +100,7 @@ namespace CodeplugBuilder.App
         {
             if (Map.Atlas == atlas) return;
             Map.Atlas = atlas;
+            chkRoads.Visible = Map.HasRoads;
             byName = new Dictionary<string, GeoArea>(StringComparer.OrdinalIgnoreCase);
             var names = new AutoCompleteStringCollection();
             foreach (var a in atlas.Countries.Concat(atlas.States).Concat(atlas.Counties))

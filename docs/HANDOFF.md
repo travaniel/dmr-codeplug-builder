@@ -267,6 +267,7 @@ the output is byte-for-byte reproducible):
 | `2023_Gaz_place_national.zip` | www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/ | public domain | 32k US places with coordinates (" city", " CDP"... stripped) |
 | `ne_10m_admin_0_countries.zip`, `ne_10m_admin_1_states_provinces.zip` | naciscdn.org/naturalearth/10m/cultural/ | public domain | countries and states/provinces outside the US |
 | `cities15000.zip` | download.geonames.org/export/dump/ | CC BY 4.0 (credited in Help > About) | 31k world cities of 15,000+ people, with up to 12 Latin-script spellings |
+| `ne_10m_roads.zip` (9 MB) | naciscdn.org/naturalearth/10m/cultural/ | public domain | Highways, written to a second file `src/Core/Geo/roads.gz` (~0.5 MB, embedded as `CodeplugBuilder.Geo.roads.gz`): "Major Highway" (9.7k) and "Secondary Highway" (9k) lines, simplified at 0.004 deg. US rows only carry the number in `name` and the kind in `level`, so labels are made "I-35" / "US 83" (state routes unlabeled); elsewhere `prefix` + `label`. Drawn by `RegionMap.DrawRoads` (majors from 12 px/deg, secondaries from 40, route tags from 130; "Highways" checkbox in `RegionPicker`) |
 
 Outlines are Douglas-Peucker simplified (countries 0.02 deg, states 0.008, counties 0.003; tiny areas like
 Vatican redone finer) and quantized to 1e-4 deg, delta/varint encoded, gzipped. Loading takes ~0.4 s and ~50 MB.

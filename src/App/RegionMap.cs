@@ -78,7 +78,7 @@ namespace CodeplugBuilder.App
         public GeoAtlas Atlas
         {
             get { return atlas; }
-            set { atlas = value; projected.Clear(); projectedBox.Clear(); Invalidate(); }
+            set { atlas = value; projected.Clear(); projectedBox.Clear(); projectedRoads.Clear(); Invalidate(); }
         }
 
         public AreaLevel PickLevel
@@ -349,8 +349,10 @@ namespace CodeplugBuilder.App
                     using (var path = PathOf(a)) if (path != null) g.DrawPath(selPen, path);
             }
 
+            var roadLabels = DrawRoads(g, view);
             DrawDots(g, view);
             DrawLabels(g, visibleCountries, visibleStates, visibleCounties);
+            DrawRoadLabels(g, roadLabels);
             DrawHoverBox(g);
         }
 
@@ -410,6 +412,112 @@ namespace CodeplugBuilder.App
             if (any) return path;
             path.Dispose();
             return null;
+        }
+
+        // ======================================================================
+        // Highways
+        // ======================================================================
+
+        static readonly Color MajorRoad = Color.FromArgb(225, 224, 140, 40);
+        static readonly Color MinorRoad = Color.FromArgb(200, 232, 184, 120);
+        // Zoom (pixels per degree) from which each kind shows: about a country at 900 px is 15, a state 70, a county 400.
+        const double MajorRoadScale = 12, MinorRoadScale = 40, RoadLabelScale = 130;
+
+        readonly Dictionary<GeoRoad, float[][]> projectedRoads = new Dictionary<GeoRoad, float[][]>();
+        bool showRoads = true;
+
+        /// <summary>Draw interstates and other major highways (and, zoomed in, the secondary ones) over the areas.</summary>
+        public bool ShowRoads
+        {
+            get { return showRoads; }
+            set { if (showRoads == value) return; showRoads = value; Invalidate(); }
+        }
+
+        /// <summary>True when the map has road data (some builds of the atlas have none).</summary>
+        public bool HasRoads => atlas != null && atlas.Roads.Count > 0;
+
+        float[][] ProjectedRoad(GeoRoad road)
+        {
+            if (projectedRoads.TryGetValue(road, out var p)) return p;
+            p = new float[road.Lines.Length][];
+            for (int k = 0; k < p.Length; k++)
+            {
+                var src = road.Lines[k];
+                var q = new float[src.Length];
+                for (int i = 0; i < src.Length; i += 2) { q[i] = src[i]; q[i + 1] = (float)MercY(src[i + 1]); }
+                p[k] = q;
+            }
+            return projectedRoads[road] = p;
+        }
+
+        /// <summary>Draws the roads in view; returns the labeled ones with a spot for the label (the middle of their longest line).</summary>
+        List<KeyValuePair<string, PointF>> DrawRoads(Graphics g, RectangleF view)
+        {
+            var labels = new List<KeyValuePair<string, PointF>>();
+            if (!showRoads || atlas == null || atlas.Roads.Count == 0 || scale < MajorRoadScale) return labels;
+            bool minor = scale >= MinorRoadScale, label = scale >= RoadLabelScale;
+            using (var major = new Pen(MajorRoad, Math.Max(1.4f, Ui.S(2))) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round })
+            using (var second = new Pen(MinorRoad, Math.Max(1f, Ui.S(1))) { LineJoin = LineJoin.Round })
+            {
+                var pts = new List<PointF>(128);
+                foreach (var pass in new[] { false, true }) // secondary first, so the majors sit on top
+                {
+                    if (!pass && !minor) continue;
+                    foreach (var road in atlas.Roads)
+                    {
+                        if (road.Major != pass) continue;
+                        if (road.MaxLon < view.Left || road.MinLon > view.Right) continue;
+                        var lines = ProjectedRoad(road);
+                        float[] best = null;
+                        foreach (var line in lines)
+                        {
+                            float minY = float.MaxValue, maxY = float.MinValue;
+                            for (int i = 1; i < line.Length; i += 2) { if (line[i] < minY) minY = line[i]; if (line[i] > maxY) maxY = line[i]; }
+                            if (maxY < view.Top || minY > view.Bottom) continue;
+                            pts.Clear();
+                            PointF last = new PointF(float.NaN, float.NaN);
+                            for (int i = 0; i < line.Length; i += 2)
+                            {
+                                var p = ToScreen(line[i], line[i + 1]);
+                                if (Math.Abs(p.X - last.X) < 0.8f && Math.Abs(p.Y - last.Y) < 0.8f) continue;
+                                pts.Add(p);
+                                last = p;
+                            }
+                            if (pts.Count < 2) continue;
+                            g.DrawLines(road.Major ? major : second, pts.ToArray());
+                            if (best == null || line.Length > best.Length) best = line;
+                        }
+                        if (label && best != null && road.Label.Length > 0)
+                        {
+                            int mid = (best.Length / 4) * 2;
+                            labels.Add(new KeyValuePair<string, PointF>(road.Label, ToScreen(best[mid], best[mid + 1])));
+                        }
+                    }
+                }
+            }
+            return labels;
+        }
+
+        /// <summary>Route numbers ("I-35", "US 83") on small white tags, skipping any that would cover another label or the edge.</summary>
+        void DrawRoadLabels(Graphics g, List<KeyValuePair<string, PointF>> labels)
+        {
+            if (labels.Count == 0) return;
+            var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+            var taken = new List<Rectangle>();
+            using (var fill = new SolidBrush(Color.FromArgb(235, 255, 255, 255)))
+            using (var edge = new Pen(Color.FromArgb(200, 140, 90, 20)))
+            {
+                foreach (var l in labels)
+                {
+                    var sz = TextRenderer.MeasureText(l.Key, Font, Size.Empty, flags);
+                    var rect = new Rectangle((int)(l.Value.X - sz.Width / 2f) - 3, (int)(l.Value.Y - sz.Height / 2f) - 1, sz.Width + 6, sz.Height + 2);
+                    if (!ClientRectangle.Contains(rect) || taken.Any(t => t.IntersectsWith(rect))) continue;
+                    taken.Add(Rectangle.Inflate(rect, Ui.S(40), Ui.S(20))); // keep same-numbered tags well apart
+                    g.FillRectangle(fill, rect);
+                    g.DrawRectangle(edge, rect);
+                    TextRenderer.DrawText(g, l.Key, Font, rect, Color.FromArgb(90, 55, 10), flags);
+                }
+            }
         }
 
         void DrawDots(Graphics g, RectangleF view)

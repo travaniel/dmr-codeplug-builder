@@ -354,6 +354,13 @@ namespace CodeplugBuilder.App
                         picker.Map.SetSelected(new[] { atlas.Find("DE-BY") });
                         picker.Map.ZoomToAreas(new[] { atlas.Find("DE"), atlas.Find("FR"), atlas.Find("PL") });
                     });
+                    Shot("6-texas-highways", () =>
+                    {
+                        picker.Level = AreaLevel.County;
+                        picker.Map.SetSelected(new GeoArea[0]);
+                        picker.Map.ZoomToAreas(new[] { tx });
+                    });
+                    Shot("7-central-texas-highways", () => picker.Map.ZoomTo(-101.5, 29.0, -96.0, 33.0));
                     f.Close();
                 }
                 log.Add("ok");

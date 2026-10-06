@@ -191,7 +191,71 @@ static class Program
         }
         int points = countries.Values.Concat(states).Concat(counties).Sum(a => a.Rings.Sum(r => r.Length / 2));
         Console.WriteLine("points: " + points + ", wrote " + dst + " (" + new FileInfo(dst).Length.ToString("N0") + " bytes)");
+        WriteRoads(src, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dst)), "roads.gz"));
         return 0;
+    }
+
+    // ---------- roads ----------
+    // roads.gz (read by Core/Geo.cs GeoRoad.Load): "CPROD" byte version(1); varint count; per road: byte class
+    // (0 major highway, 1 secondary highway), string label ("I 35", "US 83", "A7"), varint parts, per part: varint points,
+    // zigzag-varint deltas of (lon, lat) in 1e-4 degrees. From Natural Earth ne_10m_roads (public domain).
+    const double RoadTolerance = 0.004;
+
+    static void WriteRoads(string src, string dst)
+    {
+        if (!File.Exists(Path.Combine(src, "ne_10m_roads.zip"))) { Console.WriteLine("no ne_10m_roads.zip: roads skipped"); return; }
+        var roads = new List<(int Class, string Label, List<double[]> Parts)>();
+        var types = new Dictionary<string, int>();
+        var usRoads = new List<string>();
+        foreach (var (row, parts) in Read(src, "ne_10m_roads"))
+        {
+            string type = row["type"];
+            types[type] = types.TryGetValue(type, out int n) ? n + 1 : 1;
+            int cls = type == "Major Highway" ? 0 : type == "Secondary Highway" ? 1 : -1;
+            if (cls < 0 || row["featurecla"] != "Road") continue;
+            string label = (row["prefix"] + " " + row["label"]).Trim();
+            if (label.Length == 0 && row["sov_a3"] == "USA")
+            {
+                // The US rows carry only the route number in "name"; "level" says whether it's an Interstate or a US route.
+                string num = row["name"].Trim();
+                string level = row["level"];
+                label = num.Length == 0 || num.Length > 4 || !num.All(char.IsDigit) ? "" : level == "Interstate" ? "I-" + num : level == "Federal" ? "US " + num : "";
+            }
+            if (label == "-99" || label.Length > 14 || !label.Any(char.IsDigit)) label = ""; // "US" alone is no help
+            var lines = Simplify(parts, RoadTolerance, true, 2).ToList();
+            if (lines.Count > 0) roads.Add((cls, label, lines));
+            if (row["sov_a3"] == "USA" && cls >= 0) usRoads.Add(label);
+        }
+        Console.WriteLine("US roads: " + usRoads.Count + ", " + usRoads.Count(l => l.Length > 0) + " labeled: " + string.Join(" | ", usRoads.Where(l => l.Length > 0).Distinct().Take(20)));
+        Console.WriteLine("road types: " + string.Join(", ", types.OrderByDescending(kv => kv.Value).Select(kv => kv.Key + " " + kv.Value)));
+        Console.WriteLine("roads kept: " + roads.Count(r => r.Class == 0) + " major, " + roads.Count(r => r.Class == 1) + " secondary; samples: " +
+                          string.Join(", ", roads.Where(r => r.Label.Length > 0).Take(8).Select(r => r.Label)));
+        using (var file = File.Create(dst))
+        using (var gz = new GZipStream(file, CompressionLevel.SmallestSize))
+        using (var w = new BinaryWriter(gz, Encoding.UTF8))
+        {
+            w.Write(Encoding.ASCII.GetBytes("CPROD"));
+            w.Write((byte)1);
+            VarInt(w, roads.Count);
+            foreach (var road in roads)
+            {
+                w.Write((byte)road.Class);
+                w.Write(road.Label);
+                VarInt(w, road.Parts.Count);
+                foreach (var line in road.Parts)
+                {
+                    VarInt(w, line.Length / 2);
+                    long px = 0, py = 0;
+                    for (int i = 0; i < line.Length; i += 2)
+                    {
+                        long x = (long)Math.Round(line[i] * Quantum), y = (long)Math.Round(line[i + 1] * Quantum);
+                        ZigZag(w, x - px); ZigZag(w, y - py);
+                        px = x; py = y;
+                    }
+                }
+            }
+        }
+        Console.WriteLine("wrote " + dst + " (" + new FileInfo(dst).Length.ToString("N0") + " bytes)");
     }
 
     static bool Good(string s) { return !string.IsNullOrWhiteSpace(s) && s != "-99" && s != "-1"; }
@@ -279,7 +343,7 @@ static class Program
             pos = c + words * 2;
             int type = BitConverter.ToInt32(b, c);
             var rings = new List<double[]>();
-            if (type == 5 || type == 15 || type == 25)
+            if (type == 3 || type == 13 || type == 23 || type == 5 || type == 15 || type == 25) // polylines (roads) and polygons share a layout
             {
                 int parts = BitConverter.ToInt32(b, c + 36), count = BitConverter.ToInt32(b, c + 40);
                 int partsAt = c + 44, pointsAt = partsAt + 4 * parts;
@@ -332,12 +396,12 @@ static class Program
         return result;
     }
 
-    static IEnumerable<double[]> Simplify(List<double[]> rings, double tolerance, bool keepSpecks)
+    static IEnumerable<double[]> Simplify(List<double[]> rings, double tolerance, bool keepSpecks, int minPoints = 4)
     {
         foreach (var ring in rings)
         {
             int n = ring.Length / 2;
-            if (n < 4) continue;
+            if (n < minPoints) continue;
             double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
             for (int i = 0; i < n; i++)
             {
@@ -385,7 +449,7 @@ static class Program
                 lx = qx; ly = qy;
                 outPts.Add(qx / Quantum); outPts.Add(qy / Quantum);
             }
-            if (outPts.Count / 2 >= 4) yield return outPts.ToArray();
+            if (outPts.Count / 2 >= minPoints) yield return outPts.ToArray();
         }
     }
 

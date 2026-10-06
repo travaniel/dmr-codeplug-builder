@@ -101,6 +101,17 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void AtlasHasHighways()
+        {
+            var roads = GeoAtlas.BuiltIn().Roads;
+            Assert.True(roads.Count(r => r.Major) > 5000 && roads.Count(r => !r.Major) > 5000, "major and secondary highways");
+            var i35 = roads.Where(r => r.Label == "I-35").ToList();
+            Assert.True(i35.Count > 0, "I-35 is there");
+            // I-35 runs from Laredo, Texas to Duluth, Minnesota.
+            Assert.True(i35.Min(r => r.MinLat) < 29 && i35.Max(r => r.MaxLat) > 45, "it spans the country north-south");
+        }
+
+        [Test]
         static void RepeaterBookChirpExport()
         {
             // A real RepeaterBook CHIRP export (Brown County, TX, 2026-10-06), CRLF and trailing commas as downloaded.

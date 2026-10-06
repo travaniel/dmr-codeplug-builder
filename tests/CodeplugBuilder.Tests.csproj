@@ -12,5 +12,6 @@
     <Compile Include="..\src\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\src\Core\Templates\*.CSV" LogicalName="CodeplugBuilder.Templates.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\src\Core\Geo\atlas.gz" LogicalName="CodeplugBuilder.Geo.atlas.gz" />
+    <EmbeddedResource Include="..\src\Core\Geo\roads.gz" LogicalName="CodeplugBuilder.Geo.roads.gz" />
   </ItemGroup>
 </Project>
