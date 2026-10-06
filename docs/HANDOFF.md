@@ -104,6 +104,14 @@ and its Export All (`CPSnow\afterwizard`) reproduced all five generated files **
 TalkGroups is fine even when the contacts are new. The same import emptied the radio's scan list ("Scan List 1",
 whose members were all replaced) although the `.LST` had no ScanList.CSV.
 
+**Merge mode and scan lists (verified 2026-10-06):** a channel made by hand in the CPS (`Handmade 1`, No. 33, in a
+new zone "Test", Scan List 1 = "Scan List 1"), Export All (`CPSnow\handmade`), `--generate --merge` (`CPSnow\mergegen`),
+import, Export All (`CPSnow\aftermerge`): no dialogs, all five files byte for byte as generated, so the kept channel,
+its number and its zone survive. The CPS's "Scan List 1" survived too (members all still existed by name), with
+ScanList.CSV not in the `.LST`. So importing Channel.CSV doesn't clear scan lists; it drops the members (and a list
+left empty) whose channels no longer exist. With scan lists off, scan lists made in the CPS survive as long as
+their channels keep their names.
+
 **.LST:** first line is the entry count, then `index,"File.CSV"`. Section numbers from the export:
 0 Channel, 1 RadioIDList, 2 Zone, 3 ScanList, 4 AnalogAddressBook, 5 TalkGroups, 6 PrefabricatedSMS,
 7 FM, 8 ReceiveGroupCallList, 9 5ToneEncode, 10 2ToneEncode, 11 DTMFEncode, 12 HotKey_QuickCall,
@@ -437,8 +445,8 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 1. ~~Partial `.LST`~~, ~~import order~~, ~~replace or overwrite~~, ~~new talkgroups~~: verified, see section 4.
 2. (merged into 1)
 3. Because imports replace whole lists, channels made by hand in the CPS are lost on the next import
-   unless they're in the project or merge mode is on (1.2). Merge mode is engine-tested on a modified copy of the
-   user's export; a real CPS round (make a channel in the CPS, Export All, Generate with merge, import) is still to do.
+   unless they're in the project or merge mode is on (1.2). ~~Real CPS round~~: verified 2026-10-06 (section 4,
+   "Merge mode and scan lists").
 4. ~~ScanList.CSV values~~: confirmed from a real scan list (section 4). Still to check: import a codeplug
    generated with scan lists on (`CPSnow\scangen`) and Export All, to see the CPS keeps Channel's Scan List 1.
 5. **Real Windows rendering:** checked at the user's scaling on Windows 11 (all tabs, list checkboxes,
@@ -455,7 +463,8 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 2. ~~Real scan-list template~~ (done 2026-10-06, test `BuiltInScanTemplateIsTheRealCpsRow`). Remaining: verify a
    scan-lists-on import (section 6 item 4), then decide whether scan lists default to on; Scan List 2-8 support.
 3. ~~Stable channel numbers~~: done in 1.2 (section 4, Channel.CSV `No.`; test `ChannelNumbersStayPut`).
-4. ~~Merge mode~~: done in 1.2 (section 4, "Merge mode"; test `MergeKeepsWhatWasMadeInTheCps`).
+4. ~~Merge mode~~: done in 1.2 (section 4, "Merge mode"; test `MergeKeepsWhatWasMadeInTheCps`), verified in the
+   real CPS 2026-10-06.
 5. Windows polish: test DPI; consider `PerMonitorV2` via app.config; fix anything Mono hid.
 
 **From 1.2**
