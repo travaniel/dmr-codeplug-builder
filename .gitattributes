@@ -1,0 +1,12 @@
+# Text files get normal line-ending handling.
+* text=auto
+
+# The CPS templates must keep their exact bytes (CRLF, every field quoted): never convert them.
+*.CSV -text
+*.csv -text
+*.LST -text
+
+# Binary files.
+*.gz binary
+*.ico binary
+*.png binary

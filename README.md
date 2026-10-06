@@ -1,0 +1,119 @@
+# DMR Codeplug Builder
+
+A small Windows program that builds a CSV codeplug for the **BTECH DMR-6X2 PRO** customer programming
+software (CPS). You manage talkgroups, repeaters and your hotspot in a simple GUI; it writes the CSV
+files plus a `.LST` file list that the CPS imports in one step.
+
+It runs on Windows 10 and 11 with the .NET Framework 4.8 that Windows already includes, so there is
+nothing to install.
+
+## Using it
+
+**From scratch:** *File > New codeplug* (or *Set up a new codeplug* on the start page) is a five-step
+wizard on a built-in world map: pick the states or countries you use (their DMR repeaters download from
+RadioID.net in the background), look up your DMR ID from your callsign, click counties/states/countries
+to take their repeaters (or tick single repeaters on a list), choose how zones are made (per county,
+city, state, country, band, or one zone), then pick talkgroups per zone. Repeaters bring the
+talkgroups their owners list on RadioID.net (named from BrandMeister's list); talkgroups ticked for a
+zone go on every repeater in it, including ones added later. *Repeaters > Add from map...* does the same
+for an existing project (*Find online...* is the older list by state), the Zones tab has the same
+per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches every BrandMeister talkgroup.
+
+1. Run `CodeplugBuilder.exe`. The first time, it opens `My 6X2 Codeplug.cpb` from the same folder,
+   which was made from your current codeplug.
+2. **Repeaters tab.** *Add DMR repeater* or *Add analog*. Type the receive frequency (the repeater
+   output); the transmit frequency follows the usual band offset, which you can change.
+   - **Zone:** pick an existing zone or type a new name. Every repeater with the same zone name lands
+     in that zone automatically, in list order.
+   - **Talkgroups:** pick talkgroups on the left and click *Add on slot 1* or *Add on slot 2*. Each one
+     becomes a channel named *prefix + talkgroup* (for example `W5FC Texas`), cut to 16 characters.
+     Type in the *Channel name* column to use your own name; clear it to go back to automatic.
+   - Untick a repeater in the list to keep it in the project but leave it out of the codeplug.
+3. **Hotspot tab.** Tick *Include my hotspot*, set its frequency (Offset *Simplex* for a simplex
+   MMDVM hotspot), color code, and the talkgroups you use on it.
+4. **Talkgroups tab.** The master list (the CPS Talk Groups list). Add, rename, change IDs (repeaters
+   follow), import from a CSV, or add common BrandMeister talkgroups.
+5. **Zones tab.** Zone order on the radio, renaming, which channel each zone opens on, and the
+   talkgroups every repeater in a zone carries.
+6. **Settings tab.** Your Radio ID name and DMR ID, receive group lists, scan lists, and limits.
+7. Click **Generate CSV files...** and save the `.LST`. The CSVs are saved next to it.
+8. In the CPS: open your codeplug, **Tool > Import > Import From File List**, pick the `.LST`, click
+   **Import**, check a few channels, then write to the radio.
+
+The import replaces the CPS's **Channel, Zone, Talk Groups, Receive Group Call List and Radio ID
+List** (and **Scan List** if you turn scan lists on). Everything else in the codeplug, such as optional
+settings, APRS and the digital contact database, stays as it was.
+
+If the file list won't import, use **Tool > Import** and load each CSV yourself, in this order:
+TalkGroups, ReceiveGroupCallList, RadioIDList, Channel, ScanList, Zone.
+
+### Starting from what's in the radio
+
+In the CPS, read the radio, then **Tool > Export > Export All (Default CSV FileName)**. In this program,
+**File > Import from CPS export...** and pick the exported `.LST`. Digital channels on the same
+frequency and color code become one repeater; the biggest simplex group of digital channels becomes the
+hotspot; analog channels, zones and channel names are kept.
+
+## How it works
+
+- **The CPS's own rows are the template.** Generated rows are copies of rows the CPS exported, with only
+  the fields this program manages changed (name, frequencies, power, bandwidth, tones, contact, color
+  code, slot, receive group list, TX prohibit). Columns it doesn't manage keep the CPS defaults. The
+  built-in layout comes from a CPS 1.22 export; if a CPS update changes the columns, export again and
+  use **Settings > Load from CPS export...**.
+- **Names link everything.** This CPS's Zone and receive group list files refer to channels and
+  talkgroups by name only, so every channel name is made unique (a number is added if two would clash)
+  and kept to 16 characters, without `|` or `"`.
+- The VFO A/B rows (channel numbers 4001 and 4002) are always written, pointed at contacts that exist.
+- One receive group list per DMR repeater (its group-call talkgroups), so its channels play every
+  talkgroup the repeater carries on that slot. Turn this off in Settings to hear only the channel's
+  own talkgroup.
+- Zones larger than 250 channels are split into numbered zones.
+
+### Confirmed and not yet confirmed in the CPS
+
+- Confirmed (CPS 1.22e): the 5-file `.LST` imports in one step, and each imported list replaces the
+  CPS's list (no leftover channels). Channels made by hand in the CPS are therefore removed on import,
+  unless you turn on **Settings > Keep channels, zones and talkgroups made in the CPS** and point it at a fresh
+  **Export All** of your codeplug: then they're written back as they were (same channel numbers), with the zones,
+  talkgroups and lists they use. Channels keep their numbers between generations either way.
+- Your export had no scan list to copy, so scan lists (off by default) use the CPS's usual defaults.
+  If the CPS rejects `ScanList.CSV`, create one scan list in the CPS, export again, and load that folder
+  in Settings.
+
+## Building from source
+
+- **Windows:** open `CodeplugBuilder.sln` in Visual Studio 2022 (".NET desktop development" workload) and
+  build *Release*, or run `dotnet build src/App/CodeplugBuilder.csproj -c Release`.
+- **Linux:** `bash build.sh [path-to-CPS-export]` (needs the .NET 8 SDK and Mono's reference assemblies;
+  see the script). The optional export folder turns on the round-trip tests.
+
+Output: `src/App/bin/Release/net48/CodeplugBuilder.exe`.
+
+### Command line
+
+```
+CodeplugBuilder.exe --generate "My 6X2 Codeplug.cpb" OutputFolder [--format CpsExportFolder] [--merge CpsExportFolder]
+CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
+```
+
+A log file is written next to the output (a Windows GUI program has no console).
+
+## Working on it
+
+The developer notes (`docs/DEVELOPMENT.md`) cover (build commands, how the code is
+wired, the rules that keep the CSVs importable); `docs/HANDOFF.md` has the design decisions, the full CPS
+CSV format notes, what's been verified, and a prioritized list of improvements.
+
+## Layout
+
+| Folder | What's there |
+| --- | --- |
+| `src/Core` | The engine, no UI: models, CSV reader/writer, CPS format, generator, importer, validation, online data parsing, the map atlas and automatic zones, built-in CPS templates and `Geo/atlas.gz` |
+| `src/App` | The Windows Forms GUI (start page, wizard, map, tabs) |
+| `tests` | Engine tests (a console runner). The key one imports a real CPS export and regenerates it, checking Channel, Zone, TalkGroups and RadioIDList come back identical |
+| `tools/GeoBuild` | Builds `src/Core/Geo/atlas.gz` from the public boundary and place files (zips in `tools/geodata`, not in the repo; see HANDOFF 4c) |
+| `docs` | `HANDOFF.md`: background, format reference, verification status, roadmap |
+
+Projects are saved as readable JSON (`.cpb`). The built-in map uses US Census and Natural Earth data
+(public domain) and GeoNames place names (CC BY 4.0).

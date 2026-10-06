@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Build-time tool: turns the public-domain boundary files in tools/geodata (US Census, Natural Earth) and
+    GeoNames' cities15000 into src/Core/Geo/atlas.gz, which the app embeds. Not part of the app build.
+    Run from the Source folder: dotnet run (project tools/GeoBuild) with arguments tools/geodata src/Core/Geo/atlas.gz
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

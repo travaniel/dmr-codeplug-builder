@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Windows Forms app on .NET Framework 4.8 (built into Windows 10 and 11, so nothing to install).
+    Builds on Windows with Visual Studio / `dotnet build`, or on Linux against Mono's
+    reference assemblies (see build.sh).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>CodeplugBuilder</AssemblyName>
+    <RootNamespace>CodeplugBuilder</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>DMR Codeplug Builder</Product>
+    <AssemblyTitle>DMR Codeplug Builder</AssemblyTitle>
+    <Description>Builds CSV codeplugs for the BTECH DMR-6X2 PRO CPS.</Description>
+    <Version>1.2.0</Version>
+    <Copyright>Copyright © 2026</Copyright>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- Building outside Windows: compile against Mono's .NET Framework 4.8 reference assemblies. -->
+  <PropertyGroup Condition="'$(OS)' != 'Windows_NT' And Exists('/usr/lib/mono/4.8-api')">
+    <FrameworkPathOverride>/usr/lib/mono/4.8-api</FrameworkPathOverride>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Core\Templates\*.CSV" LogicalName="CodeplugBuilder.Templates.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Core\Geo\atlas.gz" LogicalName="CodeplugBuilder.Geo.atlas.gz" />
+  </ItemGroup>
+</Project>
