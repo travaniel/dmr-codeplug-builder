@@ -78,8 +78,9 @@ hotspot; analog channels, zones and channel names are kept.
   **Export All** of your codeplug: then they're written back as they were (same channel numbers), with the zones,
   talkgroups and lists they use. Channels keep their numbers between generations either way.
 - Confirmed: a codeplug that brings new talkgroups imports cleanly and exports back unchanged.
-- Scan lists (off by default) copy the settings of a scan list made in the CPS. A codeplug generated with
-  scan lists on hasn't been imported into the CPS yet.
+- Confirmed: scan lists (one per zone, off by default) import cleanly and export back unchanged. They copy
+  the settings of a scan list made in the CPS. With scan lists off, scan lists you made in the CPS stay as
+  long as their channels keep their names.
 
 ## Building from source
 

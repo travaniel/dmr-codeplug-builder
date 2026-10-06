@@ -182,7 +182,10 @@ sets are skipped). A real row (Export All 2026-10-06, `CPSnow\ScanList.CSV`): `"
 neutralized), so output is unchanged. Membership lives here only: the 13 member channels had **empty**
 `Scan List 1` in Channel.CSV, while a hand-made channel that is *not* a member had `Scan List 1 = "Scan List 1"`.
 So Channel's Scan List 1-8 pick the list(s) the channel scans with, independent of membership. The generator sets
-Scan List 1 of each zone member to its zone's list (both at once); the CPS accepting that is still to check.
+Scan List 1 of each zone member to its zone's list (both at once). **Verified 2026-10-06:** the user's project
+generated with scan lists on (6-entry `.LST` with ScanList at 3; 5 lists, one per zone) imported with no dialogs and
+Export All reproduced all six files byte for byte (the export landed in `CPSnow\scangen` over the generated files;
+the generated copy was kept and compared).
 
 **RadioIDList.CSV:** No., Radio ID, Name.
 
@@ -447,8 +450,8 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 3. Because imports replace whole lists, channels made by hand in the CPS are lost on the next import
    unless they're in the project or merge mode is on (1.2). ~~Real CPS round~~: verified 2026-10-06 (section 4,
    "Merge mode and scan lists").
-4. ~~ScanList.CSV values~~: confirmed from a real scan list (section 4). Still to check: import a codeplug
-   generated with scan lists on (`CPSnow\scangen`) and Export All, to see the CPS keeps Channel's Scan List 1.
+4. ~~ScanList.CSV~~: values confirmed from a real scan list, and a scan-lists-on import re-exports byte for byte
+   (section 4).
 5. **Real Windows rendering:** checked at the user's scaling on Windows 11 (all tabs, list checkboxes,
    editor fields, hotspot grid). Still to check: 125%/150% on another monitor, cue banners,
    ErrorProvider icons, menu shortcuts.
@@ -460,8 +463,8 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 
 **P1: make the import bulletproof**
 1. ~~Run section 6 items 1-3 in the real CPS~~ (done 2026-10-06, all fine, new talkgroups included).
-2. ~~Real scan-list template~~ (done 2026-10-06, test `BuiltInScanTemplateIsTheRealCpsRow`). Remaining: verify a
-   scan-lists-on import (section 6 item 4), then decide whether scan lists default to on; Scan List 2-8 support.
+2. ~~Real scan-list template~~ (done 2026-10-06, test `BuiltInScanTemplateIsTheRealCpsRow`). Scan-lists-on import
+   verified. Remaining: whether scan lists default to on; Scan List 2-8 support.
 3. ~~Stable channel numbers~~: done in 1.2 (section 4, Channel.CSV `No.`; test `ChannelNumbersStayPut`).
 4. ~~Merge mode~~: done in 1.2 (section 4, "Merge mode"; test `MergeKeepsWhatWasMadeInTheCps`), verified in the
    real CPS 2026-10-06.
