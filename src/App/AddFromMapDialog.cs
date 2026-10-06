@@ -158,6 +158,8 @@ namespace CodeplugBuilder.App
             {
                 Power = (string)cboPower.SelectedItem ?? "High",
                 ZoneFor = r => ZonePlanner.ZoneName(r, scheme, single.Length > 0 ? single : "DMR"),
+                Scheme = scheme,
+                MoreNames = download.TalkgroupNames,
             };
             Result = OnlineImporter.AddRepeaters(session.Project, chooser.Picked(), o, download.BrandMeisterNames);
             DialogResult = DialogResult.OK;

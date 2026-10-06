@@ -25,6 +25,8 @@ namespace CodeplugBuilder.App
         public IReadOnlyList<GeoArea> Areas { get; }
         public GeoAtlas Atlas { get; private set; }
         public Dictionary<int, string> BrandMeisterNames { get; private set; } = new Dictionary<int, string>();
+        /// <summary>Names for talkgroups BrandMeister doesn't list (<see cref="Online.NameTalkgroups"/>).</summary>
+        public Dictionary<int, string> TalkgroupNames { get; private set; } = new Dictionary<int, string>();
         public List<string> Errors { get; } = new List<string>();
         public bool Done { get; private set; }
         public string Status { get; private set; } = "Starting the download...";
@@ -117,6 +119,9 @@ namespace CodeplugBuilder.App
                 }
                 Report("Getting talkgroup names from BrandMeister...");
                 try { BrandMeisterNames = bm.Result ?? new Dictionary<int, string>(); } catch { }
+                List<OnlineRepeater> all;
+                lock (repeaters) all = repeaters.ToList();
+                try { TalkgroupNames = Online.NameTalkgroups(all, BrandMeisterNames, new Progress<string>(Report), token); } catch { }
             }
             catch (Exception ex)
             {

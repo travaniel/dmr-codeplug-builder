@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using CodeplugBuilder.Core;
 
@@ -27,6 +28,7 @@ namespace CodeplugBuilder.App
         List<OnlineRepeater> all = new List<OnlineRepeater>();
         readonly HashSet<OnlineRepeater> picked = new HashSet<OnlineRepeater>();
         Dictionary<int, string> bm = new Dictionary<int, string>();
+        Dictionary<int, string> moreNames = new Dictionary<int, string>();
         string defaultsState;
         int sortColumn = 1;
         bool sortDescending, loading, creatingHandle, busy;
@@ -226,6 +228,8 @@ namespace CodeplugBuilder.App
                 var result = await Online.RepeatersAsync(state, progress);
                 if (IsDisposed) return;
                 all = result;
+                try { moreNames = await Task.Run(() => Online.NameTalkgroups(result, bm, progress, System.Threading.CancellationToken.None)); } catch { }
+                if (IsDisposed) return;
                 picked.Clear();
                 AppSettings.Set("OnlineState", state);
                 FillDefaults(state);
@@ -316,7 +320,7 @@ namespace CodeplugBuilder.App
             var parts = new List<string>();
             foreach (int slot in new[] { 1, 2 })
             {
-                var names = r.Talkgroups.Where(t => t.Slot == slot).Select(t => OnlineImporter.TalkgroupName(r, t, bm)).ToList();
+                var names = r.Talkgroups.Where(t => t.Slot == slot).Select(t => OnlineImporter.TalkgroupName(r, t, bm, moreNames)).ToList();
                 if (names.Count > 0) parts.Add("TS" + slot + ": " + string.Join(", ", names));
             }
             return string.Join("   ", parts);
@@ -412,6 +416,7 @@ namespace CodeplugBuilder.App
                 Zone = txtZone.Text,
                 Power = (string)cboPower.SelectedItem ?? "High",
                 DefaultTalkgroups = DefaultChoices(),
+                MoreNames = moreNames,
             };
             if (optOne.Checked && Naming.Clean(o.Zone, 16).Length == 0) { Ui.Error(this, "Type a zone name."); return; }
             // Place them on the map too, so their county/state is kept (zones per county later, Add from map).

@@ -12,7 +12,7 @@ namespace CodeplugBuilder.App
     {
         public IssuesDialog(string heading, IEnumerable<string> errors, IEnumerable<string> warnings, bool canContinue, string continueText = "Generate anyway")
         {
-            Text = "DMR Codeplug Builder";
+            Text = Ui.AppName;
             Font = Ui.BaseFont;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;

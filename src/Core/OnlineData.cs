@@ -100,6 +100,18 @@ namespace CodeplugBuilder.Core
             return "https://radioid.net/api/dmr/user/?callsign=" + Uri.EscapeDataString((callsign ?? "").Trim().ToUpperInvariant());
         }
 
+        /// <summary>The user with this DMR ID (for naming talkgroups numbered after a person).</summary>
+        public static string UserIdUrl(int id)
+        {
+            return "https://radioid.net/api/dmr/user/?id=" + id.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>The repeater with this DMR ID (RadioID's "locator").</summary>
+        public static string RepeaterIdUrl(int id)
+        {
+            return "https://radioid.net/api/dmr/repeater/?id=" + id.ToString(CultureInfo.InvariantCulture);
+        }
+
         public static RadioIdPage ParseRepeaters(string json)
         {
             var root = Json.Parse(json);
@@ -210,7 +222,7 @@ namespace CodeplugBuilder.Core
                 string bare = Regex.Replace(n, @"\s*\([^)]*\)", "").Trim();
                 if (bare.Length >= 3) n = bare;
             }
-            return Naming.Clean(n, maxLength);
+            return Naming.Fit(n, maxLength);
         }
 
         public static bool IsPrivateCall(int id, string name)
@@ -315,6 +327,10 @@ namespace CodeplugBuilder.Core
         public List<TalkgroupChoice> DefaultTalkgroups { get; set; } = new List<TalkgroupChoice>();
         /// <summary>Optional: picks each new repeater's zone (after its location is set), overriding the two options above.</summary>
         public Func<Repeater, string> ZoneFor { get; set; }
+        /// <summary>Optional: names for talkgroups that have no BrandMeister name or description (<see cref="TalkgroupNames"/>).</summary>
+        public IDictionary<int, string> MoreNames { get; set; }
+        /// <summary>Optional: the scheme <see cref="ZoneFor"/> uses, so same-named counties or cities in different states get separate zones (<see cref="ZonePlanner.SeparateStates"/>).</summary>
+        public ZoneScheme? Scheme { get; set; }
     }
 
     public sealed class OnlineImportResult
@@ -362,17 +378,19 @@ namespace CodeplugBuilder.Core
 
         /// <summary>
         /// Name for a published talkgroup: BrandMeister's (on BrandMeister-only repeaters, or when the owner gave
-        /// none), the owner's description, or "TG 1234". Multi-network repeaters keep the owner's description,
+        /// none), the owner's description, "CALL Local" for the repeater's own ID, a name from <paramref name="moreNames"/>
+        /// (see <see cref="TalkgroupNames"/>), or "TG 1234". Multi-network repeaters keep the owner's description,
         /// since the same number can mean something else on DMR-MARC or TGIF.
         /// </summary>
-        public static string TalkgroupName(OnlineRepeater r, OnlineTalkgroup t, IDictionary<int, string> bmNames)
+        public static string TalkgroupName(OnlineRepeater r, OnlineTalkgroup t, IDictionary<int, string> bmNames, IDictionary<int, string> moreNames = null)
         {
             string bmName = bmNames != null && bmNames.TryGetValue(t.Id, out string bm) ? BrandMeister.ShortName(bm) : "";
             string desc = BrandMeister.ShortName(t.Description);
             if (bmName.Length > 0 && (r.Network == "BrandMeister" || desc.Length == 0)) return bmName;
             if (desc.Length > 0) return desc;
-            if (t.Id == r.DmrId && r.Callsign.Length > 0) return Naming.Clean(r.Callsign + " Local", 16);
-            return "TG " + t.Id.ToString(CultureInfo.InvariantCulture);
+            if (t.Id == r.DmrId && r.Callsign.Length > 0) return Naming.Fit(r.Callsign + " Local", 16);
+            if (moreNames != null && moreNames.TryGetValue(t.Id, out string more) && Naming.Fit(more, 16).Length > 0) return Naming.Fit(more, 16);
+            return TalkgroupNames.Placeholder(t.Id);
         }
 
         /// <summary>
@@ -387,6 +405,9 @@ namespace CodeplugBuilder.Core
             var skipped = new List<string>();
             var defaulted = new List<string>();
             var empty = new List<string>();
+            picked = picked.ToList();
+            var moreNames = TalkgroupNames.FromListings(picked, TalkgroupNames.Unnamed(picked, bmNames));
+            if (o.MoreNames != null) foreach (var kv in o.MoreNames) moreNames[kv.Key] = kv.Value;
             foreach (var r in picked)
             {
                 if (!r.InRadioBand) { skipped.Add(r.Callsign + " (outside the radio's bands)"); continue; }
@@ -419,7 +440,7 @@ namespace CodeplugBuilder.Core
                 {
                     foreach (var t in r.Talkgroups)
                     {
-                        string name = TalkgroupName(r, t, bmNames);
+                        string name = TalkgroupName(r, t, bmNames, moreNames);
                         var tg = Ensure(p, t.Id, name, BrandMeister.IsPrivateCall(t.Id, name) ? CallTypes.Private : CallTypes.Group, result);
                         Put(rep, tg.Id, t.Slot);
                     }
@@ -439,6 +460,7 @@ namespace CodeplugBuilder.Core
                 result.Added.Add(rep);
             }
             p.SyncZones();
+            if (o.Scheme.HasValue) ZonePlanner.SeparateStates(p, o.Scheme.Value);
             foreach (var rep in result.Added) p.ApplyZoneTalkgroups(rep);
 
             if (defaulted.Count > 0)
@@ -497,22 +519,21 @@ namespace CodeplugBuilder.Core
                 rep.Talkgroups.Add(new RepeaterTalkgroup(id, slot));
         }
 
-        /// <summary>The project's talkgroup with this ID, or a new one with a unique name.</summary>
+        /// <summary>
+        /// The project's talkgroup with this ID, or a new one with a unique name. A talkgroup the project only knows
+        /// as "TG 1234" takes the real name when there is one now.
+        /// </summary>
         static Talkgroup Ensure(Project p, int id, string name, string callType, OnlineImportResult result)
         {
+            bool Taken(string x) { return p.Talkgroups.Any(t => t.Id != id && string.Equals(t.Name, x, StringComparison.OrdinalIgnoreCase)); }
             var tg = p.FindTalkgroup(id);
-            if (tg != null) return tg;
-            string n = Naming.Clean(name, 16);
-            if (n.Length == 0) n = "TG " + id.ToString(CultureInfo.InvariantCulture);
-            bool Taken(string x) { return p.Talkgroups.Any(t => string.Equals(t.Name, x, StringComparison.OrdinalIgnoreCase)); }
-            if (Taken(n)) n = Naming.Clean(n + " " + id.ToString(CultureInfo.InvariantCulture), 16);
-            if (Taken(n))
+            if (tg != null)
             {
-                var namer = new UniqueNamer(16, "TG");
-                foreach (var t in p.Talkgroups) namer.Reserve(t.Name);
-                n = namer.Claim(n);
+                if (TalkgroupNames.IsPlaceholder(tg.Name, id) && !TalkgroupNames.IsPlaceholder(name, id) && Naming.Fit(name, 16).Length > 0)
+                    tg.Name = Naming.UniqueTalkgroupName(name, id, Taken);
+                return tg;
             }
-            tg = new Talkgroup(n, id, CallTypes.Normalize(callType));
+            tg = new Talkgroup(Naming.UniqueTalkgroupName(name, id, Taken), id, CallTypes.Normalize(callType));
             p.Talkgroups.Add(tg);
             result.NewTalkgroups.Add(tg);
             return tg;
@@ -521,6 +542,132 @@ namespace CodeplugBuilder.Core
         static string FirstNonEmpty(params string[] values)
         {
             return values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "";
+        }
+    }
+
+    /// <summary>
+    /// Names for talkgroups that BrandMeister doesn't list and the repeater owner didn't describe, so they don't all
+    /// end up as "TG 1234". In order: what owners wrote in their repeater notes ("TS2 Bell Co (314891)", "HF Net
+    /// TG3140312"), then another listed repeater with that DMR ID ("W5LOS Luling"). The App adds RadioID.net lookups
+    /// of the rest: a 7-digit ID is usually someone's DMR ID (<see cref="ForUser"/>), a 6-digit one a repeater's.
+    /// </summary>
+    public static class TalkgroupNames
+    {
+        /// <summary>"TG 1234": what a talkgroup is called when nothing better is known.</summary>
+        public static string Placeholder(int id) { return "TG " + id.ToString(CultureInfo.InvariantCulture); }
+
+        /// <summary>True for "TG 1234", "TG1234", "TG#1234" or "1234" (with this ID), or an empty name.</summary>
+        public static bool IsPlaceholder(string name, int id)
+        {
+            string n = Regex.Replace((name ?? "").Trim(), @"[\s#:]+", "").ToUpperInvariant();
+            string ids = id.ToString(CultureInfo.InvariantCulture);
+            return n.Length == 0 || n == ids || n == "TG" + ids;
+        }
+
+        /// <summary>Talkgroups on these listings that would only get "TG 1234" from <see cref="OnlineImporter.TalkgroupName"/>.</summary>
+        public static HashSet<int> Unnamed(IEnumerable<OnlineRepeater> listings, IDictionary<int, string> bmNames)
+        {
+            var ids = new HashSet<int>();
+            foreach (var r in listings)
+                foreach (var t in r.Talkgroups)
+                    if (IsPlaceholder(OnlineImporter.TalkgroupName(r, t, bmNames), t.Id)) ids.Add(t.Id);
+            return ids;
+        }
+
+        /// <summary>Names the listings themselves give for these IDs: owners' notes first, then a listed repeater with that ID.</summary>
+        public static Dictionary<int, string> FromListings(IEnumerable<OnlineRepeater> listings, ICollection<int> ids)
+        {
+            var result = new Dictionary<int, string>();
+            if (ids == null || ids.Count == 0) return result;
+            var list = listings.ToList();
+            var votes = new Dictionary<int, Dictionary<string, int>>();
+            foreach (var r in list)
+                foreach (var kv in FromNotes(r.Details, ids))
+                {
+                    if (!votes.TryGetValue(kv.Key, out var v)) votes[kv.Key] = v = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    v[kv.Value] = (v.TryGetValue(kv.Value, out int c) ? c : 0) + 1;
+                }
+            foreach (var kv in votes)
+                result[kv.Key] = kv.Value.OrderByDescending(x => x.Value).ThenBy(x => x.Key.Length).First().Key;
+            foreach (var r in list)
+                if (r.DmrId > 0 && ids.Contains(r.DmrId) && !result.ContainsKey(r.DmrId) && r.Callsign.Length > 0)
+                    result[r.DmrId] = ForRepeater(r.Callsign, r.City);
+            return result;
+        }
+
+        /// <summary>"N0FTW TG": a talkgroup numbered with someone's DMR ID is their personal talkgroup.</summary>
+        public static string ForUser(RadioIdUser u) { return Naming.Fit(u.Callsign + " TG", 16); }
+
+        /// <summary>"W5LOS Luling": a talkgroup numbered with a repeater's DMR ID.</summary>
+        public static string ForRepeater(string callsign, string city) { return Naming.Fit(Naming.Clean(callsign + " " + Naming.Fold(city), 0), 16); }
+
+        // An ID in running text: "3148", "TG 3148", "TG#3148", "#3148", "(3148)". Not part of a frequency, range or longer number.
+        static readonly Regex IdInText = new Regex(@"(?<![\w.,/-])(?:TG\s*#?\s*|#\s*)?(\d{3,8})(?![\w]|[.,]\d)", RegexOptions.IgnoreCase);
+
+        // Words that end a name: "TS2 Static has Bell County Wide TG 314891" → "Bell County Wide".
+        static readonly HashSet<string> StopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "and", "or", "has", "have", "with", "on", "is", "are", "to", "the", "a", "an", "via", "for", "in", "at", "plus", "also",
+            "static", "statics", "dynamic", "ptt", "ts", "ts1", "ts2", "slot", "slot1", "slot2", "timeslot", "time", "tg", "tgs",
+            "talkgroup", "talkgroups", "id", "&", "+", "-", "/", "|", "=", ":", "linked", "connected", "carries", "carry", "net:",
+        };
+
+        /// <summary>Names an owner gave in a repeater's notes, for the IDs asked about.</summary>
+        public static Dictionary<int, string> FromNotes(string notes, ICollection<int> ids)
+        {
+            var found = new Dictionary<int, string>();
+            if (string.IsNullOrWhiteSpace(notes)) return found;
+            foreach (string segment in Regex.Split(notes, @"\s+/\s+|[;\r\n|,]"))
+                foreach (Match m in IdInText.Matches(segment))
+                {
+                    if (!int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int id) || !ids.Contains(id) || found.ContainsKey(id)) continue;
+                    string name = NameBefore(segment.Substring(0, m.Index));
+                    if (name.Length == 0) name = NameAfter(segment.Substring(m.Index + m.Length));
+                    if (name.Length > 0) found[id] = name;
+                }
+            return found;
+        }
+
+        static string NameBefore(string text)
+        {
+            var words = Words(text.TrimEnd(' ', '(', '[', ':', '-', '=', '#'));
+            var name = new List<string>();
+            for (int i = words.Count - 1; i >= 0 && name.Count < 5; i--)
+            {
+                string w = words[i];
+                if (StopWords.Contains(w.TrimEnd(':', '-', '.')) || w.Any(char.IsDigit) || w.EndsWith(".") && w.Length > 3 || w.EndsWith(":") || w.EndsWith(")")) break;
+                name.Insert(0, w);
+            }
+            return Usable(name);
+        }
+
+        static string NameAfter(string text)
+        {
+            var words = Words(text.TrimStart(' ', ')', ']', ':', '-', '=', '–'));
+            var name = new List<string>();
+            foreach (string w in words)
+            {
+                if (name.Count >= 5 || w == "(" || w.StartsWith("(") || w.Equals("ptt", StringComparison.OrdinalIgnoreCase) ||
+                    Regex.IsMatch(w, @"^(ts|slot|timeslot)\d?$", RegexOptions.IgnoreCase) || w == "-" || w == "/") break;
+                name.Add(w.TrimEnd('.', ':', ')'));
+            }
+            while (name.Count > 0 && StopWords.Contains(name[name.Count - 1])) name.RemoveAt(name.Count - 1);
+            return Usable(name);
+        }
+
+        static List<string> Words(string text)
+        {
+            return text.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        }
+
+        static string Usable(List<string> words)
+        {
+            string n = Naming.Clean(Naming.Fold(string.Join(" ", words)), 0).Trim('-', ':', '=', '(', ')', ' ', '.', '*');
+            // Too short to mean anything ("BM"), a call type, or a state before a ZIP code ("Garland TX 75088").
+            if (n.Count(char.IsLetter) < 3 || StopWords.Contains(n) || Regex.IsMatch(n, @"^(TG|TS|Slot|Timeslot)\s*\d*$", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(n, @"^(group|private|all)\s+call$", RegexOptions.IgnoreCase) ||
+                Naming.StateCodes.Any(s => n == s.Value || n.EndsWith(" " + s.Value, StringComparison.Ordinal))) return "";
+            return n;
         }
     }
 
@@ -539,7 +686,7 @@ namespace CodeplugBuilder.Core
         public static List<Repeater> AddNoaaWeather(Project p, string zone = "Weather")
         {
             var added = new List<Repeater>();
-            foreach (var kv in Noaa.OrderBy(x => x.Value))
+            foreach (var kv in Noaa) // WX1 to WX7, so the radio counts them in order (not by frequency: WX2 is the lowest)
             {
                 if (p.Repeaters.Any(r => !r.IsDigital && r.RxMHz == kv.Value)) continue;
                 var r = Repeater.NewAnalog("NOAA " + kv.Key);
@@ -553,6 +700,31 @@ namespace CodeplugBuilder.Core
             }
             p.SyncZones();
             return added;
+        }
+
+        /// <summary>
+        /// Weather channels from <see cref="AddNoaaWeather"/> in versions before 1.3 were added in frequency order, so
+        /// the radio showed WX2, WX4, WX5, WX3... Puts them back in WX1-WX7 order: same places in the repeater list and
+        /// the same channel numbers, handed out in WX order. Returns true when anything moved.
+        /// </summary>
+        public static bool SortNoaaWeather(Project p)
+        {
+            int Wx(Repeater r)
+            {
+                var m = Regex.Match(r.Notes ?? "", @"^NOAA Weather Radio WX(\d)\b");
+                return !r.IsDigital && m.Success ? m.Groups[1].Value[0] - '0' : 0;
+            }
+            var slots = new List<int>();
+            for (int i = 0; i < p.Repeaters.Count; i++) if (Wx(p.Repeaters[i]) > 0) slots.Add(i);
+            if (slots.Count < 2) return false;
+            var current = slots.Select(i => p.Repeaters[i]).ToList();
+            var sorted = current.OrderBy(Wx).ToList();
+            if (current.SequenceEqual(sorted)) return false;
+            var numbers = current.Select(r => r.ChannelNumber).Where(n => n > 0).OrderBy(n => n).ToList();
+            for (int k = 0; k < slots.Count; k++) p.Repeaters[slots[k]] = sorted[k];
+            if (numbers.Count == sorted.Count)
+                for (int k = 0; k < sorted.Count; k++) sorted[k].ChannelNumber = numbers[k];
+            return true;
         }
     }
 }

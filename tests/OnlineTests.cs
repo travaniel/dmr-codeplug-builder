@@ -8,6 +8,77 @@ namespace CodeplugBuilder.Tests
     /// <summary>Parsing and importing online data. Samples are trimmed real API responses (October 2026).</summary>
     static class OnlineTests
     {
+        [Test]
+        static void TalkgroupNamesFromNotesAndListings()
+        {
+            var ids = new HashSet<int> { 314891, 3140312, 3148, 75088, 8288, 312331 };
+            // Real RadioID.net notes (Texas, 2026-10-06).
+            var a = TalkgroupNames.FromNotes("TS1 TX State Wide (3148) / TS2 Bell Co (314891)", ids);
+            Assert.Equal("Bell Co", a[314891], "name (id)");
+            Assert.Equal("TX State Wide", a[3148], "name (id) after a slot");
+            var b = TalkgroupNames.FromNotes("MINI Repeater located in South West Temple, TX. TS2 Static has Bell County Wide TG 314891 and 3819 HF Net TG3140312.", ids);
+            Assert.Equal("Bell County Wide", b[314891], "name TG id, after a stop word");
+            Assert.Equal("HF Net", b[3140312], "name TGid");
+            var c = TalkgroupNames.FromNotes("Timeslot 1 / Brazoria Cty 8288 / Garland TX 75088", ids);
+            Assert.Equal("Brazoria Cty", c[8288], "table row");
+            Assert.True(!c.ContainsKey(75088), "a ZIP code isn't a talkgroup");
+
+            var w5los = new OnlineRepeater { Callsign = "W5LOS", City = "Luling", DmrId = 312331 };
+            var other = new OnlineRepeater { Callsign = "K5TRA", City = "Austin", Details = "", RxMHz = 444.1m, TxMHz = 449.1m };
+            other.Talkgroups.Add(new OnlineTalkgroup { Id = 312331, Slot = 2, Description = "" });
+            var unnamed = TalkgroupNames.Unnamed(new[] { w5los, other }, null);
+            Assert.True(unnamed.Contains(312331), "nothing names 312331 yet");
+            Assert.Equal("W5LOS Luling", TalkgroupNames.FromListings(new[] { w5los, other }, unnamed)[312331], "another repeater's DMR ID");
+            Assert.True(TalkgroupNames.IsPlaceholder("TG#312331", 312331) && !TalkgroupNames.IsPlaceholder("W5LOS Luling", 312331), "placeholder");
+
+            // A project talkgroup only known as "TG 312331" takes the real name.
+            var p = new Project { RadioIdName = "Test", RadioId = 1 };
+            p.Talkgroups.Add(new Talkgroup("TG 312331", 312331));
+            OnlineImporter.AddRepeaters(p, new[] { other }, new OnlineImportOptions { MoreNames = new Dictionary<int, string> { { 312331, "W5LOS Luling" } } }, null);
+            Assert.Equal("W5LOS Luling", p.FindTalkgroup(312331).Name, "placeholder renamed");
+        }
+
+        [Test]
+        static void WeatherChannelsInWxOrder()
+        {
+            var p = new Project { RadioIdName = "Test", RadioId = 1 };
+            p.Talkgroups.Add(new Talkgroup("Local", 9));
+            Presets.AddNoaaWeather(p);
+            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            Assert.Equal("NOAA WX1,NOAA WX2,NOAA WX3,NOAA WX4,NOAA WX5,NOAA WX6,NOAA WX7", string.Join(",", g.ChannelList.Select(c => c.Name)), "WX1 to WX7");
+
+            // A project saved with the old frequency order (and numbers 8-14) is put back in WX order on load.
+            var old = new Project { RadioIdName = "Test", RadioId = 1 };
+            int n = 8;
+            foreach (var r in p.Repeaters.OrderBy(r => r.RxMHz)) { var c = r.Clone(); c.ChannelNumber = n++; old.Repeaters.Add(c); }
+            old.Normalize();
+            Assert.Equal("NOAA WX1,NOAA WX2,NOAA WX3,NOAA WX4,NOAA WX5,NOAA WX6,NOAA WX7", string.Join(",", old.Repeaters.Select(r => r.Name)), "reordered");
+            Assert.Equal("8,9,10,11,12,13,14", string.Join(",", old.Repeaters.Select(r => r.ChannelNumber)), "numbers follow WX order");
+            Assert.True(!Presets.SortNoaaWeather(old), "already sorted");
+        }
+
+        [Test]
+        static void SameCountyNameInTwoStatesGetsTwoZones()
+        {
+            var p = new Project();
+            Repeater R(string call, string state)
+            {
+                var r = Repeater.NewDigital(call);
+                r.County = "Washington County";
+                r.State = state;
+                p.Repeaters.Add(r);
+                return r;
+            }
+            var tx = R("K5TX", "Texas");
+            var ok = R("K5OK", "Oklahoma");
+            var tx2 = R("K5TY", "Texas");
+            ZonePlanner.Apply(p, p.Repeaters, ZoneScheme.County);
+            Assert.Equal("Washington Co TX", tx.Zone, "Texas");
+            Assert.Equal("Washington Co OK", ok.Zone, "Oklahoma");
+            Assert.Equal(tx.Zone, tx2.Zone, "same state, same zone");
+            Assert.True(p.FindZone("Washington Co") == null, "shared zone gone");
+        }
+
         const string RepeatersJson = @"{""count"":3,""page"":1,""pages"":1,""per_page"":200,""results"":[
  {""callsign"":""KC5EZZ"",""city"":""San Angelo"",""color_code"":1,""country"":""United States"",""coverage"":""Peer"",""details"":"""",
   ""frequency"":""441.75000"",""identity_id"":6480,""ipsc_network"":""Brandmeister"",""last_master"":null,""locator"":311562,""manufacturer"":null,
@@ -170,7 +241,7 @@ namespace CodeplugBuilder.Tests
             var names = g.ChannelList.Select(c => c.Name).ToList();
             Assert.Equal(names.Count, names.Distinct(StringComparer.OrdinalIgnoreCase).Count(), "unique channel names");
             Assert.True(names.All(n => n.Length <= 16), "names fit");
-            Assert.True(names.Contains("KC5EZZ Texas 314"), "channel name = prefix + talkgroup, cut to 16");
+            Assert.True(names.Contains("KC5EZZ TX 3148"), "channel name = prefix + talkgroup, shortened to 16 without cutting the ID: " + string.Join(", ", names));
             Assert.True(names.Contains("KC5EZZ Local"), "talkgroup already named after the repeater isn't prefixed twice");
         }
 
@@ -194,7 +265,7 @@ namespace CodeplugBuilder.Tests
             var added = Presets.AddNoaaWeather(p);
             Assert.Equal(6, added.Count, "six new");
             Assert.True(added.All(r => r.RxOnly && !r.IsDigital && r.Zone == "Weather" && r.RxMHz == r.TxMHz), "rx-only analog");
-            Assert.Equal(162.425m, added[0].RxMHz, "lowest first");
+            Assert.Equal("NOAA WX1", added[0].Name, "WX order, not frequency order (WX2, already there, is skipped)");
             Assert.Equal(0, Presets.AddNoaaWeather(p).Count, "second time adds nothing");
         }
     }

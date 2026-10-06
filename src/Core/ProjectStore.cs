@@ -8,7 +8,7 @@ namespace CodeplugBuilder.Core
     public static class ProjectStore
     {
         public const string Extension = ".cpb";
-        public const string FileFilter = "Codeplug Builder project (*.cpb)|*.cpb|All files (*.*)|*.*";
+        public const string FileFilter = "W6OZZ CPS project (*.cpb)|*.cpb|All files (*.*)|*.*";
 
         static DataContractJsonSerializer Serializer()
         {

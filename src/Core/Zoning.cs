@@ -62,12 +62,12 @@ namespace CodeplugBuilder.Core
                 if (c.EndsWith(suf, StringComparison.Ordinal) && c.Length > suf.Length)
                 {
                     string stem = c.Substring(0, c.Length - suf.Length).Trim();
-                    return stem.Length + 3 <= 16 && suf == " County" ? stem + " Co" : Naming.Clean(stem, 16);
+                    return stem.Length + 3 <= 16 && suf == " County" ? stem + " Co" : Naming.Fit(stem, 16);
                 }
-            return Naming.Clean(c, 16);
+            return Naming.Fit(c, 16);
         }
 
-        static string Fit(string s) { return Naming.Clean(Naming.Fold(s), 16); }
+        static string Fit(string s) { return Naming.Fit(s, 16); }
 
         /// <summary>Zone names already in the project, for <see cref="Canonical"/>.</summary>
         public static Dictionary<string, string> Spellings(Project p)
@@ -96,8 +96,53 @@ namespace CodeplugBuilder.Core
             var list = repeaters.ToList();
             var spelling = Spellings(p);
             foreach (var r in list) r.Zone = Canonical(spelling, ZoneName(r, scheme, single));
+            SeparateStates(p, scheme, single);
             p.SyncZones();
             foreach (var r in list) p.ApplyZoneTalkgroups(r);
+        }
+
+        /// <summary>
+        /// Counties and cities with the same name in different states ("Washington County" in Texas and Oklahoma)
+        /// would land in one zone. Those zones get the state added instead: "Washington Co TX", "Washington Co OK".
+        /// Only zones that still have their automatic name are touched; their talkgroup sets go to each new zone.
+        /// </summary>
+        public static void SeparateStates(Project p, ZoneScheme scheme, string single = "DMR")
+        {
+            if (scheme != ZoneScheme.County && scheme != ZoneScheme.City) return;
+            string Separate(Repeater r, string auto) { return Naming.Fit(auto + " " + StateCode(r.State), 16); }
+            var groups = p.Repeaters
+                .Where(r => !string.IsNullOrWhiteSpace(r.Zone) && !string.IsNullOrWhiteSpace(r.State))
+                .Select(r => new KeyValuePair<Repeater, string>(r, ZoneName(r, scheme, single)))
+                .Where(x => Project.SameZone(x.Key.Zone, x.Value) || Project.SameZone(x.Key.Zone, Separate(x.Key, x.Value)))
+                .GroupBy(x => x.Value, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Select(x => x.Key.State.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+                .ToList();
+            foreach (var g in groups)
+            {
+                var old = p.FindZone(g.Key);
+                foreach (var x in g)
+                {
+                    string name = Separate(x.Key, g.Key);
+                    var info = p.FindZone(name);
+                    if (info == null)
+                    {
+                        info = new ZoneInfo(name);
+                        if (old?.Talkgroups != null) info.Talkgroups = old.Talkgroups.Select(t => new ZoneTalkgroup(t.TalkgroupId, t.Slot)).ToList();
+                        p.Zones.Add(info);
+                    }
+                    x.Key.Zone = info.Name;
+                }
+            }
+            if (groups.Count > 0) p.SyncZones();
+        }
+
+        /// <summary>"Texas" → "TX", "Ontario" → "ON"; other states and provinces shortened.</summary>
+        public static string StateCode(string state)
+        {
+            string s = Naming.Clean(Naming.Fold(state), 0);
+            foreach (var kv in Naming.StateCodes)
+                if (string.Equals(kv.Key, s, StringComparison.OrdinalIgnoreCase)) return kv.Value;
+            return Naming.Fit(s, 6);
         }
     }
 }

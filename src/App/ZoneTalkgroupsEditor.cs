@@ -257,11 +257,8 @@ namespace CodeplugBuilder.App
             var tg = project.FindTalkgroup(id);
             if (tg != null) return tg;
             string name = bm.TryGetValue(id, out string n) ? BrandMeister.ShortName(n) : BrandMeister.ShortName(fallbackName ?? "");
-            if (name.Length == 0) name = "TG " + id.ToString(CultureInfo.InvariantCulture);
-            var namer = new UniqueNamer(16, "TG");
-            foreach (var t in project.Talkgroups) namer.Reserve(t.Name);
-            if (namer.IsUsed(name)) name = Naming.Clean(name + " " + id.ToString(CultureInfo.InvariantCulture), 16);
-            tg = new Talkgroup(namer.Claim(name), id, BrandMeister.IsPrivateCall(id, name) ? CallTypes.Private : CallTypes.Group);
+            name = Naming.UniqueTalkgroupName(name, id, x => project.Talkgroups.Any(t => string.Equals(t.Name, x, StringComparison.OrdinalIgnoreCase)));
+            tg = new Talkgroup(name, id, BrandMeister.IsPrivateCall(id, name) ? CallTypes.Private : CallTypes.Group);
             project.Talkgroups.Add(tg);
             return tg;
         }

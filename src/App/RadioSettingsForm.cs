@@ -31,7 +31,7 @@ namespace CodeplugBuilder.App
 
         public RadioSettingsForm(string path)
         {
-            Text = "Radio settings - DMR Codeplug Builder";
+            Text = "Radio settings - " + Ui.AppName;
             Font = Ui.BaseFont;
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(Ui.S(900), Ui.S(680));

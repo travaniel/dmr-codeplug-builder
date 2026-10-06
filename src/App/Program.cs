@@ -27,7 +27,7 @@ namespace CodeplugBuilder.App
             catch { }
             Application.ThreadException += (s, e) =>
                 MessageBox.Show("Something went wrong:\n\n" + e.Exception.Message + "\n\nYour project is still open; save it before trying again.",
-                    "DMR Codeplug Builder", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Ui.AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
 
             string path = null, tab = null;
             for (int i = 0; i < args.Length; i++)

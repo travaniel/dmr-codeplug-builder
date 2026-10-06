@@ -9,6 +9,8 @@ namespace CodeplugBuilder.App
     /// <summary>Small helpers so every page is built the same way in code (no designer files).</summary>
     static class Ui
     {
+        public const string AppName = "W6OZZ CPS";
+
         /// <summary>Screen DPI / 96, set at startup; used to scale the few fixed pixel sizes.</summary>
         public static float Scale = 1f;
 
@@ -157,17 +159,17 @@ namespace CodeplugBuilder.App
             return v <= 0 ? "" : v.ToString("0.000##", CultureInfo.InvariantCulture);
         }
 
-        public static void Info(IWin32Window owner, string text, string title = "DMR Codeplug Builder")
+        public static void Info(IWin32Window owner, string text, string title = Ui.AppName)
         {
             MessageBox.Show(owner, text, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        public static void Error(IWin32Window owner, string text, string title = "DMR Codeplug Builder")
+        public static void Error(IWin32Window owner, string text, string title = Ui.AppName)
         {
             MessageBox.Show(owner, text, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
-        public static bool Confirm(IWin32Window owner, string text, string title = "DMR Codeplug Builder")
+        public static bool Confirm(IWin32Window owner, string text, string title = Ui.AppName)
         {
             return MessageBox.Show(owner, text, title, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK;
         }

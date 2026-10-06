@@ -350,7 +350,7 @@ namespace CodeplugBuilder.App
     {
         public MapPreviewForm()
         {
-            Text = "Map preview - DMR Codeplug Builder";
+            Text = "Map preview - " + Ui.AppName;
             Font = Ui.BaseFont;
             Size = new Size(Ui.S(1100), Ui.S(760));
             StartPosition = FormStartPosition.CenterScreen;

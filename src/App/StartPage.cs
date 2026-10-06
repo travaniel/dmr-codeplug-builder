@@ -20,7 +20,7 @@ namespace CodeplugBuilder.App
             BackColor = SystemColors.Window;
 
             var stack = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Anchor = AnchorStyles.None, Padding = new Padding(Ui.S(20)) };
-            var title = new Label { Text = "DMR Codeplug Builder", AutoSize = true, Font = new Font(Ui.BaseFont.FontFamily, Ui.BaseFont.Size + 9f, FontStyle.Bold), Margin = new Padding(3, 0, 3, Ui.S(4)) };
+            var title = new Label { Text = Ui.AppName, AutoSize = true, Font = new Font(Ui.BaseFont.FontFamily, Ui.BaseFont.Size + 9f, FontStyle.Bold), Margin = new Padding(3, 0, 3, Ui.S(4)) };
             var sub = Ui.Hint("Codeplugs for the BTECH DMR-6X2 PRO, loaded into the CPS with Tool > Import > Import From File List.", Ui.S(560));
             sub.Margin = new Padding(3, 0, 3, Ui.S(18));
             stack.Controls.Add(title);

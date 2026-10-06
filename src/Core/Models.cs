@@ -191,6 +191,20 @@ namespace CodeplugBuilder.Core
             };
         }
 
+        /// <summary>
+        /// The channel name for a talkgroup entry that has no name of its own: prefix + talkgroup name
+        /// (<see cref="Naming.AutoChannelName"/>). A talkgroup this repeater carries on both slots gets the slot
+        /// ("W5LOS Local TS1", "W5LOS Local TS2") so the two channels don't end up as "Local" and "Local 2".
+        /// </summary>
+        public string AutoChannelName(RepeaterTalkgroup e, string talkgroupName, int maxLength, bool keepLastWord = false)
+        {
+            if (Talkgroups.Count(x => x.TalkgroupId == e.TalkgroupId) < 2) return Naming.AutoChannelName(Prefix, talkgroupName, maxLength, keepLastWord);
+            string slot = e.Slot == 2 ? "2" : "1";
+            string name = Naming.AutoChannelName(Prefix, (talkgroupName ?? "") + " TS" + slot, maxLength, keepLastWord);
+            // No room for "TS2" (a long ID): "W5LOS 3148422 S2".
+            return name.EndsWith(" TS" + slot, StringComparison.Ordinal) ? name : Naming.AutoChannelName(Prefix, (talkgroupName ?? "") + " S" + slot, maxLength);
+        }
+
         public Repeater Clone()
         {
             var r = (Repeater)MemberwiseClone();
@@ -280,7 +294,7 @@ namespace CodeplugBuilder.Core
     [DataContract(Namespace = "")]
     public sealed class Project
     {
-        public const int CurrentFileVersion = 1;
+        public const int CurrentFileVersion = 2;
 
         [DataMember(Order = 1)] public int FileVersion { get; set; }
         /// <summary>Name of your entry in the CPS Radio ID List, e.g. "Austin W6OZZ". Every channel points at it.</summary>
@@ -355,6 +369,35 @@ namespace CodeplugBuilder.Core
                 if (z.Talkgroups.Count == 0) z.Talkgroups = null;
             }
             SyncZones();
+            if (FileVersion < 2) KeepOldChannelNames();
+            Presets.SortNoaaWeather(this);
+            FileVersion = CurrentFileVersion;
+        }
+
+        /// <summary>
+        /// Version 1.3 shortens long channel names instead of cutting them (<see cref="Naming.Fit"/>). Projects saved
+        /// before that keep the names they had, so channels already in the radio and the CPS aren't renamed: a
+        /// channel whose automatic name would change gets its old name as its own.
+        /// </summary>
+        void KeepOldChannelNames()
+        {
+            int max = Options.MaxNameLength > 0 ? Options.MaxNameLength : 16;
+            foreach (var r in AllRepeaters())
+            {
+                if (!r.IsDigital)
+                {
+                    string cut = Naming.Clean(r.Name, max);
+                    if (Naming.Fit(r.Name, max) != cut) r.Name = cut;
+                    continue;
+                }
+                foreach (var e in r.Talkgroups)
+                {
+                    var tg = FindTalkgroup(e.TalkgroupId);
+                    if (tg == null || !string.IsNullOrWhiteSpace(e.ChannelName)) continue;
+                    string old = Naming.LegacyAutoChannelName(r.Prefix, tg.Name, max);
+                    if (old != r.AutoChannelName(e, tg.Name, max)) e.ChannelName = old;
+                }
+            }
         }
 
         public Talkgroup FindTalkgroup(int id)

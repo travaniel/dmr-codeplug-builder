@@ -343,10 +343,10 @@ namespace CodeplugBuilder.App
                 return;
             }
             var names = rep.Talkgroups
-                .Select(e => session.Project.FindTalkgroup(e.TalkgroupId))
-                .Where(t => t != null)
+                .Select(e => new { e, t = session.Project.FindTalkgroup(e.TalkgroupId) })
+                .Where(x => x.t != null)
                 .Take(2)
-                .Select(t => "\"" + Naming.AutoChannelName(rep.Prefix, t.Name, MaxName) + "\"")
+                .Select(x => "\"" + rep.AutoChannelName(x.e, x.t.Name, MaxName) + "\"")
                 .ToList();
             if (names.Count == 0) names.Add("\"" + Naming.AutoChannelName(rep.Prefix, "Talkgroup", MaxName) + "\"");
             lblExample.Text = "Channels are named like " + string.Join(", ", names) + (string.IsNullOrWhiteSpace(rep.Prefix) ? "  (no prefix: talkgroup name only)" : "");
@@ -599,7 +599,7 @@ namespace CodeplugBuilder.App
         string DisplayName(RepeaterTalkgroup e, Talkgroup t)
         {
             if (!string.IsNullOrWhiteSpace(e.ChannelName)) return e.ChannelName;
-            return t == null ? "" : Naming.AutoChannelName(rep.Prefix, t.Name, MaxName);
+            return t == null ? "" : rep.AutoChannelName(e, t.Name, MaxName);
         }
 
         void RefreshGridNames()
@@ -623,12 +623,13 @@ namespace CodeplugBuilder.App
             {
                 entry.Slot = (grid.Rows[e.RowIndex].Cells[colSlot.Index].Value as string) == "2" ? 2 : 1;
                 lastSlot = entry.Slot;
+                RefreshGridNames(); // a talkgroup on both slots is named with its slot
                 Raise();
             }
             else if (e.ColumnIndex == colName.Index)
             {
                 string typed = Naming.Clean(grid.Rows[e.RowIndex].Cells[colName.Index].Value as string, MaxName);
-                string auto = t == null ? "" : Naming.AutoChannelName(rep.Prefix, t.Name, MaxName);
+                string auto = t == null ? "" : rep.AutoChannelName(entry, t.Name, MaxName);
                 entry.ChannelName = typed.Length == 0 || typed == auto ? null : typed;
                 loading = true;
                 grid.Rows[e.RowIndex].Cells[colName.Index].Value = DisplayName(entry, t);

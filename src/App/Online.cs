@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CodeplugBuilder.Core;
@@ -21,15 +24,17 @@ namespace CodeplugBuilder.App
         {
             // .NET 4.8 on Windows 10/11 already negotiates TLS 1.2+; this only matters on older systems.
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+            // .NET Framework allows 2 connections per host by default; talkgroup lookups run 6 at a time.
+            if (ServicePointManager.DefaultConnectionLimit < 8) ServicePointManager.DefaultConnectionLimit = 8;
         }
 
-        public static string Get(string url)
+        public static string Get(string url, int timeoutMs = 30000)
         {
             var req = (HttpWebRequest)WebRequest.Create(url);
             req.UserAgent = UserAgent;
             req.Accept = "application/json";
-            req.Timeout = 30000;
-            req.ReadWriteTimeout = 30000;
+            req.Timeout = timeoutMs;
+            req.ReadWriteTimeout = timeoutMs;
             req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
             try
             {
@@ -101,6 +106,95 @@ namespace CodeplugBuilder.App
                 }
                 return new Dictionary<int, string>();
             });
+        }
+
+        /// <summary>
+        /// Names for the talkgroups on these listings that BrandMeister and the owners don't name
+        /// (<see cref="TalkgroupNames"/>): first from the listings themselves, then by looking the ID up on
+        /// RadioID.net (a 7-digit ID as a user: "N0FTW TG"; a shorter one as a repeater: "W5LOS Luling"). Lookups are
+        /// cached in the settings folder for 30 days; at most 150 per call, 6 at a time. Failures leave "TG 1234".
+        /// </summary>
+        public static Dictionary<int, string> NameTalkgroups(IEnumerable<OnlineRepeater> listings, IDictionary<int, string> bmNames, IProgress<string> progress, CancellationToken token)
+        {
+            var list = listings.ToList();
+            var unnamed = TalkgroupNames.Unnamed(list, bmNames);
+            var names = TalkgroupNames.FromListings(list, unnamed);
+            var ask = unnamed.Where(id => !names.ContainsKey(id)).OrderBy(id => id).ToList();
+            if (ask.Count == 0) return names;
+
+            lock (lookupLock) LoadLookups();
+            var todo = new List<int>();
+            lock (lookupLock)
+                foreach (int id in ask)
+                {
+                    if (!lookups.TryGetValue(id, out string known)) todo.Add(id);
+                    else if (known.Length > 0) names[id] = known;
+                }
+            if (todo.Count > 150) todo = todo.Take(150).ToList();
+            if (todo.Count > 0)
+            {
+                progress?.Report("Looking up " + todo.Count + " talkgroup name" + (todo.Count == 1 ? "" : "s") + " on RadioID.net...");
+                try
+                {
+                    Parallel.ForEach(todo, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = token }, id =>
+                    {
+                        string name = null; // null: couldn't ask (not cached); "": RadioID doesn't know it
+                        try
+                        {
+                            if (id >= 1000000)
+                            {
+                                var u = RadioId.ParseUsers(Get(RadioId.UserIdUrl(id), 10000)).FirstOrDefault(x => x.Id == id);
+                                name = u != null && u.Callsign.Length > 0 ? TalkgroupNames.ForUser(u) : "";
+                            }
+                            else
+                            {
+                                var r = RadioId.ParseRepeaters(Get(RadioId.RepeaterIdUrl(id), 10000)).Repeaters.FirstOrDefault(x => x.DmrId == id);
+                                name = r != null && r.Callsign.Length > 0 ? TalkgroupNames.ForRepeater(r.Callsign, r.City) : "";
+                            }
+                        }
+                        catch { }
+                        if (name == null) return;
+                        lock (lookupLock)
+                        {
+                            lookups[id] = name;
+                            if (name.Length > 0) names[id] = name;
+                        }
+                    });
+                }
+                catch (OperationCanceledException) { }
+                lock (lookupLock) SaveLookups();
+            }
+            return names;
+        }
+
+        static readonly object lookupLock = new object();
+        static Dictionary<int, string> lookups;
+        static string LookupFile => Path.Combine(AppSettings.Folder, "talkgroup-lookups.txt");
+
+        static void LoadLookups()
+        {
+            if (lookups != null) return;
+            lookups = new Dictionary<int, string>();
+            try
+            {
+                if (!File.Exists(LookupFile) || (DateTime.Now - File.GetLastWriteTime(LookupFile)).TotalDays > 30) return;
+                foreach (string line in File.ReadAllLines(LookupFile, Encoding.UTF8))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq > 0 && int.TryParse(line.Substring(0, eq), out int id)) lookups[id] = line.Substring(eq + 1);
+                }
+            }
+            catch { }
+        }
+
+        static void SaveLookups()
+        {
+            try
+            {
+                Directory.CreateDirectory(AppSettings.Folder);
+                File.WriteAllLines(LookupFile, lookups.OrderBy(kv => kv.Key).Select(kv => kv.Key.ToString(CultureInfo.InvariantCulture) + "=" + kv.Value), new UTF8Encoding(false));
+            }
+            catch { }
         }
 
         /// <summary>

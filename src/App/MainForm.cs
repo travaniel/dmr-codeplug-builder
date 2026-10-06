@@ -34,7 +34,7 @@ namespace CodeplugBuilder.App
 
         public MainForm(string projectPath, string startTab)
         {
-            Text = "DMR Codeplug Builder";
+            Text = Ui.AppName;
             Font = Ui.BaseFont;
             var area = Screen.PrimaryScreen.WorkingArea;
             Size = new Size(Math.Min(Ui.S(1240), area.Width * 94 / 100), Math.Min(Ui.S(860), area.Height * 94 / 100));
@@ -54,9 +54,11 @@ namespace CodeplugBuilder.App
             file.DropDownItems.Add(ProjectItem(Item("Save &as...", Keys.Control | Keys.Shift | Keys.S, (s, e) => SaveAs())));
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add(Item("&Import from CPS export...", Keys.None, (s, e) => ImportFromCps()));
-            file.DropDownItems.Add(ProjectItem(Item("&Generate CSV files...", Keys.Control | Keys.G, (s, e) => Generate())));
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add(Item("E&xit", Keys.None, (s, e) => Close()));
+            var export = new ToolStripMenuItem("E&xport");
+            export.DropDownItems.Add(ProjectItem(Item("&Export CSV files for the CPS...", Keys.Control | Keys.G, (s, e) => Generate())));
+            export.DropDownItems.Add(Item("&How to load them into the CPS", Keys.None, (s, e) => ShowHowTo()));
             var radio = new ToolStripMenuItem("&Radio");
             radio.DropDownItems.Add(Item("&Read codeplug from radio...", Keys.Control | Keys.R, (s, e) => ImportFromRadio()));
             radio.DropDownItems.Add(ProjectItem(Item("&Write codeplug to radio...", Keys.None, (s, e) => WriteProjectToRadio())));
@@ -69,6 +71,7 @@ namespace CodeplugBuilder.App
             help.DropDownItems.Add(new ToolStripSeparator());
             help.DropDownItems.Add(Item("&About", Keys.None, (s, e) => ShowAbout()));
             menu.Items.Add(file);
+            menu.Items.Add(export);
             menu.Items.Add(radio);
             menu.Items.Add(help);
             MainMenuStrip = menu;
@@ -86,11 +89,11 @@ namespace CodeplugBuilder.App
             AddTab("Zones", zonesPage);
             AddTab("Settings", settingsPage);
 
-            // ---------- bottom bar ----------
+            // ---------- bottom bar: the radio ----------
             var bar = new TableLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                ColumnCount = 3,
+                ColumnCount = 4,
                 AutoSize = true,
                 Padding = new Padding(Ui.S(10), Ui.S(6), Ui.S(10), Ui.S(8)),
                 BackColor = SystemColors.ControlLight,
@@ -98,22 +101,28 @@ namespace CodeplugBuilder.App
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             lblStatus = new Label { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, Ui.S(8), 3, 3) };
             lnkIssues = new LinkLabel { AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(3, Ui.S(8), Ui.S(14), 3), LinkBehavior = LinkBehavior.HoverUnderline };
             lnkIssues.LinkClicked += (s, e) => IssuesDialog.ShowIssues(this, lastIssues);
-            var btnGenerate = new Button
+            Button BarButton(string text, bool primary, EventHandler click)
             {
-                Text = "Generate CSV files...",
-                AutoSize = true,
-                Font = Ui.BoldFont,
-                Padding = new Padding(Ui.S(12), Ui.S(4), Ui.S(12), Ui.S(4)),
-                Anchor = AnchorStyles.Right,
-                UseVisualStyleBackColor = true,
-            };
-            btnGenerate.Click += (s, e) => Generate();
+                var b = new Button
+                {
+                    Text = text,
+                    AutoSize = true,
+                    Font = primary ? Ui.BoldFont : Ui.BaseFont,
+                    Padding = new Padding(Ui.S(12), Ui.S(4), Ui.S(12), Ui.S(4)),
+                    Anchor = AnchorStyles.Right,
+                    UseVisualStyleBackColor = true,
+                };
+                b.Click += click;
+                return b;
+            }
             bar.Controls.Add(lblStatus, 0, 0);
             bar.Controls.Add(lnkIssues, 1, 0);
-            bar.Controls.Add(btnGenerate, 2, 0);
+            bar.Controls.Add(BarButton("Read from radio...", false, (s, e) => ImportFromRadio()), 2, 0);
+            bar.Controls.Add(BarButton("Write to radio...", true, (s, e) => WriteProjectToRadio()), 3, 0);
 
             workspace = new Panel { Dock = DockStyle.Fill };
             workspace.Controls.Add(tabs);
@@ -225,7 +234,7 @@ namespace CodeplugBuilder.App
             int zones = p.UsedZoneNames().Count;
             string head = "Your new codeplug has " + Plural(dmr, "DMR repeater") + (fm > 0 ? ", " + Plural(fm, "analog channel") : "") +
                           (p.HotspotEnabled ? ", your hotspot" : "") + " and " + p.ChannelCount() + " channels in " + Plural(zones, "zone") + ".\n\n" +
-                          "Check it on the Repeaters and Zones tabs, save it (File > Save), then click Generate CSV files.";
+                          "Check it on the Repeaters and Zones tabs, save it (File > Save), then use Write to radio (bottom right) or Export > Export CSV files for the CPS.";
             using (var d = new IssuesDialog(head, new string[0], notes, false)) d.ShowDialog(this);
         }
 
@@ -273,9 +282,9 @@ namespace CodeplugBuilder.App
 
         void UpdateTitle()
         {
-            Text = mode == Mode.Start ? "DMR Codeplug Builder"
-                 : mode == Mode.Wizard ? "New codeplug - DMR Codeplug Builder"
-                 : session.DisplayName + (session.Dirty ? " *" : "") + " - DMR Codeplug Builder";
+            Text = mode == Mode.Start ? Ui.AppName
+                 : mode == Mode.Wizard ? "New codeplug - " + Ui.AppName
+                 : session.DisplayName + (session.Dirty ? " *" : "") + " - " + Ui.AppName;
         }
 
         void RefreshStatus()
@@ -321,7 +330,7 @@ namespace CodeplugBuilder.App
         bool ConfirmDiscard()
         {
             if (!session.Dirty) return true;
-            var answer = MessageBox.Show(this, "Save changes to " + session.DisplayName + "?", "DMR Codeplug Builder",
+            var answer = MessageBox.Show(this, "Save changes to " + session.DisplayName + "?", Ui.AppName,
                 MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
             if (answer == DialogResult.Cancel) return false;
             if (answer == DialogResult.Yes) return Save();
@@ -792,7 +801,7 @@ namespace CodeplugBuilder.App
         void ShowHowTo()
         {
             Ui.Info(this,
-                "1. Click \"Generate CSV files...\" and save the .LST file list. The CSV files are saved next to it.\n\n" +
+                "1. Click Export > Export CSV files for the CPS and save the .LST file list. The CSV files are saved next to it.\n\n" +
                 "2. In the DMR-6X2 PRO CPS, open your current codeplug (or read it from the radio).\n\n" +
                 "3. Tool > Import > Import From File List, pick the .LST, then click Import.\n" +
                 "    This replaces the channels, zones, talk groups and receive group lists in the CPS. Other settings stay as they are.\n\n" +
@@ -805,7 +814,7 @@ namespace CodeplugBuilder.App
         void ShowAbout()
         {
             Ui.Info(this,
-                "DMR Codeplug Builder 1.2\n\n" +
+                Ui.AppName + " 1.3\n\n" +
                 "Builds CSV codeplug files for the BTECH DMR-6X2 PRO's CPS from your talkgroups, repeaters and hotspot.\n\n" +
                 "Online data: DMR repeaters and IDs from RadioID.net, talkgroup names from BrandMeister.\n\n" +
                 "Built-in map: boundaries from the US Census Bureau and Natural Earth (public domain); place names from " +

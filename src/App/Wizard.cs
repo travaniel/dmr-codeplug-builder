@@ -85,7 +85,7 @@ namespace CodeplugBuilder.App
                 p.Hotspot.TxMHz = HotspotTx > 0 ? HotspotTx : HotspotRx;
                 p.Hotspot.ColorCode = HotspotCC;
             }
-            var o = new OnlineImportOptions { Power = Power, ZoneFor = r => ZonePlanner.ZoneName(r, Scheme, SingleZone) };
+            var o = new OnlineImportOptions { Power = Power, ZoneFor = r => ZonePlanner.ZoneName(r, Scheme, SingleZone), Scheme = Scheme, MoreNames = Download?.TalkgroupNames };
             var result = OnlineImporter.AddRepeaters(p, Picked, o, Download?.BrandMeisterNames);
             if (Noaa) Presets.AddNoaaWeather(p);
             SortZones(p);
@@ -708,7 +708,7 @@ namespace CodeplugBuilder.App
             if (z == null) return;
             string name = Prompt.Show(FindForm(), "Rename zone", "New name for \"" + z.Name + "\" (16 characters max; an existing zone's name merges them):", z.Name, 16);
             if (name == null) return;
-            name = Naming.Clean(name, 16);
+            name = Naming.Fit(name, 16);
             if (name.Length == 0 || name == z.Name) return;
             State.Project.RenameZone(z.Name, name);
             Fill(name);

@@ -116,7 +116,7 @@ namespace CodeplugBuilder.Core
                 if (tg.Id <= 0) { g.Notes.Add("Talkgroup \"" + tg.Name + "\" has no ID and was left out."); continue; }
                 if (tgNames.ContainsKey(tg.Id)) { g.Notes.Add("Talkgroup ID " + tg.Id + " is listed twice; only the first (\"" + tgNames[tg.Id] + "\") was used."); continue; }
                 string name = tgNamer.Claim(tg.Name);
-                if (name != Naming.Clean(tg.Name, 0)) g.Notes.Add("Talkgroup \"" + tg.Name + "\" is written as \"" + name + "\".");
+                if (name != Naming.Fit(tg.Name, 0)) g.Notes.Add("Talkgroup \"" + tg.Name + "\" is written as \"" + name + "\".");
                 tgNames[tg.Id] = name;
                 tgById[tg.Id] = tg;
 
@@ -153,18 +153,28 @@ namespace CodeplugBuilder.Core
                         }
                         string desired = !string.IsNullOrWhiteSpace(e.ChannelName)
                             ? e.ChannelName
-                            : Naming.AutoChannelName(r.Prefix, tg.Name, max);
+                            : r.AutoChannelName(e, tg.Name, max);
+                        if (string.IsNullOrWhiteSpace(e.ChannelName) && chNamer.IsUsed(Naming.Fit(desired, max)))
+                        {
+                            // "WA State ARES" and "WA State ARES TAC" both cut to "NC7Q WA State AR": keep the last word.
+                            // "Local" (TG 9) and the repeater's own "KC5EZZ Local" on the other slot: add the slot.
+                            string alt = r.AutoChannelName(e, tg.Name, max, keepLastWord: true);
+                            string clash = Naming.Fit(desired, max);
+                            bool sameRepeater = g.ChannelList.Any(c => c.Repeater == r && string.Equals(c.Name, clash, StringComparison.OrdinalIgnoreCase));
+                            if (chNamer.IsUsed(alt) && sameRepeater) alt = Naming.AutoChannelName(r.Prefix, tg.Name + " TS" + (e.Slot == 2 ? "2" : "1"), max, keepLastWord: true);
+                            if (!chNamer.IsUsed(alt)) desired = alt;
+                        }
                         string name = chNamer.Claim(desired);
-                        if (!string.Equals(name, Naming.Clean(desired, max), StringComparison.OrdinalIgnoreCase))
-                            g.Notes.Add("Channel name \"" + Naming.Clean(desired, max) + "\" was already taken, so " + label + " / " + tg.Name + " is \"" + name + "\".");
+                        if (!string.Equals(name, Naming.Fit(desired, max), StringComparison.OrdinalIgnoreCase))
+                            g.Notes.Add("Channel name \"" + Naming.Fit(desired, max) + "\" was already taken, so " + label + " / " + tg.Name + " is \"" + name + "\".");
                         g.ChannelList.Add(new GeneratedChannel { Name = name, Repeater = r, Entry = e, Talkgroup = tg, Zone = r.Zone });
                     }
                 }
                 else
                 {
                     string name = chNamer.Claim(r.Name);
-                    if (!string.Equals(name, Naming.Clean(r.Name, max), StringComparison.OrdinalIgnoreCase))
-                        g.Notes.Add("Channel name \"" + Naming.Clean(r.Name, max) + "\" was already taken, so it is written as \"" + name + "\".");
+                    if (!string.Equals(name, Naming.Fit(r.Name, max), StringComparison.OrdinalIgnoreCase))
+                        g.Notes.Add("Channel name \"" + Naming.Fit(r.Name, max) + "\" was already taken, so it is written as \"" + name + "\".");
                     g.ChannelList.Add(new GeneratedChannel { Name = name, Repeater = r, Zone = r.Zone });
                 }
             }

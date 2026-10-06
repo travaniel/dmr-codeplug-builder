@@ -226,7 +226,7 @@ namespace CodeplugBuilder.Core
                 foreach (var e in r.Talkgroups)
                 {
                     var tg = p.FindTalkgroup(e.TalkgroupId);
-                    string auto = Naming.AutoChannelName(r.Prefix, tg.Name, p.Options.MaxNameLength);
+                    string auto = r.AutoChannelName(e, tg.Name, p.Options.MaxNameLength);
                     if (string.Equals(auto, e.ChannelName, StringComparison.Ordinal)) e.ChannelName = null;
                 }
             }

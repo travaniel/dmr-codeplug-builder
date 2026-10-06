@@ -206,7 +206,7 @@ namespace CodeplugBuilder.App
             if (z == null) return;
             string name = Prompt.Show(FindForm(), "Rename zone", "New name for zone \"" + z.Name + "\" (16 characters max):", z.Name, 16);
             if (name == null) return;
-            name = Naming.Clean(name, 16);
+            name = Naming.Fit(name, 16);
             if (name.Length == 0 || name == z.Name) return;
             if (session.Project.FindZone(name) != null && !Project.SameZone(name, z.Name) &&
                 !Ui.Confirm(FindForm(), "A zone called \"" + name + "\" already exists. Merge \"" + z.Name + "\" into it?"))

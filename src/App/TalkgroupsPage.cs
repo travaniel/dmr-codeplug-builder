@@ -179,7 +179,7 @@ namespace CodeplugBuilder.App
             string v = (grid.Rows[e.RowIndex].Cells[e.ColumnIndex].Value as string ?? "").Trim();
             if (e.ColumnIndex == colName.Index)
             {
-                t.Name = Naming.Clean(v, 16);
+                t.Name = Naming.Fit(v, 16);
             }
             else if (e.ColumnIndex == colId.Index)
             {
@@ -213,8 +213,8 @@ namespace CodeplugBuilder.App
             {
                 if (session.Project.Talkgroups.Any(x => x.Id == c.Id)) continue;
                 var t = c.Clone();
-                if (session.Project.Talkgroups.Any(x => string.Equals(x.Name, t.Name, StringComparison.OrdinalIgnoreCase)))
-                    t.Name = Naming.Clean(t.Name + " " + t.Id, 16); // e.g. a second "Parrot" becomes "Parrot 9990"
+                // e.g. a second "Parrot" becomes "Parrot 9990"
+                t.Name = Naming.UniqueTalkgroupName(t.Name, t.Id, x => session.Project.Talkgroups.Any(o => string.Equals(o.Name, x, StringComparison.OrdinalIgnoreCase)));
                 session.Project.Talkgroups.Add(t);
                 added.Add(t);
             }
@@ -267,7 +267,7 @@ namespace CodeplugBuilder.App
                 foreach (var t in list)
                 {
                     if (session.Project.Talkgroups.Any(x => x.Id == t.Id)) { skipped++; continue; }
-                    t.Name = Naming.Clean(t.Name, 16);
+                    t.Name = Naming.Fit(t.Name, 16);
                     session.Project.Talkgroups.Add(t);
                     added.Add(t);
                 }

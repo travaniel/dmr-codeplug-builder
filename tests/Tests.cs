@@ -170,11 +170,14 @@ namespace CodeplugBuilder.Tests
         static void AutoNamesFitSixteenCharacters()
         {
             Assert.Equal("W5FC Local", Naming.AutoChannelName("W5FC", "Local", 16), "short");
-            Assert.Equal("W5FC TX Statewid", Naming.AutoChannelName("W5FC", "TX Statewide", 16), "truncated tg");
+            Assert.Equal("W5FC TX State", Naming.AutoChannelName("W5FC", "TX Statewide", 16), "shortened tg");
+            Assert.Equal("W5FC Net TG 2", Naming.AutoChannelName("W5FC", "Net Talkgroup 2", 16), "abbreviation keeps the number");
+            Assert.Equal("W5LOS2 Local", Naming.AutoChannelName("W5LOS2", "W5LOS Local", 16), "sister repeater's callsign not repeated");
+            Assert.Equal("W5FC TX Statewid", Naming.LegacyAutoChannelName("W5FC", "TX Statewide", 16), "old rule kept for old projects");
             Assert.Equal("Parrot", Naming.AutoChannelName("", "Parrot", 16), "no prefix");
             string longPrefix = Naming.AutoChannelName("Very Long Repeater", "Worldwide", 16);
             Assert.True(longPrefix.Length <= 16, "long prefix fits: " + longPrefix);
-            Assert.True(longPrefix.Contains("Worl"), "long prefix keeps part of the TG: " + longPrefix);
+            Assert.True(longPrefix.EndsWith(" WW"), "long prefix keeps the (shortened) TG: " + longPrefix);
         }
 
         [Test]
@@ -185,6 +188,58 @@ namespace CodeplugBuilder.Tests
             Assert.Equal("Sixteen Chars 2", n.Claim("Sixteen Chars Abc"), "second gets a number");
             Assert.Equal("sixteen chars 3", n.Claim("sixteen chars abc"), "duplicate check is case-insensitive");
             Assert.Equal("Bad Name", n.Claim("Bad|\"Name\""), "strips pipe and quotes");
+        }
+
+        [Test]
+        static void FitShortensLikeAPerson()
+        {
+            Assert.Equal("Parrot", Naming.Fit("Parrot", 16), "fits: unchanged");
+            Assert.Equal("TAC 310", Naming.Fit("TAC 310 (PTT 15 minutes)", 16), "notes in brackets go first");
+            Assert.Equal("N Richland Hills", Naming.Fit("North Richland Hills", 16), "abbreviation");
+            Assert.Equal("WV Net", Naming.Fit("West Virginia Net", 10), "state before compass word");
+            Assert.Equal("Deact TS1", Naming.Fit("Deactivate TS1", 9), "number at the end is kept");
+            Assert.Equal("Washingt 3148422", Naming.Fit("Washingtonian 3148422", 16), "ID never cut");
+            Assert.Equal("Baden-Wurttember", Naming.Fit("Baden-Württemberg", 16), "plain cut when nothing else helps");
+            Assert.Equal("WA State ARE TAC", Naming.Fit("WA State ARES TAC", 16, keepLastWord: true), "keep last word");
+        }
+
+        [Test]
+        static void UniqueTalkgroupNamesKeepTheId()
+        {
+            var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Local", "WM8S Local" };
+            Assert.Equal("Parrot", Naming.UniqueTalkgroupName("Parrot", 9990, taken.Contains), "free");
+            Assert.Equal("Local 3166", Naming.UniqueTalkgroupName("Local", 3166, taken.Contains), "taken: ID added");
+            Assert.Equal("WM8S Loca 313353", Naming.UniqueTalkgroupName("WM8S Local", 313353, taken.Contains), "ID never cut");
+            Assert.Equal("TG 777", Naming.UniqueTalkgroupName("", 777, taken.Contains), "no name");
+        }
+
+        [Test]
+        static void BothSlotsAndOldProjects()
+        {
+            var r = Repeater.NewDigital("W5LOS Luling");
+            r.Prefix = "W5LOS";
+            r.Talkgroups.Add(new RepeaterTalkgroup(9, 1));
+            r.Talkgroups.Add(new RepeaterTalkgroup(9, 2));
+            r.Talkgroups.Add(new RepeaterTalkgroup(3148422, 1));
+            r.Talkgroups.Add(new RepeaterTalkgroup(3148422, 2));
+            r.Talkgroups.Add(new RepeaterTalkgroup(31002, 1));
+            Assert.Equal("W5LOS Local TS1", r.AutoChannelName(r.Talkgroups[0], "Local", 16), "slot 1");
+            Assert.Equal("W5LOS Local TS2", r.AutoChannelName(r.Talkgroups[1], "Local", 16), "slot 2");
+            Assert.Equal("W5LOS 3148422 S2", r.AutoChannelName(r.Talkgroups[3], "TG 3148422", 16), "no room for TS2");
+
+            // A project saved by an older version keeps the names its channels already have in the radio.
+            var p = new Project { FileVersion = 1, RadioIdName = "Test", RadioId = 1 };
+            p.Talkgroups.Add(new Talkgroup("Local", 9));
+            p.Talkgroups.Add(new Talkgroup("TG 3148422", 3148422));
+            p.Talkgroups.Add(new Talkgroup("Net Talkgroup 2", 31002));
+            p.Repeaters.Add(r);
+            p.Normalize();
+            Assert.Equal(Project.CurrentFileVersion, p.FileVersion, "version updated");
+            Assert.Equal("W5LOS Local", r.Talkgroups[0].ChannelName, "old name kept (the generator still adds \" 2\" to the second, as before)");
+            Assert.Equal("W5LOS Net Talkgr", r.Talkgroups[4].ChannelName, "old cut name kept");
+            var fresh = new Project();
+            fresh.Normalize();
+            Assert.Equal(Project.CurrentFileVersion, fresh.FileVersion, "new projects aren't migrated");
         }
 
         [Test]
@@ -399,7 +454,7 @@ namespace CodeplugBuilder.Tests
             Assert.Equal(14, g.Channels.Rows.Count, "rows incl. VFO");
             Assert.Equal("4001", g.Channels.Get(g.Channels.Rows[12], "No."), "VFO A keeps its number");
             Assert.Equal("W1ABC Local", g.ChannelList[0].Name, "auto name");
-            Assert.Equal("W1ABC A Very Lon", g.ChannelList[3].Name, "long TG name truncated");
+            Assert.Equal("W1ABC A Very Lon", g.ChannelList[3].Name, "long TG name shortened");
             Assert.Equal("HS Worldwide", g.ChannelList.First(c => c.Repeater == p.Hotspot).Name, "hotspot prefix");
 
             var zones = g.ZoneList.Select(z => z.Name).ToList();
@@ -421,7 +476,7 @@ namespace CodeplugBuilder.Tests
 
             // RX group list holds the repeater's group-call talkgroups only (not the private Parrot)
             var rxl = g.RxGroupLists.Rows.First(r => g.RxGroupLists.Get(r, "Group Name") == "W1ABC Metro");
-            Assert.Equal("Local|Worldwide|USA Nationwide|A Very Long Talk", g.RxGroupLists.Get(rxl, "Contact"), "rx list members");
+            Assert.Equal("Local|Worldwide|USA Nationwide|A Very Long TG N", g.RxGroupLists.Get(rxl, "Contact"), "rx list members");
 
             Assert.True(g.RadioIds != null && g.RadioIds.Rows.Count == 1, "radio ID list written");
             Assert.Equal("3100001", g.RadioIds.Get(g.RadioIds.Rows[0], "Radio ID"), "dmr id");

@@ -36,7 +36,7 @@ per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches ev
 5. **Zones tab.** Zone order on the radio, renaming, which channel each zone opens on, and the
    talkgroups every repeater in a zone carries.
 6. **Settings tab.** Your Radio ID name and DMR ID, receive group lists, scan lists, and limits.
-7. Click **Generate CSV files...** and save the `.LST`. The CSVs are saved next to it.
+7. Click **Export > Export CSV files for the CPS** (Ctrl+G) and save the `.LST`. The CSVs are saved next to it.
 8. In the CPS: open your codeplug, **Tool > Import > Import From File List**, pick the `.LST`, click
    **Import**, check a few channels, then write to the radio.
 
@@ -55,7 +55,7 @@ radio, writes this project's channels, zones, talkgroups, receive group lists, s
 what will change, and after you confirm sends it the way the CPS does and checks it. The radio's settings stay as
 they are. What was on the radio is saved first (Documents\DMR Codeplug Builder\Radio reads), and **Radio > Restore
 codeplug from a backup...** writes any saved read back. Keep a CPS codeplug file (.rdt) as well, just in case.
-**Radio > Read codeplug from radio** opens what's on the radio as a project.
+**Radio > Read codeplug from radio** opens what's on the radio as a project. The **Read from radio** and **Write to radio** buttons at the bottom right of the window do the same.
 
 ### Starting from what's in the radio
 
