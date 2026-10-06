@@ -244,13 +244,87 @@ CodeplugBuilder.exe --radio-compare cpsExportFolder radioFolder           # → 
 ```
 The CSV folder imports like an Export All (`--import outFolder x.cpb`). Tests: `RadioTests` (simulated radio
 built from the user's export; read with garbled replies → decode → CSVs equal the export byte for byte → same
-project as importing the export). **Not yet run against the real radio.**
+project as importing the export).
+
+**First real read (2026-10-06, COM3, `D6X2UV2 V100`, band code 0):** 1416 blocks in 1.6 s, no decode warnings,
+DTR+RTS on worked first try. Against the 2026-08-24 Export All, every column of Channel.CSV (numbers with gaps,
+VFO rows), TalkGroups, RadioIDList and ReceiveGroupCallList matched exactly: bitmap bit order (LSB first),
+the inverted contact bitmap and the contact order list are confirmed.
+
+**Zone A/B solved:** dmr-tools describes 0x2500100 as 250 (A, B) pairs; it is really two lists, **A at 0x2500100 and
+B at 0x2500300, 250 × u16 each, holding the channel's position within the zone's member list** (qdmr's
+`ZoneChannelListElement` has the split right). An export taken without a fresh read showed a stale A channel; after
+a CPS *Read from radio* (2026-10-06 10:17) the CPS agreed with the radio. A second read of ours was block-for-block
+identical to the first. **Result: all six CSVs decoded from the radio are byte-identical to the CPS's Export All
+of the same radio.** Values this codeplug doesn't use (mixed channel types, Mid power, other TX permit/squelch/PTT
+ID options, encryption, scan lists) are still unverified spellings.
 
 **Next, with the radio connected:** close the CPS, `--radio-read`, then in the CPS *Read from radio* + Export All
 of the same state, `--radio-compare`. The "By column" summary shows which mappings are wrong. Unverified
 guesses: value spellings other than the first of each list in `RadioCsv` (mixed channel types, "Mid" power,
 TX permit, squelch, PTT ID, encryption, scan list fields), bitmap bit order (LSB first), contact order list,
 zone No. numbering, DTR/RTS on the port.
+
+**Step 2 (settings) started 2026-10-06.** `src/Core/Radio/RadioSettings.cs` is one table of 163 optional settings
+(general block 0x2500000, boot text 0x2500600, extended 0x2501400, some APRS 0x2501000): address, bits, labelled
+values, the OptionalSetting.CSV column where known, and a `Verified` flag. `Read`/`Write`/`WriteText` (bits outside a
+field are kept; values outside the list are refused), `Report`, `CompareWithCps`. Dev switches:
+`--radio-settings radio.img [cpsExportFolder]` (→ settings.txt) and `--radio-settings-ui [radio.img]` (editor window
+built from the table: read radio, open/save image, edit in memory; *Write to radio* disabled) plus
+`--radio-settings-snapshot radio.img outFolder` (PNG per page). Facts:
+- **CPS 1.22e's OptionalSetting.CSV export is broken for this radio:** the first ~107 columns (the whole general
+  block) are always "0" and the boot text is blank. The tail (from `StartChUse`) is real and follows the bytes: general
+  0xCD-0xD7, then the extended block in order (talker alias, roaming, colors, Bluetooth, FM mic, TOT warning, ATPC,
+  GNSS, channel index, WX). All 46 mapped columns matched the user's radio; 22 settings are marked verified because
+  they matched on a non-default value. The general block (keys, display, squelch, VOX, hang times...) needs a
+  different check: compare with the CPS's Optional Setting screen, or change settings in the CPS, write, re-read, diff.
+- Checked with the user: power-on display 2 = custom image (correct). **Time zone (0x30) is in half-hour steps from
+  GMT-12**, not whole hours as dmr-tools says: the radio stores 14 and the CPS shows GMT-5. Only one data point, so the
+  setting stays unverified until a second value is seen (step 3's first write test is a good place). Still odd: priority
+  zone A/B 0 (doc: FF = none), APRS callsign BG6LKK (factory default).
+
+**Step 3 (writing): first test failed, radio recovered, writing is switched OFF (`RadioWriter.Enabled`).**
+What happened on 2026-10-06 (test: Zone A name color Green → Yellow, one byte at 0x2501412):
+1. Wrote block 0x2501410 alone, read it back in the same session: old data, radio unchanged after END.
+2. Wrote 0x2501400-0x250142F (the whole extended area), same-session read-back: again unchanged.
+3. Wrote the same 3 blocks **without** a same-session read-back. The radio dropped off USB, then answered nothing
+   ("A device attached to the system is not functioning"), and on screen asked for a power-on password **in
+   Chinese**. Restored by the user with a full BTECH CPS write of `CodePlugs\Codeplug 8-24-26.rdt`; a read after
+   that matched the CPS export exactly (backup and all reads in `Documents\DMR-6X2-PRO-121e\RadioWriteTest\`).
+
+Conclusions: (a) a read in the same session discards pending writes (cache), which is why 1 and 2 did nothing;
+(b) when a write is committed, the radio **erases the whole flash sector** (at least 0x2500000-0x2501FFF: general
+settings went to FF, so password "on" and language unset) and keeps only what was written in that session. The CPS
+and qdmr always write every element of the codeplug, so they never see this. **Before writing again:** find the
+sector size (64 KB? 4 KB?) and always write every block of each touched sector, which means first reading the whole
+sector, not just the documented elements (0x2500000-0x250FFFF has areas we never read, e.g. 0x2502000). Better yet,
+capture the CPS's own write traffic once to see its order and extent. Test on a sector whose loss is cheap, with the
+CPS `.rdt` ready. The user's radio after the restore: Side B mode is Channel (was VFO) and Scan List 1 exists (from
+the August `.rdt`); that scan list decodes identically to the CPS export (scan list decoding verified).
+
+**Step 3 fixed: first successful write (2026-10-06).** A USB capture of a CPS 1.22e "Write to radio" (Wireshark +
+USBPcap, `Documents\DMR-6X2-PRO-121e\cps-write-read.pcapng`) showed: one session; PROGRAM, identify, one read of
+0x2FA0020 (answers `FF FF FF FF 00 00 FF FF 00...`, purpose unknown), then **5,044 writes in strictly ascending
+address order** covering every element of the codeplug (65 runs: channels and extensions, VFOs, zones, roaming,
+scan/group lists at 0xC0/0x130 each, SMS index/byte map/messages, FM, 5-tone/2-tone/DTMF, all bitmaps, encryption
+key tables 0x24C1700-0x24C1CFF and 0x25C1000-0x25C5FEF, settings, zone names, radio IDs, the full 40,000-byte contact
+order list, contact bitmap, contacts, analog contact index/byte map, the contact ID map at 0x4800000), then END.
+No reads after writes. Every gap it skips reads FF: the radio erases what a session writes over and keeps only what
+that session sends. The CPS read session (radio re-enumerates as a new USB device after END) uses the same commands.
+Now: the reader covers all of it (5,509 blocks, 3.8 s); `Dmr6x2Pro.WriteSet` = `CpsFixedWriteRanges` + `ElementRanges`
++ any other non-FF block. **Dry run on the user's radio: the plan equals the captured CPS write exactly (same 5,044
+addresses, order and data).** `RadioWriter.Write` sends that set from a full read + edits, after re-reading every
+block of it (aborts if anything changed), then END; `RadioPort.Write` waits for the radio to come back (~30 s) and
+verifies all blocks in a new session. Test write Zone A name color Green → Yellow: verified, a fresh full read equals
+the edited image, the CSVs still equal the CPS export. Guards: `RadioWriter.Enabled` is false by default; only
+`--radio-write ... --confirm` turns it on (the settings window's button is still disabled). Dev switches:
+`--radio-set radio.img out.img Key=Value...`, `--radio-write-plan radio.img edited.img plan.txt` (dry run),
+`--radio-write radio.img edited.img --confirm`. Not done yet: channel/zone/contact edits through the writer (new
+elements change the write set; compare a second capture of a CPS write that adds a channel), writing a project's channels/zones/contacts straight to the radio.
+**In the app (2026-10-06):** Radio > Read codeplug from radio (MainForm.ImportFromRadio: RadioProgressDialog,
+backup folder RadioPort.NewReadFolder, then the CPS import path) and Radio > Radio settings (RadioSettingsForm with
+Write to radio: lists changed settings, flags unverified ones, saves before.img/written.img/write.log per write,
+turns RadioWriter.Enabled on only for that write). The exe in the app folder has it.
 
 **Protocol** (USB CDC, VID 28E9 PID 018A, any baud): `PROGRAM` → `QX 06`; `02` → `'I' model[7] bands
 version[6] 06` (the PRO says `D6X2UV2`, `V100`); read `'R' addr(4 BE) 10` → `'W' addr 10 data[16] sum 06`,
@@ -263,7 +337,7 @@ from qdmr's D868UV layout, which the PRO keeps):
 | --- | --- | --- |
 | Channels | 0x800000 + bank·0x40000 + n·0x40 | 128 per bank, extension bank at +0x2000; bitmap 0x24C1500 (4000 bits, set = used) |
 | VFO A/B | 0xFC0800, 0xFC0840 | extensions at 0xFC2800 |
-| Zones | members 0x1000000 + i·0x200 (250 × u16, FFFF = none); names 0x2540000 + i·0x20; A/B 0x2500100 + i·4 | bitmap 0x24C1300, hidden 0x24C1360 |
+| Zones | members 0x1000000 + i·0x200 (250 × u16, FFFF = none); names 0x2540000 + i·0x20; A 0x2500100 + i·2, B 0x2500300 + i·2 (position in the zone) | bitmap 0x24C1300, hidden 0x24C1360 |
 | Contacts | 0x2680000 + (i/1000)·0x40000 + (i%1000)·0x64 | bitmap 0x2640000 **inverted** (clear = used); order list 0x2600000 (u32 slots) |
 | RX group lists | 0x2980000 + i·0x200, 0x120 bytes | 64 × u32 contact slot + name at 0x100; bitmap 0x25C0B10 |
 | Scan lists | 0x1080000 + (i/16)·0x40000 + (i%16)·0x200, 0x90 bytes | bitmap 0x24C1340 |

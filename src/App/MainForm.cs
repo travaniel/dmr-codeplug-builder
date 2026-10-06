@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using CodeplugBuilder.Core;
+using CodeplugBuilder.Core.Radio;
 
 namespace CodeplugBuilder.App
 {
@@ -56,12 +57,16 @@ namespace CodeplugBuilder.App
             file.DropDownItems.Add(ProjectItem(Item("&Generate CSV files...", Keys.Control | Keys.G, (s, e) => Generate())));
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add(Item("E&xit", Keys.None, (s, e) => Close()));
+            var radio = new ToolStripMenuItem("&Radio");
+            radio.DropDownItems.Add(Item("&Read codeplug from radio...", Keys.Control | Keys.R, (s, e) => ImportFromRadio()));
+            radio.DropDownItems.Add(Item("Radio &settings (read and write)...", Keys.None, (s, e) => { using (var f = new RadioSettingsForm(null)) f.ShowDialog(this); }));
             var help = new ToolStripMenuItem("&Help");
             help.DropDownItems.Add(Item("&Loading the files into the CPS", Keys.F1, (s, e) => ShowHowTo()));
             help.DropDownItems.Add(ProjectItem(Item("Check for &problems", Keys.None, (s, e) => { RefreshStatus(); IssuesDialog.ShowIssues(this, lastIssues); })));
             help.DropDownItems.Add(new ToolStripSeparator());
             help.DropDownItems.Add(Item("&About", Keys.None, (s, e) => ShowAbout()));
             menu.Items.Add(file);
+            menu.Items.Add(radio);
             menu.Items.Add(help);
             MainMenuStrip = menu;
 
@@ -412,13 +417,21 @@ namespace CodeplugBuilder.App
             })
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                string folder = Path.GetDirectoryName(dlg.FileName);
+                ImportFolder(Path.GetDirectoryName(dlg.FileName), "export", false);
+            }
+        }
+
+        /// <summary>Makes a project from a folder of CPS CSVs: an Export All, or a read from the radio.</summary>
+        void ImportFolder(string folder, string what, bool fromRadio)
+        {
+            {
                 ImportResult result;
                 try { result = CpsImporter.Import(folder); }
-                catch (Exception ex) { Ui.Error(this, "Couldn't import that export:\n\n" + ex.Message); return; }
+                catch (Exception ex) { Ui.Error(this, "Couldn't import that " + what + ":\n\n" + ex.Message); return; }
 
                 var notes = new List<string>(result.Notes);
-                try
+                if (fromRadio) notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
+                if (!fromRadio) try
                 {
                     var f = CpsFormat.FromFolder(folder);
                     if (!SameLayout(f, session.Format))
@@ -441,6 +454,25 @@ namespace CodeplugBuilder.App
                               " and " + Plural(p.Zones.Count, "zone") + ". Save the project (File > Save) to keep it.";
                 using (var d = new IssuesDialog(head, new string[0], notes, false)) d.ShowDialog(this);
             }
+        }
+
+        /// <summary>Radio > Read codeplug from radio: reads, keeps the image and CSVs as a backup, opens them as a project.</summary>
+        void ImportFromRadio()
+        {
+            if (wizard != null) return;
+            if (InWorkspace && !ConfirmDiscard()) return;
+            string folder = RadioPort.NewReadFolder();
+            MemoryImage img;
+            try { img = RadioProgressDialog.Run(this, "Reading the radio", p => RadioPort.Read(RadioPort.Choose(null, null), p)); }
+            catch (Exception ex) { Ui.Error(this, "Reading the radio failed:\n\n" + ex.Message); return; }
+            try
+            {
+                Directory.CreateDirectory(folder);
+                img.Save(Path.Combine(folder, "radio.img"));
+                RadioCsv.WriteTo(RadioCsv.ToTables(RadioCodeplug.Decode(img), CpsFormat.BuiltIn()), folder);
+            }
+            catch (Exception ex) { Ui.Error(this, "Couldn't decode what was read:\n\n" + ex.Message); return; }
+            ImportFolder(folder, "read from the radio", true);
         }
 
         static string Plural(int n, string word)

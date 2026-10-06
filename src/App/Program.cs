@@ -15,6 +15,8 @@ namespace CodeplugBuilder.App
         {
             if (args.Length > 0 && (args[0] == "--generate" || args[0] == "--import" || args[0] == "--help"))
                 return Cli.Run(args);
+            if (args.Length > 0 && args[0].StartsWith("--radio-", StringComparison.Ordinal) && args[0] != "--radio-settings-ui" && args[0] != "--radio-settings-snapshot")
+                return RadioCli.Run(args);
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -32,6 +34,8 @@ namespace CodeplugBuilder.App
             {
                 if (args[i] == "--tab" && i + 1 < args.Length) tab = args[++i];
                 else if (args[i] == "--map") { Application.Run(new MapPreviewForm()); return 0; }
+                else if (args[i] == "--radio-settings-snapshot" && i + 2 < args.Length) return RadioSettingsForm.Snapshot(args[i + 1], args[i + 2]);
+                else if (args[i] == "--radio-settings-ui") { Application.Run(new RadioSettingsForm(i + 1 < args.Length ? Path.GetFullPath(args[i + 1]) : null)); return 0; }
                 else if (args[i] == "--map-snapshot" && i + 1 < args.Length) return MapSnapshots.Run(args[i + 1]);
                 else if (args[i] == "--ui-walkthrough" && i + 1 < args.Length) return UiWalkthrough.Run(args[i + 1], i + 2 < args.Length ? args[i + 2] : "W6OZZ");
                 else if (File.Exists(args[i])) path = Path.GetFullPath(args[i]);
