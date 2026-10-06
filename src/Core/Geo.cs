@@ -71,7 +71,7 @@ namespace CodeplugBuilder.Core
         public string Name => Names.Length > 0 ? Names[0] : "";
     }
 
-    public enum LocationPrecision { None = 0, Country = 1, State = 2, City = 3 }
+    public enum LocationPrecision { None = 0, Country = 1, State = 2, City = 3, Point = 4 }
 
     /// <summary>Where a repeater is, as far as its listing tells: a point (when the city was found) and the areas around it.</summary>
     public sealed class GeoLocation
@@ -380,6 +380,24 @@ namespace CodeplugBuilder.Core
             if (byPoint != null) loc.State = byPoint;
             if (loc.State != null && loc.State.Children.Count > 0)
                 loc.County = AreaAt(place.Lon, place.Lat, AreaLevel.County, loc.State) ?? Nearest(loc.State.Children, place.Lon, place.Lat, 0.05);
+            return loc;
+        }
+
+        /// <summary>
+        /// Where a listing is from its own coordinates (RadioID.net's DMR-MARC map): the exact point, its state and
+        /// US county. Null when the point is unusable or isn't in the country the listing names (0,0, a swapped
+        /// sign), so bad coordinates never move a repeater to another country.
+        /// </summary>
+        public GeoLocation LocateAt(double lat, double lon, GeoLocation listed)
+        {
+            if ((lat == 0 && lon == 0) || Math.Abs(lat) > 90 || Math.Abs(lon) > 180) return null;
+            var c = listed?.Country != null && listed.Country.Contains(lon, lat) ? listed.Country
+                  : AreaAt(lon, lat, AreaLevel.Country) ?? Nearest(Countries, lon, lat, 0.2);
+            if (c == null || (listed?.Country != null && listed.Country != c)) return null;
+            var loc = new GeoLocation { Country = c, Lat = lat, Lon = lon, Precision = LocationPrecision.Point };
+            loc.State = AreaAt(lon, lat, AreaLevel.State, c) ?? Nearest(c.Children, lon, lat, 0.1) ?? listed?.State;
+            if (loc.State != null && loc.State.Children.Count > 0)
+                loc.County = AreaAt(lon, lat, AreaLevel.County, loc.State) ?? Nearest(loc.State.Children, lon, lat, 0.05);
             return loc;
         }
 

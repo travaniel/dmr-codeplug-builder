@@ -109,6 +109,63 @@ namespace CodeplugBuilder.App
         }
 
         /// <summary>
+        /// Repeater positions from RadioID.net's DMR-MARC map (DMR ID → lat, lon). Downloaded at most once a week and kept
+        /// in the settings folder as "id,lat,lon" lines (~200 KB). Returns an empty map if neither works; repeaters are
+        /// then placed by city name as before.
+        /// </summary>
+        public static Task<Dictionary<int, double[]>> RepeaterPositionsAsync()
+        {
+            return Task.Run(() =>
+            {
+                lock (positionsLock)
+                {
+                    if (positions != null) return positions;
+                    string file = Path.Combine(AppSettings.Folder, "radioid-positions.txt");
+                    bool fresh = File.Exists(file) && (DateTime.Now - File.GetLastWriteTime(file)).TotalDays < 7;
+                    if (fresh && (positions = ReadPositions(file)).Count > 0) return positions;
+                    try
+                    {
+                        var map = RadioId.ParseMapPositions(Get(RadioId.MapUrl, 60000));
+                        if (map.Count > 0)
+                        {
+                            try
+                            {
+                                Directory.CreateDirectory(AppSettings.Folder);
+                                File.WriteAllLines(file, map.Select(kv => kv.Key.ToString(CultureInfo.InvariantCulture) + "," +
+                                    kv.Value[0].ToString("R", CultureInfo.InvariantCulture) + "," + kv.Value[1].ToString("R", CultureInfo.InvariantCulture)), new UTF8Encoding(false));
+                            }
+                            catch { }
+                            return positions = map;
+                        }
+                    }
+                    catch { }
+                    return positions = File.Exists(file) ? ReadPositions(file) : new Dictionary<int, double[]>();
+                }
+            });
+        }
+
+        static readonly object positionsLock = new object();
+        static Dictionary<int, double[]> positions;
+
+        static Dictionary<int, double[]> ReadPositions(string file)
+        {
+            var map = new Dictionary<int, double[]>();
+            try
+            {
+                foreach (string line in File.ReadAllLines(file))
+                {
+                    var f = line.Split(',');
+                    if (f.Length == 3 && int.TryParse(f[0], out int id) &&
+                        double.TryParse(f[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) &&
+                        double.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+                        map[id] = new[] { lat, lon };
+                }
+            }
+            catch { }
+            return map;
+        }
+
+        /// <summary>
         /// Names for the talkgroups on these listings that BrandMeister and the owners don't name
         /// (<see cref="TalkgroupNames"/>): first from the listings themselves, then by looking the ID up on
         /// RadioID.net (a 7-digit ID as a user: "N0FTW TG"; a shorter one as a repeater: "W5LOS Luling"). Lookups are

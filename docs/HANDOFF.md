@@ -222,8 +222,27 @@ States 5101 (26 pages), Germany 758, Canada 481, United Kingdom 418, Australia 1
 field is free text ("Sachsen-Anhalt / Mecklenburg-Vorpommen", "England", blank), so the app downloads by country
 and places repeaters itself (section 4c).
 
+**DMR-MARC** (checked 2026-10-06): dmr-marc.net/repeaters.html redirects to RadioID.net's DMR-MARC map; the old
+`datadump.cgi` is gone (404). The map loads `GET https://radioid.net/api/rptr/map/` → `{count, markers:[...]}`: every
+on-air repeater worldwide in one request (10,487; ~5.5 MB, ~0.7 MB gzipped), same fields as the repeater API plus
+`lat`/`lng` (strings), `map_info` (= `details`), `trustee` as a string, `status` "ACTIVE". It's a subset of the
+per-state/country lists (Texas 343 of 354), so the app keeps those as the list and uses the map only for positions
+(`RadioId.ParseMapPositions` / `ApplyMapPositions` → `GeoAtlas.LocateAt`, matched by `locator`; a point outside the
+listed country is ignored). Cached a week as `radioid-positions.txt` (~300 KB). North America: repeaters the map
+couldn't place exactly went from 1,073 to 77 of 5,525.
+
+**RepeaterBook CHIRP export** (what the app uses, no token; checked on the user's Brown County, TX export
+2026-10-06, file `rb_chirp_<yyMMddHHmm>.csv` in Downloads): header
+`Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment`, CRLF,
+an extra trailing comma on every row. Name = callsign, Frequency = output, Comment = city ("Brownwood, Bangs Hill").
+No county, state, color code or digital modes. Tone semantics are CHIRP's and match the user's CPS channels: `TSQL`
+→ cToneFreq both ways + tone squelch (K5BWD UHF), `Tone` → rToneFreq transmit only (W5CBT), blank → carrier.
+The export's county search includes towns just over the line (Cross Plains is in Callahan County).
+
 **RepeaterBook** (analog): since 2026-03 the API (`/api/export.php?state_id=<FIPS>&...`) answers 401
 without a token. Personal use needs an approved token: request at repeaterbook.com/api/token_request.php,
+(tokens are app-bound: a user's token for QDMR or CHIRP is for that app only; this app needs approval as a "distributed app",
+then each user generates their own token for it from the API Apps dashboard)
 then send `X-RB-App-Token: rbuapp_...` and a User-Agent with an app name and contact email. The exact JSON
 key names weren't captured (no token); get a real response before writing the parser.
 

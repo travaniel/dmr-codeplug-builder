@@ -237,6 +237,15 @@ namespace CodeplugBuilder.App
             int listed = picked.Sum(r => r.Talkgroups.Count);
             int already = all.Count(InProject);
             int unplaced = all.Count(r => r.Location == null || r.Location.Lat == null);
+            if (picked.Count == 0 && all.Count > 0)
+            {
+                int notPlaced = all.Count(r => r.Location == null || r.Location.Lat == null);
+                lblSummary.Text = "Nothing picked yet: click a state or county on the map to take its repeaters (" + all.Count + " to choose from), or tick single ones on the List tab." +
+                                  (notPlaced > 0 ? " " + notPlaced + " couldn't be placed exactly." : "");
+                lblSummary.ForeColor = Color.FromArgb(176, 84, 0);
+                return;
+            }
+            lblSummary.ForeColor = SystemColors.ControlText;
             lblSummary.Text = picked.Count + " of " + all.Count + " repeater" + (all.Count == 1 ? "" : "s") + " picked" +
                               (picked.Count > 0 ? " (" + listed + " talkgroup channels they list themselves)" : "") +
                               (already > 0 ? ", " + already + " already in your project" : "") +
@@ -253,7 +262,7 @@ namespace CodeplugBuilder.App
         {
             var loc = r.Location ?? GeoLocation.Unknown;
             if (loc.County != null) return loc.County.Name + ", " + (loc.State?.Name ?? "");
-            if (loc.State != null) return loc.State.Name + (loc.Precision == LocationPrecision.City ? "" : " (city not found)");
+            if (loc.State != null) return loc.State.Name + (loc.Precision >= LocationPrecision.City ? "" : " (city not found)");
             if (loc.Country != null) return loc.Country.Name + " (not placed)";
             return "(not placed)";
         }

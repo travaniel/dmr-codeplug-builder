@@ -544,7 +544,8 @@ namespace CodeplugBuilder.App
 
         public override string Title => "Which repeaters?";
         public override string Hint =>
-            "Click counties, states or countries to take every repeater in them (switch the level above the map). Dots are repeaters; red ones are picked. " +
+            "The first map only chose what to download. Here you choose what goes in the codeplug: click counties, states or countries to take every " +
+            "repeater in them (switch the level above the map). Dots are repeaters; red ones are picked. " +
             "The List tab lets you tick or untick single repeaters, including ones the map couldn't place.";
 
         public override bool CanGoNext => State.Download != null && State.Download.Done && (chooser.Picked().Count > 0 || State.Hotspot);
@@ -566,6 +567,11 @@ namespace CodeplugBuilder.App
         public override bool LeaveForward()
         {
             var picked = chooser.Picked();
+            if (picked.Count == 0 &&
+                !Ui.Confirm(FindForm(), "No repeaters are picked yet, so the codeplug would only have your hotspot" + (State.Noaa ? " and the weather channels" : "") + ".\n\n" +
+                                        "To pick repeaters, click states or counties on this map (each click takes every repeater in it), or tick single ones on the List tab.\n\n" +
+                                        "Go on without repeaters?"))
+                return false;
             if (picked.Count > 300 &&
                 !Ui.Confirm(FindForm(), "That's " + picked.Count + " repeaters. With a few talkgroups each, that can pass the radio's 4000 channels.\n\nGo on anyway? (You can trim zones and talkgroups next.)"))
                 return false;

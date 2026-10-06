@@ -229,6 +229,13 @@ namespace CodeplugBuilder.App
                 if (IsDisposed) return;
                 all = result;
                 try { moreNames = await Task.Run(() => Online.NameTalkgroups(result, bm, progress, System.Threading.CancellationToken.None)); } catch { }
+                try
+                {
+                    lblStatus.Text = "Placing repeaters (DMR-MARC map positions)...";
+                    var pos = await Online.RepeaterPositionsAsync();
+                    await Task.Run(() => RadioId.ApplyMapPositions(result, pos, GeoAtlas.BuiltIn()));
+                }
+                catch { }
                 if (IsDisposed) return;
                 picked.Clear();
                 AppSettings.Set("OnlineState", state);

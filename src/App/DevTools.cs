@@ -12,14 +12,14 @@ using CodeplugBuilder.Core;
 namespace CodeplugBuilder.App
 {
     /// <summary>
-    /// Developer self-test: CodeplugBuilder.exe --ui-walkthrough folder [callsign]
+    /// Developer self-test: CodeplugBuilder.exe --ui-walkthrough folder [callsign] [region codes, e.g. US,CA,MX]
     /// Runs the start page and the whole new-codeplug wizard off screen (Texas, a few counties, zones, starter
     /// talkgroups) with the real downloads, saves a PNG of every page, generates the CSVs into folder\csv and
     /// writes walkthrough.log. Set CODEPLUGBUILDER_SETTINGS to a scratch folder so your settings stay untouched.
     /// </summary>
     static class UiWalkthrough
     {
-        public static int Run(string folder, string callsign)
+        public static int Run(string folder, string callsign, string regionCodes = null)
         {
             Directory.CreateDirectory(folder);
             var log = new List<string>();
@@ -55,7 +55,9 @@ namespace CodeplugBuilder.App
                     if (!WaitFor(() => region.Picker.Map.Atlas != null, 10000)) throw new Exception("atlas didn't load");
                     log.Add("step 1 Next enabled before picking: " + wiz.NextEnabled + " (" + wiz.BlockerText + ")");
                     var atlas = region.Picker.Map.Atlas;
-                    region.Picker.Map.ClickArea(atlas.Find("US-TX"));
+                    var codes = (regionCodes ?? "US-TX").Split(',');
+                    if (codes.All(c => !c.Contains("-"))) region.Picker.Level = AreaLevel.Country;
+                    foreach (string code in codes) region.Picker.Map.ClickArea(atlas.Find(code.Trim()) ?? throw new Exception("no area " + code));
                     Shot("region-texas");
                     log.Add("step 1 Next enabled: " + wiz.NextEnabled);
                     wiz.PressNext();
@@ -72,12 +74,23 @@ namespace CodeplugBuilder.App
 
                     var areas = (AreasStep)wiz.Current;
                     var sw = Stopwatch.StartNew();
-                    if (!WaitFor(() => wiz.State.Download.Done, 120000)) throw new Exception("download didn't finish");
+                    if (!WaitFor(() => wiz.State.Download.Done, regionCodes == null ? 120000 : 900000)) throw new Exception("download didn't finish: " + wiz.State.Download.Status);
                     Pump(500);
                     log.Add("download: " + wiz.State.Download.Repeaters.Count + " repeaters in " + sw.ElapsedMilliseconds + " ms; errors: " + string.Join("; ", wiz.State.Download.Errors) +
                             "; BrandMeister names: " + wiz.State.Download.BrandMeisterNames.Count);
                     log.Add("step 3 Next before picking: " + wiz.NextEnabled + " (" + wiz.BlockerText + ")");
                     Shot("areas-map");
+                    if (regionCodes != null)
+                    {
+                        // Another region: just the download and the areas step (the rest of the walkthrough is Texas-specific).
+                        log.Add("step 3 with nothing picked: Next " + wiz.NextEnabled + " (" + wiz.BlockerText + ")");
+                        log.Add("download status: " + wiz.State.Download.Status);
+                        areas.Chooser.Tabs.SelectedIndex = 1;
+                        Shot("areas-list");
+                        log.Add("ok");
+                        File.WriteAllLines(Path.Combine(folder, "walkthrough.log"), log);
+                        return 0;
+                    }
                     foreach (var county in new[] { "Tom Green County", "Taylor County", "Lubbock County" })
                         areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == county && c.ParentCode == "US-TX"));
                     areas.Chooser.Picker.Map.ZoomToAreas(new[] { atlas.Find("US-TX") });
@@ -367,6 +380,49 @@ namespace CodeplugBuilder.App
                     .Select(p => new MapDot { Lon = p.Lon, Lat = p.Lat }).ToList();
                 picker.Map.Badge = a => a == tx ? "400 places" : null;
             };
+        }
+    }
+    /// <summary>
+    /// Developer check: CodeplugBuilder.exe --repeaterbook-snapshot project.cpb export.csv folder
+    /// Opens Repeaters > From RepeaterBook off screen on a copy of the project, loads the export, saves a PNG, adds the
+    /// ticked repeaters and logs what happened. The project file isn't changed.
+    /// </summary>
+    static class RepeaterBookSnapshot
+    {
+        public static int Run(string projectPath, string csv, string folder)
+        {
+            Directory.CreateDirectory(folder);
+            var log = new List<string>();
+            try
+            {
+                var session = new Session { Format = CpsFormat.BuiltIn() };
+                session.Replace(ProjectStore.Load(projectPath), null, false);
+                int before = session.Project.Repeaters.Count;
+                using (var d = new RepeaterBookDialog(session) { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000), ShowInTaskbar = false })
+                {
+                    d.Show();
+                    d.LoadFile(csv, true);
+                    var sw = Stopwatch.StartNew();
+                    while (sw.ElapsedMilliseconds < 800) { Application.DoEvents(); Thread.Sleep(15); }
+                    using (var bmp = new Bitmap(d.Width, d.Height))
+                    {
+                        d.DrawToBitmap(bmp, new Rectangle(Point.Empty, d.Size));
+                        bmp.Save(Path.Combine(folder, "repeaterbook-dialog.png"), ImageFormat.Png);
+                    }
+                    d.AddPicked();
+                    var r = d.Result;
+                    log.Add("added " + r.Added.Count + ": " + string.Join("; ", r.Added.Select(x => x.Name + " " + x.RxMHz + "/" + x.TxMHz + " tone " + x.ToneEncode + "/" + x.ToneDecode +
+                                                                                         (x.ToneSquelch ? " tsql" : "") + " zone " + x.Zone + " county " + x.County)));
+                    log.AddRange(r.Notes);
+                    log.Add("repeaters " + before + " -> " + session.Project.Repeaters.Count);
+                    var g = CodeplugGenerator.Generate(session.Project, session.Format);
+                    log.Add("generates: " + g.ChannelList.Count + " channels, " + g.ZoneList.Count + " zones; notes: " + string.Join(" | ", g.Notes));
+                }
+                log.Add("ok");
+            }
+            catch (Exception ex) { log.Add("ERROR " + ex); }
+            File.WriteAllLines(Path.Combine(folder, "repeaterbook.log"), log);
+            return 0;
         }
     }
 }

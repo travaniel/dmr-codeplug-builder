@@ -112,6 +112,54 @@ namespace CodeplugBuilder.Core
             return "https://radioid.net/api/dmr/repeater/?id=" + id.ToString(CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// RadioID.net's map of on-air DMR repeaters (the DMR-MARC repeater map: dmr-marc.net/repeaters.html sends you there).
+        /// One request, every country, ~5.5 MB (~0.7 MB gzipped): {"count", "markers":[{locator, lat, lng, callsign, ...}]}.
+        /// Checked 2026-10-06: 10,487 markers, all with coordinates; Texas 343 of the 354 listed by the state query.
+        /// </summary>
+        public const string MapUrl = "https://radioid.net/api/rptr/map/";
+
+        /// <summary>Repeater DMR ID → [latitude, longitude] from the map. Markers without usable coordinates are left out.</summary>
+        public static Dictionary<int, double[]> ParseMapPositions(string json)
+        {
+            var map = new Dictionary<int, double[]>();
+            foreach (var m in Json.Arr(Json.Get(Json.Parse(json), "markers")))
+            {
+                int id = Json.Int(Json.Get(m, "locator"));
+                if (id <= 0 || !TryCoordinate(Json.Get(m, "lat"), out double lat) || !TryCoordinate(Json.Get(m, "lng"), out double lon)) continue;
+                if ((lat == 0 && lon == 0) || Math.Abs(lat) > 90 || Math.Abs(lon) > 180) continue;
+                map[id] = new[] { lat, lon };
+            }
+            return map;
+        }
+
+        static bool TryCoordinate(object value, out double v)
+        {
+            v = 0;
+            if (value is decimal d) { v = (double)d; return true; }
+            return double.TryParse(Json.Str(value).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out v);
+        }
+
+        /// <summary>
+        /// Puts each repeater the map knows (same DMR ID) at its real position, which beats placing it by city name.
+        /// Returns how many were placed that way.
+        /// </summary>
+        public static int ApplyMapPositions(IEnumerable<OnlineRepeater> repeaters, IDictionary<int, double[]> positions, GeoAtlas atlas)
+        {
+            if (positions == null || positions.Count == 0 || atlas == null) return 0;
+            int placed = 0;
+            foreach (var r in repeaters)
+            {
+                if (r.DmrId <= 0 || !positions.TryGetValue(r.DmrId, out var p)) continue;
+                if (r.Location != null && r.Location.Precision == LocationPrecision.Point) { placed++; continue; }
+                var at = atlas.LocateAt(p[0], p[1], r.Location ?? atlas.Locate(r.City, r.State, r.Country));
+                if (at == null) continue;
+                r.Location = at;
+                placed++;
+            }
+            return placed;
+        }
+
         public static RadioIdPage ParseRepeaters(string json)
         {
             var root = Json.Parse(json);

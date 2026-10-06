@@ -77,6 +77,7 @@ namespace CodeplugBuilder.App
             var buttons = Ui.Row(
                 btnMap,
                 Ui.Button("Find online...", (s, e) => FindOnline()),
+                Ui.Button("From RepeaterBook...", (s, e) => FromRepeaterBook()),
                 Ui.Button("Add DMR repeater", (s, e) => Add(Repeater.NewDigital("New repeater"))),
                 Ui.Button("Add analog", (s, e) => Add(Repeater.NewAnalog("New analog"))),
                 Ui.Button("Duplicate", (s, e) => Duplicate()),
@@ -241,6 +242,15 @@ namespace CodeplugBuilder.App
         public void FindOnline()
         {
             var first = OnlineRepeaterDialog.Run(FindForm(), session);
+            if (first == null) return;
+            cboFilter.SelectedIndex = 0;
+            Reload(first);
+        }
+
+        /// <summary>Opens the RepeaterBook importer (CHIRP export) and shows what it added.</summary>
+        public void FromRepeaterBook()
+        {
+            var first = RepeaterBookDialog.Run(FindForm(), session);
             if (first == null) return;
             cboFilter.SelectedIndex = 0;
             Reload(first);

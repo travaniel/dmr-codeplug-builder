@@ -95,6 +95,7 @@ namespace CodeplugBuilder.App
             {
                 Atlas = GeoAtlas.BuiltIn();
                 var bm = Online.BrandMeisterNamesAsync(); // in parallel with the repeaters
+                var positions = Online.RepeaterPositionsAsync(); // the DMR-MARC map: exact places
                 var queries = Queries(Areas);
                 int n = 0;
                 foreach (var q in queries)
@@ -117,11 +118,19 @@ namespace CodeplugBuilder.App
                         lock (Errors) Errors.Add(q.Value.Name + ": " + ex.Message);
                     }
                 }
+                Report("Placing repeaters on the map (DMR-MARC positions)...");
+                try
+                {
+                    List<OnlineRepeater> found;
+                    lock (repeaters) found = repeaters.ToList();
+                    RadioId.ApplyMapPositions(found, positions.Result, Atlas);
+                }
+                catch { }
                 Report("Getting talkgroup names from BrandMeister...");
                 try { BrandMeisterNames = bm.Result ?? new Dictionary<int, string>(); } catch { }
                 List<OnlineRepeater> all;
                 lock (repeaters) all = repeaters.ToList();
-                try { TalkgroupNames = Online.NameTalkgroups(all, BrandMeisterNames, new Progress<string>(Report), token); } catch { }
+                try { TalkgroupNames = Online.NameTalkgroups(all, BrandMeisterNames, new StatusProgress(Report), token); } catch { }
             }
             catch (Exception ex)
             {
@@ -137,6 +146,14 @@ namespace CodeplugBuilder.App
                     Report(Errors.Count > 0 && count == 0 ? "The download didn't work." : "Downloaded " + count + " repeaters.");
                 }
             }
+        }
+
+        /// <summary>Reports straight away, in order (Progress&lt;T&gt; on a worker thread can deliver after the final "Downloaded" status).</summary>
+        sealed class StatusProgress : IProgress<string>
+        {
+            readonly Action<string> report;
+            public StatusProgress(Action<string> report) { this.report = report; }
+            public void Report(string value) { report(value); }
         }
 
         static bool Same(OnlineRepeater a, OnlineRepeater b)

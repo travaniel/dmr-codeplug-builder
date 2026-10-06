@@ -58,6 +58,68 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void MapPositionsPlaceRepeatersExactly()
+        {
+            // Trimmed from https://radioid.net/api/rptr/map/ (2026-10-06).
+            const string json = @"{""count"":3,""markers"":[
+ {""callsign"":""KN5D"",""city"":""West Columbia"",""color_code"":1,""country"":""United States"",""frequency"":""443.66250"",""lat"":""29.1438582"",""lng"":""-95.6452249"",""locator"":114804,""state"":""Texas"",""status"":""ACTIVE"",""talkgroups"":[]},
+ {""callsign"":""X0BAD"",""city"":""Nowhere"",""country"":""United States"",""lat"":""0"",""lng"":""0"",""locator"":999001,""state"":""Texas""},
+ {""callsign"":""VE0WRONG"",""city"":""Toronto"",""country"":""Canada"",""lat"":""29.1438582"",""lng"":""-95.6452249"",""locator"":999002,""state"":""Ontario""}]}";
+            var pos = RadioId.ParseMapPositions(json);
+            Assert.Equal(2, pos.Count, "0,0 left out");
+            var atlas = GeoAtlas.BuiltIn();
+            var kn5d = new OnlineRepeater { Callsign = "KN5D", City = "West Columbia", State = "Texas", Country = "United States", DmrId = 114804 };
+            var wrong = new OnlineRepeater { Callsign = "VE0WRONG", City = "Toronto", State = "Ontario", Country = "Canada", DmrId = 999002 };
+            wrong.Location = atlas.Locate(wrong.City, wrong.State, wrong.Country);
+            Assert.Equal(1, RadioId.ApplyMapPositions(new[] { kn5d, wrong }, pos, atlas), "one placed");
+            Assert.Equal(LocationPrecision.Point, kn5d.Location.Precision, "exact point");
+            Assert.Equal("Brazoria County", kn5d.Location.County?.Name, "county from the point");
+            Assert.Equal("Canada", wrong.Location.Country.Name, "a point in another country is ignored");
+            Assert.True(wrong.Location.Precision != LocationPrecision.Point, "kept the city placement");
+        }
+
+        [Test]
+        static void RepeaterBookChirpExport()
+        {
+            // A real RepeaterBook CHIRP export (Brown County, TX, 2026-10-06), CRLF and trailing commas as downloaded.
+            string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment\r\n" +
+                         "1,\"K5BWD\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "2,\"KA9DNO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
+                         "3,\"AI5TX\",443.925000,+,5,,88.5,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "4,\"WD9ARW\",443.900000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood, Bangs Hill\",\r\n" +
+                         "5,\"N5AG\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
+                         "6,\"AC5KT\",147.000000,+,0.6,TSQL,94.8,94.8,023,NN,FM,5,\"Bangs\",\r\n" +
+                         "7,\"K5BWD\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "8,\"W5CBT\",146.820000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
+            var t = CsvTable.Parse(csv);
+            Assert.True(ChirpCsv.IsChirp(t), "recognized");
+            var all = ChirpCsv.Parse(t);
+            Assert.Equal(8, all.Count, "rows");
+            var k5bwdUhf = all[0];
+            Assert.Equal(449.7m, k5bwdUhf.TxMHz, "+5");
+            Assert.True(k5bwdUhf.ToneEncode == "94.8" && k5bwdUhf.ToneDecode == "94.8" && k5bwdUhf.ToneSquelch, "TSQL = tone both ways, like the user's K5BWD UHF");
+            var w5cbt = all[7];
+            Assert.True(w5cbt.TxMHz == 146.22m && w5cbt.ToneEncode == "94.8" && w5cbt.ToneDecode == "Off" && !w5cbt.ToneSquelch, "Tone = encode only, like the user's W5CBT");
+            Assert.Equal("Off", all[2].ToneEncode, "no tone mode: carrier");
+            Assert.Equal("Brownwood", all[3].City, "city from \"Brownwood, Bangs Hill\"");
+            Assert.Equal("K5BWD UHF", RepeaterBookImport.ChannelName(k5bwdUhf, all), "same callsign twice: band");
+            Assert.Equal("KA9DNO Cross Pla", RepeaterBookImport.ChannelName(all[1], all), "callsign + city");
+
+            // The user's analog channels from the same area are already in the project.
+            var p = new Project { RadioIdName = "Test", RadioId = 1 };
+            void Analog(string name, decimal rx, decimal tx) { var r = Repeater.NewAnalog(name); r.RxMHz = rx; r.TxMHz = tx; p.Repeaters.Add(r); }
+            Analog("K5BWD VHF", 146.94m, 146.34m); Analog("WD9ARW", 443.9m, 448.9m); Analog("AI5TX", 443.925m, 448.925m);
+            Analog("K5BWD UHF", 444.7m, 449.7m); Analog("W5CBT", 146.82m, 146.22m);
+            var res = RepeaterBookImport.Add(p, all, all, (c, loc) => "Brown Co", c => GeoLocation.Unknown);
+            Assert.Equal("KA9DNO Cross Pla,AC5KT Bangs", string.Join(",", res.Added.Select(r => r.Name)), "only the new ones");
+            Assert.True(res.Notes[0].Contains("N5AG 224.720 (outside the radio's bands)") && res.Notes[0].Contains("already in the project as \"K5BWD UHF\""), "skips explained: " + res.Notes[0]);
+            Assert.True(res.Added.All(r => r.Zone == "Brown Co" && !r.IsDigital && r.Bandwidth == Bandwidths.Wide), "zone, analog, wide");
+            p.Talkgroups.Add(new Talkgroup("Local", 9)); // analog channels still need a contact in the CPS
+            var errors = Validator.Validate(p, CpsFormat.BuiltIn()).Where(i => i.Severity == Severity.Error).Select(i => i.Message).ToList();
+            Assert.True(errors.Count == 0, "valid: " + string.Join("; ", errors));
+        }
+
+        [Test]
         static void SameCountyNameInTwoStatesGetsTwoZones()
         {
             var p = new Project();
