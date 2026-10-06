@@ -239,6 +239,15 @@ No county, state, color code or digital modes. Tone semantics are CHIRP's and ma
 → cToneFreq both ways + tone squelch (K5BWD UHF), `Tone` → rToneFreq transmit only (W5CBT), blank → carrier.
 The export's county search includes towns just over the line (Cross Plains is in Callahan County).
 
+**CHIRP's own CSV after its RepeaterBook query** (the user's `TexasRepeaters.csv`, 2026-10-06, 1,365 lines: 1,025 FM,
+173 DN, 124 DMR, 43 DV; 137 FM lines on 10 m / 6 m / 220 / 1.2 GHz): extra columns `RxDtcsCode,CrossMode,...,Skip,Power,
+...,URCALL,RPT1CALL,RPT2CALL,DVCODE`. Name is often a site or club ("Westlake Hills"); the comment is
+"CALL near Town, X County, Texas OPEN [notes]" (12 lines leave out the callsign). `ChirpChannel.ReadComment` takes the
+callsign, town, county and state from it, so the map step needs no state from the file name and towns the map
+doesn't know go to their county's middle. Frequency pairs repeat across the state: duplicate checks must include the
+callsign (or town), never frequencies alone. Result: 888 usable FM, 854 added next to Texas's DMR repeaters (the
+rest are listed twice or are the same machine RadioID lists as DMR), every one in its county.
+
 **RepeaterBook** (analog): since 2026-03 the API (`/api/export.php?state_id=<FIPS>&...`) answers 401
 without a token. Personal use needs an approved token: request at repeaterbook.com/api/token_request.php,
 (tokens are app-bound: a user's token for QDMR or CHIRP is for that app only; this app needs approval as a "distributed app",

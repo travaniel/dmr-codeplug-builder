@@ -144,6 +144,43 @@ namespace CodeplugBuilder.App
             });
         }
 
+        /// <summary>
+        /// BrandMeister's repeaters (the device list minus hotspots), placed on the map. The 9.6 MB list is downloaded at
+        /// most once a day and kept in the settings folder; the parsed repeaters are kept for the run. Empty if neither works.
+        /// </summary>
+        public static Task<List<OnlineRepeater>> BrandMeisterRepeatersAsync(GeoAtlas atlas)
+        {
+            return Task.Run(() =>
+            {
+                lock (bmRepeatersLock)
+                {
+                    if (bmRepeaters != null) return bmRepeaters;
+                    string file = Path.Combine(AppSettings.Folder, "brandmeister-devices.json");
+                    bool fresh = File.Exists(file) && (DateTime.Now - File.GetLastWriteTime(file)).TotalHours < 24;
+                    if (fresh)
+                    {
+                        try { return bmRepeaters = BrandMeister.ParseRepeaters(File.ReadAllText(file, Encoding.UTF8), atlas); } catch { }
+                    }
+                    try
+                    {
+                        string json = Get(BrandMeister.DeviceUrl, 120000);
+                        var list = BrandMeister.ParseRepeaters(json, atlas);
+                        if (list.Count > 0)
+                        {
+                            try { Directory.CreateDirectory(AppSettings.Folder); File.WriteAllText(file, json, new UTF8Encoding(false)); } catch { }
+                            return bmRepeaters = list;
+                        }
+                    }
+                    catch { }
+                    try { if (File.Exists(file)) return bmRepeaters = BrandMeister.ParseRepeaters(File.ReadAllText(file, Encoding.UTF8), atlas); } catch { }
+                    return new List<OnlineRepeater>(); // not cached, so the next download tries again
+                }
+            });
+        }
+
+        static readonly object bmRepeatersLock = new object();
+        static List<OnlineRepeater> bmRepeaters;
+
         static readonly object positionsLock = new object();
         static Dictionary<int, double[]> positions;
 

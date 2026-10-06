@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Dev tool: merges RadioID.net's repeater map and BrandMeister's device list into one CSV per US state. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\Core\Templates\*.CSV" LogicalName="CodeplugBuilder.Templates.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\Core\Geo\atlas.gz" LogicalName="CodeplugBuilder.Geo.atlas.gz" />
+  </ItemGroup>
+</Project>

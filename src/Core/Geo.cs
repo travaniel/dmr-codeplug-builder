@@ -294,6 +294,16 @@ namespace CodeplugBuilder.Core
         }
 
         /// <summary>A state/province of <paramref name="country"/> by name, alias or code. "A / B" tries each part.</summary>
+        /// <summary>A US county in <paramref name="state"/> by name: "Williamson County", "Williamson", "St. Mary Parish".</summary>
+        public GeoArea FindCounty(GeoArea state, string name)
+        {
+            if (state == null || string.IsNullOrWhiteSpace(name)) return null;
+            string k = Key(name);
+            foreach (var c in state.Children)
+                if (Key(c.Name) == k || Key(c.Name) == Key(name + " County")) return c;
+            return null;
+        }
+
         public GeoArea FindState(GeoArea country, string name)
         {
             if (country == null) return null;

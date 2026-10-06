@@ -91,9 +91,20 @@ namespace CodeplugBuilder.App
                         File.WriteAllLines(Path.Combine(folder, "walkthrough.log"), log);
                         return 0;
                     }
-                    foreach (var county in new[] { "Tom Green County", "Taylor County", "Lubbock County" })
+                    string chirp = Environment.GetEnvironmentVariable("CODEPLUGBUILDER_WALK_CHIRP"); // a Texas CHIRP file to mix in (dev only)
+                    var counties = new List<string> { "Tom Green County", "Taylor County", "Lubbock County" };
+                    if (!string.IsNullOrEmpty(chirp))
+                    {
+                        var listings = RepeaterBookImport.ToListings(ChirpCsv.Parse(CsvTable.Load(chirp)), "Texas", "United States", atlas);
+                        log.Add("CHIRP file: " + listings.Count + " analog listings, " + wiz.State.Download.AddListings(listings) + " added");
+                        areas.Chooser.Reload();
+                        counties.Add("Brown County");
+                        areas.Chooser.Picker.Map.ZoomToAreas(new[] { atlas.Find("US-TX") });
+                        Shot("areas-chirp-texas");
+                    }
+                    foreach (var county in counties)
                         areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == county && c.ParentCode == "US-TX"));
-                    areas.Chooser.Picker.Map.ZoomToAreas(new[] { atlas.Find("US-TX") });
+                    areas.Chooser.Picker.Map.ZoomToAreas(string.IsNullOrEmpty(chirp) ? new[] { atlas.Find("US-TX") } : atlas.Counties.Where(c => c.ParentCode == "US-TX" && (c.Name == "Brown County" || c.Name == "Callahan County" || c.Name == "Taylor County")).ToArray());
                     Shot("areas-picked");
                     log.Add("picked " + areas.Chooser.Picked().Count + " repeaters: " + string.Join(", ", areas.Chooser.Picked().Select(r => r.Callsign + " " + r.City)));
                     areas.Chooser.Tabs.SelectedIndex = 1;

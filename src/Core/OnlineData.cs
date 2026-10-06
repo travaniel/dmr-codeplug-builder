@@ -44,6 +44,10 @@ namespace CodeplugBuilder.Core
         /// <summary>Where it is on the built-in map (set by <see cref="GeoAtlas.Locate"/>; null until then).</summary>
         public GeoLocation Location { get; set; }
 
+        /// <summary>An analog (FM) repeater from a CHIRP file (RepeaterBook export), not a RadioID.net listing; null for DMR.</summary>
+        public ChirpChannel Analog { get; set; }
+        public bool IsAnalog => Analog != null;
+
         public bool IsBrandMeister => Network.IndexOf("BrandMeister", StringComparison.OrdinalIgnoreCase) >= 0;
 
         /// <summary>Both frequencies are inside the DMR-6X2's bands (136-174 and 400-480 MHz).</summary>
@@ -256,6 +260,58 @@ namespace CodeplugBuilder.Core
             return map;
         }
 
+        /// <summary>
+        /// Every device on the network (~32,000, ~9.6 MB; checked 2026-10-06). Repeaters have 6-digit IDs; the other
+        /// ~90% are hotspots with 7-9 digit IDs. In each: id, callsign, tx (the output), rx (the input), colorcode, lat, lng, city, last_seen.
+        /// </summary>
+        public const string DeviceUrl = "https://api.brandmeister.network/v2/device";
+
+        /// <summary>
+        /// The repeaters (6-digit IDs, with coordinates) in a device list, placed on the map from their own coordinates.
+        /// Network is BrandMeister; there are no published talkgroups. <see cref="OnlineRepeater.DmrId"/> stays 0 because
+        /// it holds RadioID's number; the BrandMeister ID goes in Details.
+        /// </summary>
+        public static List<OnlineRepeater> ParseRepeaters(string json, GeoAtlas atlas)
+        {
+            var list = new List<OnlineRepeater>();
+            foreach (var d in Json.Arr(Json.Parse(json)))
+            {
+                int id = Json.Int(Json.Get(d, "id"));
+                if (id < 100000 || id > 999999) continue;
+                if (!double.TryParse(Json.Str(Json.Get(d, "lat")), NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) ||
+                    !double.TryParse(Json.Str(Json.Get(d, "lng")), NumberStyles.Float, CultureInfo.InvariantCulture, out double lon)) continue;
+                if (!decimal.TryParse(Json.Str(Json.Get(d, "tx")), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal output) ||
+                    !decimal.TryParse(Json.Str(Json.Get(d, "rx")), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal input) ||
+                    output <= 0 || input <= 0 || output >= 10000 || input >= 10000) continue;
+                var loc = atlas?.LocateAt(lat, lon, null);
+                if (loc == null) continue;
+                string full = Json.Str(Json.Get(d, "callsign")).Trim();
+                string call = full.Split(' ', '-')[0].ToUpperInvariant();
+                if (call.Length == 0) continue;
+                list.Add(new OnlineRepeater
+                {
+                    Callsign = call,
+                    City = Json.Str(Json.Get(d, "city")).Trim(),
+                    State = loc.State != null ? loc.State.Name : "",
+                    Country = loc.Country != null ? loc.Country.Name : "",
+                    Network = "BrandMeister",
+                    Status = Json.Int(Json.Get(d, "status")) == 3 ? "on-air" : "",
+                    Details = "BrandMeister ID " + id.ToString(CultureInfo.InvariantCulture) + (full != call ? " (" + full + ")" : ""),
+                    RxMHz = Math.Round(output, 5),
+                    TxMHz = Math.Round(input, 5),
+                    ColorCode = Math.Max(0, Math.Min(15, Json.Int(Json.Get(d, "colorcode"), 1))),
+                    Location = loc,
+                });
+            }
+            return list;
+        }
+
+        /// <summary>True when the list already has this repeater: same callsign and an output within 12.5 kHz.</summary>
+        public static bool IsListed(IEnumerable<OnlineRepeater> repeaters, OnlineRepeater r)
+        {
+            return repeaters.Any(x => string.Equals(x.Callsign, r.Callsign, StringComparison.OrdinalIgnoreCase) && Math.Abs(x.RxMHz - r.RxMHz) < 0.0125m);
+        }
+
         /// <summary>"Texas - 10 Minute Limit" → "Texas"; long names lose a " - suffix" or "(note)" before being cut.</summary>
         public static string ShortName(string name, int maxLength = 16)
         {
@@ -386,7 +442,7 @@ namespace CodeplugBuilder.Core
         public List<Repeater> Added { get; } = new List<Repeater>();
         public List<Talkgroup> NewTalkgroups { get; } = new List<Talkgroup>();
         public List<string> Notes { get; } = new List<string>();
-        public int Channels => Added.Sum(r => r.Talkgroups.Count);
+        public int Channels => Added.Sum(r => r.IsDigital ? r.Talkgroups.Count : 1);
     }
 
     public static class OnlineImporter
@@ -420,6 +476,7 @@ namespace CodeplugBuilder.Core
         /// </summary>
         public static Repeater FindExisting(Project p, OnlineRepeater r)
         {
+            if (r.Analog != null) return RepeaterBookImport.FindExisting(p, r.Analog);
             bool SameCall(string s) { return r.Callsign.Length > 0 && (s ?? "").Trim().StartsWith(r.Callsign, StringComparison.OrdinalIgnoreCase); }
             return p.Repeaters.FirstOrDefault(x => x.IsDigital && x.RxMHz == r.RxMHz && x.ColorCode == r.ColorCode && (SameCall(x.Prefix) || SameCall(x.Name)));
         }
@@ -456,11 +513,29 @@ namespace CodeplugBuilder.Core
             picked = picked.ToList();
             var moreNames = TalkgroupNames.FromListings(picked, TalkgroupNames.Unnamed(picked, bmNames));
             if (o.MoreNames != null) foreach (var kv in o.MoreNames) moreNames[kv.Key] = kv.Value;
+            var analogPicked = picked.Where(x => x.Analog != null).Select(x => x.Analog).ToList();
+            var analogNames = new UniqueNamer(16, "Repeater");
+            foreach (var x in p.AllRepeaters()) analogNames.Reserve(Naming.Clean(x.Name, 16));
             foreach (var r in picked)
             {
                 if (!r.InRadioBand) { skipped.Add(r.Callsign + " (outside the radio's bands)"); continue; }
                 var existing = FindExisting(p, r);
                 if (existing != null) { skipped.Add(r.Callsign + " (already in the project as \"" + existing.Name + "\")"); continue; }
+
+                if (r.Analog != null)
+                {
+                    // An FM repeater from a CHIRP file: one analog channel, zoned like the DMR ones.
+                    string problem = RepeaterBookImport.Problem(r.Analog);
+                    if (problem != null) { skipped.Add(r.Callsign + " " + r.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) + " (" + problem + ")"); continue; }
+                    var fm = RepeaterBookImport.NewRepeater(r.Analog, analogNames.Claim(RepeaterBookImport.ChannelName(r.Analog, analogPicked)), r.Location, o.Power);
+                    SetLocation(fm, r);
+                    fm.Zone = o.ZonePerCity ? FirstNonEmpty(Naming.Fit(r.City, 16), Naming.Fit(r.State, 16), "Analog") : FirstNonEmpty(Naming.Fit(o.Zone, 16), "Analog");
+                    if (o.ZoneFor != null) fm.Zone = FirstNonEmpty(Naming.Fit(o.ZoneFor(fm), 16), fm.Zone);
+                    fm.Zone = ZonePlanner.Canonical(spelling, fm.Zone);
+                    p.Repeaters.Add(fm);
+                    result.Added.Add(fm);
+                    continue;
+                }
 
                 // One callsign often runs several repeaters. The second gets prefix "KC5EZZ2" (channels "KC5EZZ2 Texas"
                 // rather than the generator's "KC5EZZ Texas 2"), and both names show the frequency.

@@ -2,26 +2,35 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace CodeplugBuilder.Core
 {
-    // RepeaterBook without the API: the user exports a search (a county, a city...) from repeaterbook.com in CHIRP
-    // format and the app reads the file. Checked against a real export (Brown County, TX, 2026-10-06):
+    // RepeaterBook without the API, through CHIRP files. Two flavours, both checked on real files (2026-10-06):
     //
+    // RepeaterBook's own "CHIRP" export (Brown County, TX):
     //   Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment
     //   1,"K5BWD",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,"Brownwood",
-    //   7,"K5BWD",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,"Brownwood",
+    // Name is the callsign, Comment the city ("Brownwood, Bangs Hill"); no county or state; rows end with an extra comma.
     //
-    // Name is the callsign, Frequency the repeater's output, Comment the city (sometimes "City, site"). No county,
-    // state or color code; rows end with an extra comma. Tones follow CHIRP: "Tone" = encode rToneFreq only,
-    // "TSQL" = encode and decode cToneFreq, "DTCS" = DtcsCode both ways, "Cross" = rToneFreq out, cToneFreq in.
+    // CHIRP's own CSV after its RepeaterBook query (all of Texas, 1,365 lines: 1,025 FM, 173 DN, 124 DMR, 43 DV):
+    //   Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,RxDtcsCode,CrossMode,Mode,
+    //   TStep,Skip,Power,Comment,URCALL,RPT1CALL,RPT2CALL,DVCODE
+    //   0,St Davids Surgical Hospital,29.640000,-,0.100000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,FM,5.00,,50W,
+    //     "WD5EMS near Round Rock, Williamson County, Texas OPEN",,,,
+    // Name is often a site or club name, not the callsign; the comment is "CALL near Town, X County, State STATUS notes"
+    // (a dozen lines leave out the callsign). No color codes, so DMR lines are left to RadioID.
+    //
+    // Frequency is the repeater's output. Tones follow CHIRP: "Tone" = encode rToneFreq only, "TSQL" = cToneFreq both
+    // ways, "DTCS" = DtcsCode both ways, "Cross" = CrossMode "TX->RX" (Tone = rToneFreq out / cToneFreq in, DTCS =
+    // DtcsCode out / RxDtcsCode in; "Tone->Tone" when the column is missing).
 
     /// <summary>One channel from a CHIRP CSV (RepeaterBook's CHIRP export or CHIRP's own).</summary>
     public sealed class ChirpChannel
     {
         public int Row { get; set; }
         public string Name { get; set; } = "";
-        /// <summary>The Comment column; in RepeaterBook exports the city.</summary>
+        /// <summary>The Comment column: the city (RepeaterBook export) or "CALL near Town, X County, State OPEN ..." (CHIRP).</summary>
         public string Comment { get; set; } = "";
         public decimal RxMHz { get; set; }
         public decimal TxMHz { get; set; }
@@ -32,15 +41,43 @@ namespace CodeplugBuilder.Core
         public string Mode { get; set; } = "FM";
         public bool IsAnalog => Mode == "FM" || Mode == "NFM";
 
-        /// <summary>The city part of the comment: "Brownwood, Bangs Hill" → "Brownwood".</summary>
+        /// <summary>From a "CALL near Town, X County, State STATUS" comment; empty otherwise.</summary>
+        public string County { get; private set; } = "";
+        public string State { get; private set; } = "";
+        public string Status { get; private set; } = "";
+        string town = "", call = "";
+
+        /// <summary>The town: from "near Town, ..." or the first part of a plain comment ("Brownwood, Bangs Hill" → "Brownwood").</summary>
         public string City
         {
             get
             {
+                if (town.Length > 0) return town;
                 string c = (Comment ?? "").Trim();
                 int comma = c.IndexOf(',');
                 return (comma > 0 ? c.Substring(0, comma) : c).Trim();
             }
+        }
+
+        /// <summary>The callsign: from the comment when it starts with one, else the Name column.</summary>
+        public string Callsign => call.Length > 0 ? call : Naming.Clean(Name, 0);
+
+        static readonly Regex Near = new Regex(
+            @"^(?:(?<call>[A-Z0-9/]{3,10})\s+)?near\s+(?<town>.+?),\s*(?<county>[^,]+?\s(?:County|Parish|Borough|Census Area|Municipality)),\s*(?<state>[^,]+?)\s+(?<status>OPEN|CLOSED|PRIVATE|RESTRICTED|OFF-AIR|TESTING)\b",
+            RegexOptions.IgnoreCase);
+        static readonly Regex CallsignLike = new Regex(@"^[A-Z]{1,2}[0-9][A-Z]{1,4}$");
+
+        /// <summary>Reads the parts of a CHIRP-style comment (called once the columns are set).</summary>
+        internal void ReadComment()
+        {
+            var m = Near.Match((Comment ?? "").Trim());
+            if (!m.Success) return;
+            town = m.Groups["town"].Value.Trim();
+            County = m.Groups["county"].Value.Trim();
+            State = m.Groups["state"].Value.Trim();
+            Status = m.Groups["status"].Value.ToUpperInvariant();
+            string c = m.Groups["call"].Value.ToUpperInvariant();
+            if (CallsignLike.IsMatch(c)) call = c;
         }
     }
 
@@ -72,8 +109,9 @@ namespace CodeplugBuilder.Core
                 else if (duplex == "off") c.RxOnly = true;
 
                 string rTone = Col("rToneFreq"), cTone = Col("cToneFreq");
-                string dcs = "D" + Col("DtcsCode").PadLeft(3, '0');
                 string pol = Col("DtcsPolarity").ToUpperInvariant();
+                string txDcs = Dcs(Col("DtcsCode"), pol.Length > 0 ? pol[0] : 'N');
+                string rxCode = Col("RxDtcsCode");
                 switch (Col("Tone").ToLowerInvariant())
                 {
                     case "tone":
@@ -84,21 +122,33 @@ namespace CodeplugBuilder.Core
                         c.ToneSquelch = true;
                         break;
                     case "dtcs":
-                        c.ToneEncode = dcs + (pol.Length > 0 && pol[0] == 'R' ? "I" : "N");
-                        c.ToneDecode = dcs + (pol.Length > 1 && pol[1] == 'R' ? "I" : "N");
+                        c.ToneEncode = txDcs;
+                        c.ToneDecode = Dcs(Col("DtcsCode"), pol.Length > 1 ? pol[1] : 'N');
                         c.ToneSquelch = true;
                         break;
                     case "cross":
-                        c.ToneEncode = Tones.Normalize(rTone);
-                        c.ToneDecode = Tones.Normalize(cTone);
+                        string cross = Col("CrossMode");
+                        if (cross.Length == 0) cross = "Tone->Tone";
+                        int arrow = cross.IndexOf("->", StringComparison.Ordinal);
+                        string tx = arrow >= 0 ? cross.Substring(0, arrow).Trim().ToLowerInvariant() : "tone";
+                        string rxm = arrow >= 0 ? cross.Substring(arrow + 2).Trim().ToLowerInvariant() : "tone";
+                        c.ToneEncode = tx == "tone" ? Tones.Normalize(rTone) : tx == "dtcs" ? txDcs : "Off";
+                        c.ToneDecode = rxm == "tone" ? Tones.Normalize(cTone)
+                                     : rxm == "dtcs" ? Dcs(rxCode.Length > 0 ? rxCode : Col("DtcsCode"), pol.Length > 1 ? pol[1] : 'N') : "Off";
                         c.ToneSquelch = c.ToneDecode != "Off";
                         break;
                 }
                 string mode = Col("Mode").ToUpperInvariant();
                 c.Mode = mode.Length == 0 ? "FM" : mode;
+                c.ReadComment();
                 list.Add(c);
             }
             return list;
+        }
+
+        static string Dcs(string code, char polarity)
+        {
+            return "D" + (code ?? "").Trim().PadLeft(3, '0') + (polarity == 'R' ? "I" : "N");
         }
 
         static bool TryMHz(string s, out decimal v)
@@ -121,16 +171,27 @@ namespace CodeplugBuilder.Core
         public const string Site = "RepeaterBook";
         public const string HomeUrl = "https://www.repeaterbook.com/";
 
-        /// <summary>The project's analog repeater on the same frequencies (the same machine, already there), or null.</summary>
+        /// <summary>
+        /// The project's analog repeater that is this machine, or null: same frequencies and either its callsign (a word of
+        /// the name or notes starting with it: "AC5KT2" for AC5KT) or the same town. Frequency pairs are reused across a
+        /// state, so frequencies alone aren't enough.
+        /// </summary>
         public static Repeater FindExisting(Project p, ChirpChannel c)
         {
-            return p.Repeaters.FirstOrDefault(r => !r.IsDigital && r.RxMHz == c.RxMHz && (r.TxMHz == c.TxMHz || c.RxOnly));
+            string call = c.Callsign;
+            bool Mentions(string text)
+            {
+                return call.Length >= 3 && (text ?? "").Split(new[] { ' ', ',', '|', '(', ')', '/' }, StringSplitOptions.RemoveEmptyEntries)
+                                                       .Any(w => w.StartsWith(call, StringComparison.OrdinalIgnoreCase));
+            }
+            return p.Repeaters.FirstOrDefault(r => !r.IsDigital && r.RxMHz == c.RxMHz && (r.TxMHz == c.TxMHz || c.RxOnly) &&
+                (Mentions(r.Name) || Mentions(r.Notes) || (c.City.Length > 0 && string.Equals(r.City, c.City, StringComparison.OrdinalIgnoreCase))));
         }
 
         /// <summary>Why a channel can't be added, or null when it can.</summary>
         public static string Problem(ChirpChannel c)
         {
-            if (!c.IsAnalog) return c.Mode + " (not FM)";
+            if (!c.IsAnalog) return c.Mode == "DMR" ? "DMR: those come from RadioID, with color codes" : c.Mode + " (not FM)";
             if (!Validator.InRadioBand(c.RxMHz) || (!c.RxOnly && !Validator.InRadioBand(c.TxMHz))) return "outside the radio's bands";
             return null;
         }
@@ -157,13 +218,14 @@ namespace CodeplugBuilder.Core
         }
 
         /// <summary>
-        /// "K5BWD Brownwood"; a callsign with several machines in the list gets the band instead ("K5BWD VHF",
+        /// "K5BWD Brownwood". A callsign with several machines in the same town gets the band instead ("K5BWD VHF",
         /// "K5BWD UHF"), the way hams usually name them.
         /// </summary>
         public static string ChannelName(ChirpChannel c, IEnumerable<ChirpChannel> all)
         {
-            string call = Naming.Clean(c.Name, 0);
-            bool several = all.Count(x => string.Equals(Naming.Clean(x.Name, 0), call, StringComparison.OrdinalIgnoreCase)) > 1;
+            string call = c.Callsign;
+            bool several = call.Length > 0 && all.Count(x => string.Equals(x.Callsign, call, StringComparison.OrdinalIgnoreCase) &&
+                                                             string.Equals(x.City, c.City, StringComparison.OrdinalIgnoreCase)) > 1;
             if (several) return Naming.Fit(call + " " + Band(c.RxMHz), 16);
             return Naming.Fit(call.Length == 0 ? c.City : c.City.Length == 0 ? call : call + " " + c.City, 16);
         }
@@ -188,28 +250,12 @@ namespace CodeplugBuilder.Core
             foreach (var c in picked)
             {
                 string problem = Problem(c);
-                if (problem != null) { skipped.Add(c.Name + " " + c.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) + " (" + problem + ")"); continue; }
+                if (problem != null) { skipped.Add(c.Callsign + " " + c.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) + " (" + problem + ")"); continue; }
                 var existing = FindExisting(p, c);
-                if (existing != null) { skipped.Add(c.Name + " " + c.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) + " (already in the project as \"" + existing.Name + "\")"); continue; }
+                if (existing != null) { skipped.Add(c.Callsign + " " + c.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) + " (already in the project as \"" + existing.Name + "\")"); continue; }
 
                 var loc = locate?.Invoke(c) ?? GeoLocation.Unknown;
-                var r = Repeater.NewAnalog(names.Claim(ChannelName(c, all)));
-                r.RxMHz = c.RxMHz;
-                r.TxMHz = c.RxOnly ? c.RxMHz : c.TxMHz;
-                r.RxOnly = c.RxOnly;
-                r.ToneEncode = c.ToneEncode;
-                r.ToneDecode = c.ToneDecode;
-                r.ToneSquelch = c.ToneSquelch;
-                r.Bandwidth = c.Mode == "NFM" ? Bandwidths.Narrow : Bandwidths.Wide;
-                if (Powers.Values.Contains(power)) r.Power = power;
-                r.City = string.IsNullOrWhiteSpace(c.City) ? null : c.City;
-                r.State = loc.State?.Name;
-                r.Country = loc.Country?.Name;
-                r.County = loc.County?.Name;
-                r.AreaCode = (loc.County ?? loc.State ?? loc.Country)?.Code;
-                r.Latitude = loc.Lat.HasValue ? Math.Round(loc.Lat.Value, 4) : (double?)null;
-                r.Longitude = loc.Lon.HasValue ? Math.Round(loc.Lon.Value, 4) : (double?)null;
-                r.Notes = Site + " (CHIRP export)" + (c.Comment.Length > 0 ? " | " + c.Comment : "");
+                var r = NewRepeater(c, names.Claim(ChannelName(c, all)), loc, power);
                 r.Zone = ZonePlanner.Canonical(spelling, Naming.Fit(zoneFor(c, loc), 16).Length > 0 ? Naming.Fit(zoneFor(c, loc), 16) : Site);
                 p.Repeaters.Add(r);
                 result.Added.Add(r);
@@ -217,6 +263,111 @@ namespace CodeplugBuilder.Core
             p.SyncZones();
             if (skipped.Count > 0) result.Notes.Add("Skipped: " + string.Join("; ", skipped) + ".");
             return result;
+        }
+
+        /// <summary>An analog repeater for a CHIRP channel (no zone yet): frequencies, tones, bandwidth, place, notes.</summary>
+        public static Repeater NewRepeater(ChirpChannel c, string name, GeoLocation loc, string power = "High")
+        {
+            loc = loc ?? GeoLocation.Unknown;
+            var r = Repeater.NewAnalog(name);
+            r.RxMHz = c.RxMHz;
+            r.TxMHz = c.RxOnly ? c.RxMHz : c.TxMHz;
+            r.RxOnly = c.RxOnly;
+            r.ToneEncode = c.ToneEncode;
+            r.ToneDecode = c.ToneDecode;
+            r.ToneSquelch = c.ToneSquelch;
+            r.Bandwidth = c.Mode == "NFM" ? Bandwidths.Narrow : Bandwidths.Wide;
+            if (Powers.Values.Contains(power)) r.Power = power;
+            r.City = string.IsNullOrWhiteSpace(c.City) ? null : c.City;
+            r.State = loc.State?.Name;
+            r.Country = loc.Country?.Name;
+            r.County = loc.County?.Name;
+            r.AreaCode = (loc.County ?? loc.State ?? loc.Country)?.Code;
+            r.Latitude = loc.Lat.HasValue ? Math.Round(loc.Lat.Value, 4) : (double?)null;
+            r.Longitude = loc.Lon.HasValue ? Math.Round(loc.Lon.Value, 4) : (double?)null;
+            r.Notes = Site + " (CHIRP export)" + (c.Comment.Length > 0 ? " | " + c.Comment : "");
+            return r;
+        }
+
+        /// <summary>
+        /// The state or province a CHIRP file is for, from its name or its folder: "Texas.csv", "TX.csv",
+        /// "rb_chirp_New_Mexico.csv", "Texas\rb_chirp_2610061815.csv". Returns the state's full name and its country,
+        /// or null when the name doesn't say.
+        /// </summary>
+        public static KeyValuePair<string, string>? StateFromName(string path)
+        {
+            string file = System.IO.Path.GetFileNameWithoutExtension(path ?? "");
+            string folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path ?? "") ?? "");
+            foreach (string part in new[] { file, folder })
+            {
+                string spaced = Regex.Replace(part ?? "", @"(?<=[a-z])(?=[A-Z])", " "); // "TexasRepeaters" → "Texas Repeaters"
+                string text = " " + Regex.Replace(spaced, @"[\s_\-\.]+", " ").Trim() + " ";
+                // Full names first, longest first ("West Virginia" before "Virginia").
+                foreach (var kv in Naming.StateCodes.Where(s => !s.Key.StartsWith("Washington DC")).OrderByDescending(s => s.Key.Length))
+                    if (text.IndexOf(" " + kv.Key + " ", StringComparison.OrdinalIgnoreCase) >= 0) return State(kv);
+                foreach (string token in text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                    if (token.Length == 2 && token == token.ToUpperInvariant())
+                        foreach (var kv in Naming.StateCodes)
+                            if (kv.Value == token && kv.Key != "Washington DC") return State(kv);
+            }
+            return null;
+        }
+
+        static readonly HashSet<string> CanadianCodes = new HashSet<string> { "BC", "NB", "NL", "NS", "PE", "NT", "AB", "MB", "ON", "QC", "SK", "YT", "NU" };
+
+        static KeyValuePair<string, string>? State(KeyValuePair<string, string> kv)
+        {
+            return new KeyValuePair<string, string>(kv.Key, CanadianCodes.Contains(kv.Value) ? "Canada" : "United States");
+        }
+
+        /// <summary>
+        /// A CHIRP file's channels as map listings (<see cref="OnlineRepeater.Analog"/> set), each placed at its town in
+        /// <paramref name="state"/>. Digital and out-of-band lines are left out.
+        /// </summary>
+        public static List<OnlineRepeater> ToListings(IEnumerable<ChirpChannel> channels, string state, string country, GeoAtlas atlas)
+        {
+            var list = new List<OnlineRepeater>();
+            foreach (var c in channels)
+            {
+                if (Problem(c) != null) continue;
+                string tone = c.ToneEncode == "Off" ? "no tone" : c.ToneSquelch && c.ToneDecode == c.ToneEncode ? "tone " + c.ToneEncode + " both ways"
+                            : c.ToneDecode == "Off" ? "tone " + c.ToneEncode : "tone " + c.ToneEncode + " / " + c.ToneDecode;
+                string st = c.State.Length > 0 ? c.State : state ?? "";
+                list.Add(new OnlineRepeater
+                {
+                    Callsign = c.Callsign.ToUpperInvariant(),
+                    City = c.City,
+                    State = st,
+                    Country = country ?? "",
+                    Network = "FM",
+                    Status = c.Status,
+                    Details = Site + ": " + c.Comment + ", " + tone,
+                    RxMHz = c.RxMHz,
+                    TxMHz = c.RxOnly ? c.RxMHz : c.TxMHz,
+                    Analog = c,
+                    Location = Place(atlas, c, st, country),
+                });
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Where a CHIRP line is: its town on the map. When the comment names the county (CHIRP's RepeaterBook query
+        /// does) that county wins: a town the map doesn't know, or one it finds in another county, is put at the
+        /// county's middle instead, so county zones still come out right.
+        /// </summary>
+        public static GeoLocation Place(GeoAtlas atlas, ChirpChannel c, string state, string country)
+        {
+            if (atlas == null) return null;
+            var loc = atlas.Locate(c.City, state, country);
+            if (c.County.Length == 0 || loc.State == null) return loc;
+            var county = atlas.FindCounty(loc.State, c.County);
+            if (county == null || loc.County == county) return loc;
+            return new GeoLocation
+            {
+                Country = loc.Country, State = loc.State, County = county,
+                Lat = county.LabelLat, Lon = county.LabelLon, Precision = LocationPrecision.State,
+            };
         }
     }
 }

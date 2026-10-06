@@ -13,6 +13,8 @@ namespace CodeplugBuilder.App
     {
         public double Lon, Lat;
         public bool Highlight;
+        /// <summary>An analog (FM) repeater: drawn green until picked.</summary>
+        public bool Analog;
         public object Tag;
     }
 
@@ -52,6 +54,7 @@ namespace CodeplugBuilder.App
         static readonly Color HoverFill = Color.FromArgb(110, 255, 196, 64);
         static readonly Color DotColor = Color.FromArgb(200, 70, 70, 70);
         static readonly Color DotHighlight = Color.FromArgb(220, 200, 40, 40);
+        static readonly Color DotAnalog = Color.FromArgb(210, 20, 140, 70);
 
         /// <summary>The user clicked an area (it's already added to or removed from <see cref="Selected"/>).</summary>
         public event EventHandler SelectionChanged;
@@ -415,6 +418,7 @@ namespace CodeplugBuilder.App
             float r = Math.Max(2.5f, Math.Min(Ui.S(5), (float)(scale / 40)));
             using (var b = new SolidBrush(DotColor))
             using (var h = new SolidBrush(DotHighlight))
+            using (var fm = new SolidBrush(DotAnalog))
             using (var ring = new Pen(Color.White, 1f))
             {
                 foreach (var d in dots.OrderBy(x => x.Highlight))
@@ -422,7 +426,7 @@ namespace CodeplugBuilder.App
                     double my = MercY(d.Lat);
                     if (d.Lon < view.Left || d.Lon > view.Right || my < view.Top || my > view.Bottom) continue;
                     var p = ToScreen(d.Lon, my);
-                    g.FillEllipse(d.Highlight ? h : b, p.X - r, p.Y - r, 2 * r, 2 * r);
+                    g.FillEllipse(d.Highlight ? h : d.Analog ? fm : b, p.X - r, p.Y - r, 2 * r, 2 * r);
                     g.DrawEllipse(ring, p.X - r, p.Y - r, 2 * r, 2 * r);
                 }
             }
