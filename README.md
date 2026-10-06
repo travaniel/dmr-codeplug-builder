@@ -48,6 +48,15 @@ settings, APRS and the digital contact database, stays as it was.
 If the file list won't import, use **Tool > Import** and load each CSV yourself, in this order:
 TalkGroups, ReceiveGroupCallList, RadioIDList, Channel, ScanList, Zone.
 
+### Writing straight to the radio (no CPS)
+
+With the programming cable connected and the BTECH CPS closed, **Radio > Write codeplug to radio...** reads the
+radio, writes this project's channels, zones, talkgroups, receive group lists, scan lists and radio ID into it, shows
+what will change, and after you confirm sends it the way the CPS does and checks it. The radio's settings stay as
+they are. What was on the radio is saved first (Documents\DMR Codeplug Builder\Radio reads), and **Radio > Restore
+codeplug from a backup...** writes any saved read back. Keep a CPS codeplug file (.rdt) as well, just in case.
+**Radio > Read codeplug from radio** opens what's on the radio as a project.
+
 ### Starting from what's in the radio
 
 In the CPS, read the radio, then **Tool > Export > Export All (Default CSV FileName)**. In this program,

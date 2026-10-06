@@ -250,7 +250,7 @@ UK 50%, Australia 37%; the rest get state/province (Canada, Germany, Australia) 
 "England"/"Scotland", which aren't admin-1 areas). A bigger GeoNames file (cities5000/cities1000) would place
 more small towns.
 
-## 4d. Talking to the radio directly (in progress, not in the release)
+## 4d. Talking to the radio directly (read, settings and whole-codeplug writes work; see "Writing a whole codeplug")
 
 Goal (user, 2026-10-06): a full CPS that reads and writes the radio and exposes the advanced settings. Decided:
 **our own code** (qdmr and dmrconfig are GPL; we read their docs to learn the format but copy no code), read
@@ -343,12 +343,44 @@ verifies all blocks in a new session. Test write Zone A name color Green → Yel
 the edited image, the CSVs still equal the CPS export. Guards: `RadioWriter.Enabled` is false by default; only
 `--radio-write ... --confirm` turns it on (the settings window's button is still disabled). Dev switches:
 `--radio-set radio.img out.img Key=Value...`, `--radio-write-plan radio.img edited.img plan.txt` (dry run),
-`--radio-write radio.img edited.img --confirm`. Not done yet: channel/zone/contact edits through the writer (new
-elements change the write set; compare a second capture of a CPS write that adds a channel), writing a project's channels/zones/contacts straight to the radio.
+`--radio-write radio.img edited.img --confirm`. Channel/zone/contact writes: done, see "Writing a whole codeplug" below
+(checked against a CPS-written radio instead of a second USB capture).
 **In the app (2026-10-06):** Radio > Read codeplug from radio (MainForm.ImportFromRadio: RadioProgressDialog,
 backup folder RadioPort.NewReadFolder, then the CPS import path) and Radio > Radio settings (RadioSettingsForm with
 Write to radio: lists changed settings, flags unverified ones, saves before.img/written.img/write.log per write,
 turns RadioWriter.Enabled on only for that write). The exe in the app folder has it.
+
+**Writing a whole codeplug (2026-10-06, verified on the user's radio).** `RadioEncoder.Encode(read, tables)` writes
+the six CPS tables into a full read: each table given replaces its list, a table not given keeps the radio's (a kept
+scan list loses members that are gone and goes when none are left, like the CPS); every record starts as a copy of one
+the radio holds (same slot if same kind, else one of its kind, else a VFO), so undecoded bytes keep the radio's values;
+old records are blanked to FF first; contacts get slot = list position, order list = slots in order. Errors (unknown
+talkgroup, radio ID, bad numbers) block the write. `RadioWriter` now allows blocks the read never covered, but only
+inside records the edited image's own bitmaps say exist (new channels past the old last one); anything else is still
+refused. Verification, all against CPS 1.22e:
+- A test codeplug (`CPSnow\radiotest`: wizard, 99 channels, 19 talkgroups, 18 RX lists, 3 zones, 3 scan lists) was
+  imported and written **by the CPS**, then read: the encoder's image of the same CSVs on the earlier read equals it in
+  **all 5,990 blocks of the write set** (same blocks, order and data). Getting there found these CPS rules (all in the
+  encoder): tone fields not in use (CTCSS index, DCS) are 0; a simplex VFO holds its TX frequency at +4 (not an
+  offset); unused zone slots have A = 0, B = 1 in the A/B lists; the block with the end of the last contact is padded
+  with 00; scan list bytes 0x84-0xB5 = per member, the index of the zone the member is in (first zone holding it), FF
+  after the last; and after an import the CPS zeroes 0x24C1406 and 0x24C140E (u16 each, most likely the analog and
+  digital alarm revert channels) and general settings byte 0x1F (held zone 4), even though they were still valid.
+- Contact ID map at 0x4800000 (written by the CPS, read by nobody here before): 8 bytes per contact, u32 key + u32
+  slot, sorted by key; key = the ID's BCD digits as a number, shifted left 1, + 1 for a group call (93 → 0x127,
+  private 310997 → 0x62132E); FF after.
+- **First app write of a codeplug:** the user's own codeplug (11:46 read) encoded onto the CPS-written test codeplug
+  and written with `--radio-write`: 5,044 blocks (same addresses and order as the recorded CPS write of it), verified
+  after reconnecting, and a fresh read decodes to the user's six tables byte for byte (`RadioWriteTest\afterrestore`).
+- `--radio-encode radio.img (project.cpb | csvFolder) outFolder [--merge-radio]` does all of this without the radio:
+  edited.img, before/after CSVs, plan.txt, and a check that decoding gives back what went in.
+**In the app:** *Radio > Write codeplug to radio* (MainForm.WriteProjectToRadio): validate, read the radio (saved as
+before.img + CSVs in Documents\DMR Codeplug Builder\Radio reads\<date> write), generate (with *Keep channels made in the
+CPS* on, the radio read is the merge base), encode, show old/new counts, new and removed channels and notes, confirm
+twice, write, verify, keep channel numbers like Generate. *Radio > Restore codeplug from a backup* writes the codeplug
+of any saved .img back the same way (settings stay as on the radio). Not covered: settings other than the three above
+are never changed by a codeplug write; a member of a scan list in no zone gets FF (a guess); the encoder only knows the
+CPS 1.22e / firmware 1.21 layout.
 
 **Protocol** (USB CDC, VID 28E9 PID 018A, any baud): `PROGRAM` → `QX 06`; `02` → `'I' model[7] bands
 version[6] 06` (the PRO says `D6X2UV2`, `V100`); read `'R' addr(4 BE) 10` → `'W' addr 10 data[16] sum 06`,
@@ -364,7 +396,8 @@ from qdmr's D868UV layout, which the PRO keeps):
 | Zones | members 0x1000000 + i·0x200 (250 × u16, FFFF = none); names 0x2540000 + i·0x20; A 0x2500100 + i·2, B 0x2500300 + i·2 (position in the zone) | bitmap 0x24C1300, hidden 0x24C1360 |
 | Contacts | 0x2680000 + (i/1000)·0x40000 + (i%1000)·0x64 | bitmap 0x2640000 **inverted** (clear = used); order list 0x2600000 (u32 slots) |
 | RX group lists | 0x2980000 + i·0x200, 0x120 bytes | 64 × u32 contact slot + name at 0x100; bitmap 0x25C0B10 |
-| Scan lists | 0x1080000 + (i/16)·0x40000 + (i%16)·0x200, 0x90 bytes | bitmap 0x24C1340 |
+| Scan lists | 0x1080000 + (i/16)·0x40000 + (i%16)·0x200, 0x90 bytes (CPS writes 0xC0) | 0 mode, 1 priority select, 2/4 priority ch (FFFF off, 0 current, else slot+1), 6/8/A/C times ×10, E revert, F name, 20 50 × u16 member slot, 84-B5 member's zone index; bitmap 0x24C1340 |
+| Contact ID map | 0x4800000, 8 × (contacts + 1) | u32 key (BCD ID << 1, +1 group) + u32 slot, sorted by key |
 | Radio IDs | 0x2580000 + i·0x20 | BCD ID + name at 5; bitmap 0x24C1320 |
 | Settings | general 0x2500000 (0xE0), boot text 0x2500600, APRS 0x2501000, extended 0x2501400 | decoded in step 2 |
 

@@ -135,6 +135,18 @@ namespace CodeplugBuilder.App
                     log.Add("Done in " + sw.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s");
                     code = 0;
                 }
+                else if (cmd == "--radio-encode" && args.Length >= 4)
+                {
+                    // --radio-encode radio.img (project.cpb | csvFolder) outFolder [--merge-radio]
+                    //   writes the codeplug into the read: outFolder\edited.img, the radio's own CSVs (outFolder\before),
+                    //   the edited image decoded again (outFolder\after), plan.txt (what a write would send). No radio needed.
+                    string folder = args[3];
+                    Directory.CreateDirectory(folder);
+                    logPath = Path.Combine(folder, "encode.log");
+                    var original = MemoryImage.Load(args[1]);
+                    var result = Encode(original, args[2], folder, args.Contains("--merge-radio"), log);
+                    code = result.Errors.Count == 0 ? 0 : 3;
+                }
                 else if (cmd == "--radio-compare" && args.Length >= 3)
                 {
                     logPath = Path.Combine(args[2], "compare.log");
@@ -184,6 +196,66 @@ namespace CodeplugBuilder.App
             log.Add(cp.Channels.Count + " channels, " + cp.Zones.Count + " zones, " + cp.Contacts.Count + " contacts, " + cp.GroupLists.Count + " RX group lists, " + cp.ScanLists.Count + " scan lists, " + cp.RadioIds.Count + " radio IDs, " + cp.DtmfContacts.Count + " analog contacts");
             log.Add("Boot text: \"" + cp.BootLine1 + "\" / \"" + cp.BootLine2 + "\"");
             foreach (var w in cp.Warnings) log.Add("Warning: " + w);
+        }
+
+        /// <summary>
+        /// Encodes a project (generated like Generate does) or a folder of CPS CSVs into <paramref name="original"/>,
+        /// decodes the result again and compares it with what went in. Saves edited.img and plan.txt in <paramref name="folder"/>.
+        /// </summary>
+        public static EncodeResult Encode(MemoryImage original, string source, string folder, bool mergeRadio, List<string> log)
+        {
+            var format = CpsFormat.BuiltIn();
+            string before = Path.Combine(folder, "before");
+            RadioCsv.WriteTo(RadioCsv.ToTables(RadioCodeplug.Decode(original), format), before);
+            log.Add("Radio read: " + original.Model + " " + original.Version + ", read " + original.ReadAtUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) + " (its CSVs: " + before + ")");
+
+            var tables = new Dictionary<string, CsvTable>(StringComparer.OrdinalIgnoreCase);
+            if (File.Exists(source) && source.EndsWith(".cpb", StringComparison.OrdinalIgnoreCase))
+            {
+                var p = ProjectStore.Load(source);
+                var g = CodeplugGenerator.Generate(p, format, mergeRadio ? CpsExport.Load(before) : null);
+                foreach (var f in g.Files()) tables[f.Key] = f.Value;
+                log.Add("Project " + source + ": " + g.Channels.Rows.Count + " channel rows" + (mergeRadio ? ", merged with what's on the radio" : ""));
+                log.AddRange(g.Notes.Select(n => "Note: " + n));
+            }
+            else
+            {
+                foreach (string f in CpsFormat.Files)
+                {
+                    string path = CpsFormat.FindFile(source, f);
+                    if (path != null) tables[f] = CsvTable.Load(path);
+                }
+                log.Add("CSV folder " + source + ": " + string.Join(", ", tables.Keys));
+            }
+
+            var result = RadioEncoder.Encode(original, tables, format);
+            log.AddRange(result.Notes.Select(n => "Note: " + n));
+            log.AddRange(result.Errors.Select(e => "Error: " + e));
+            string imgPath = Path.Combine(folder, "edited.img");
+            result.Image.Save(imgPath);
+            log.Add("Saved " + imgPath);
+
+            // Decode what was encoded and compare with what went in, table by table.
+            var cp = RadioCodeplug.Decode(result.Image);
+            log.AddRange(cp.Warnings.Select(w => "Decode warning: " + w));
+            var back = RadioCsv.ToTables(cp, format);
+            string after = Path.Combine(folder, "after");
+            RadioCsv.WriteTo(back, after);
+            int diffs = 0;
+            foreach (var kv in result.Tables)
+            {
+                var d = RadioCsv.CompareTables(kv.Key, kv.Value, back[kv.Key])
+                    .Where(x => RadioCsv.DecodedChannelColumns.Any(c => x.Contains("[" + c + "]")) || !x.StartsWith(CpsFormat.ChannelFile, StringComparison.OrdinalIgnoreCase)).ToList();
+                diffs += d.Count;
+                log.AddRange(d.Select(x => "Differs: " + x));
+            }
+            log.Add(diffs == 0 ? "Decoding the edited image gives back every table that went in." : diffs + " differences between what went in and the edited image decoded again.");
+
+            var blocks = RadioWriter.BlocksToWrite(original, result.Image);
+            File.WriteAllLines(Path.Combine(folder, "plan.txt"), blocks.Select(b => b.ToString("X7") + " " + BitConverter.ToString(result.Image.Get(b, 16))));
+            log.Add("A write would send " + blocks.Count + " blocks, " + RadioWriter.ChangedBlocks(original, result.Image).Count + " of them changed (plan.txt).");
+            log.Add(cp.Channels.Count + " channels, " + cp.Zones.Count + " zones, " + cp.Contacts.Count + " talkgroups, " + cp.GroupLists.Count + " RX group lists, " + cp.ScanLists.Count + " scan lists, " + cp.RadioIds.Count + " radio IDs");
+            return result;
         }
 
         static string Option(string[] args, string name)

@@ -59,6 +59,9 @@ namespace CodeplugBuilder.App
             file.DropDownItems.Add(Item("E&xit", Keys.None, (s, e) => Close()));
             var radio = new ToolStripMenuItem("&Radio");
             radio.DropDownItems.Add(Item("&Read codeplug from radio...", Keys.Control | Keys.R, (s, e) => ImportFromRadio()));
+            radio.DropDownItems.Add(ProjectItem(Item("&Write codeplug to radio...", Keys.None, (s, e) => WriteProjectToRadio())));
+            radio.DropDownItems.Add(Item("Restore codeplug from a &backup...", Keys.None, (s, e) => RestoreRadioBackup()));
+            radio.DropDownItems.Add(new ToolStripSeparator());
             radio.DropDownItems.Add(Item("Radio &settings (read and write)...", Keys.None, (s, e) => { using (var f = new RadioSettingsForm(null)) f.ShowDialog(this); }));
             var help = new ToolStripMenuItem("&Help");
             help.DropDownItems.Add(Item("&Loading the files into the CPS", Keys.F1, (s, e) => ShowHowTo()));
@@ -474,6 +477,188 @@ namespace CodeplugBuilder.App
             catch (Exception ex) { Ui.Error(this, "Couldn't decode what was read:\n\n" + ex.Message); return; }
             ImportFolder(folder, "read from the radio", true);
         }
+
+        /// <summary>
+        /// Radio > Write codeplug to radio: reads the radio (kept as a backup), generates this project, writes its
+        /// channels, zones, talkgroups, RX and scan lists and radio ID into that read (RadioEncoder), shows what changes,
+        /// then sends it the way the BTECH CPS does and checks it. Settings on the radio stay as they are.
+        /// </summary>
+        void WriteProjectToRadio()
+        {
+            if (!InWorkspace) return;
+            Validate(); // commits any cell being edited
+            var p = session.Project;
+            p.SyncZones();
+            var issues = Validator.Validate(p, session.Format);
+            var errors = issues.Where(i => i.Severity == Severity.Error).Select(i => i.Message).ToList();
+            if (errors.Count > 0)
+            {
+                using (var d = new IssuesDialog("Fix these before writing to the radio:", errors, issues.Where(i => i.Severity == Severity.Warning).Select(i => i.Message), false))
+                    d.ShowDialog(this);
+                return;
+            }
+
+            GeneratedCodeplug g = null;
+            WriteCodeplugToRadio("this project", (original, before) =>
+            {
+                // "Keep channels made in the CPS": what's on the radio is the base to keep them from.
+                g = CodeplugGenerator.Generate(p, session.Format, p.Options.KeepCpsChannels ? CpsExport.Load(before) : null);
+                if (g.ChannelList.Count + g.KeptChannels.Count > p.Options.MaxChannels)
+                    throw new InvalidOperationException("This codeplug has " + (g.ChannelList.Count + g.KeptChannels.Count) + " channels; the radio holds " + p.Options.MaxChannels + ".");
+                var notes = issues.Where(i => i.Severity == Severity.Warning).Select(i => i.Message).Concat(g.Notes).ToList();
+                return new KeyValuePair<Dictionary<string, CsvTable>, List<string>>(g.Files().ToDictionary(f => f.Key, f => f.Value), notes);
+            }, () =>
+            {
+                // The radio now has these channel numbers: keep them, as after Generate.
+                int numbered = CodeplugGenerator.KeepChannelNumbers(g);
+                bool remembered = CodeplugGenerator.RememberOutput(p, g);
+                if (numbered > 0 || remembered) session.MarkDirty();
+                return numbered > 0 ? "\n\n" + Plural(numbered, "channel") + " got a channel number that will now stay the same; save the project (File > Save) to keep it." : "";
+            });
+        }
+
+        /// <summary>Radio > Restore codeplug from a backup: writes the codeplug of a saved read (radio.img / before.img) back.</summary>
+        void RestoreRadioBackup()
+        {
+            string path;
+            using (var dlg = new OpenFileDialog
+            {
+                Title = "Pick a saved read of the radio (radio.img, or before.img from a write)",
+                Filter = "Radio memory image (*.img)|*.img",
+                InitialDirectory = Directory.Exists(RadioPort.ReadsFolder) ? RadioPort.ReadsFolder : AppSettings.DocumentsFolder,
+            })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                path = dlg.FileName;
+            }
+            MemoryImage backup;
+            try { backup = MemoryImage.Load(path); }
+            catch (Exception ex) { Ui.Error(this, "Couldn't open that image:\n\n" + ex.Message); return; }
+            string when = backup.ReadAtUtc.ToLocalTime().ToString("d MMM yyyy HH:mm", CultureInfo.InvariantCulture);
+            WriteCodeplugToRadio("the backup read " + when, (original, before) =>
+            {
+                var cp = RadioCodeplug.Decode(backup);
+                var notes = cp.Warnings.ToList();
+                notes.Insert(0, "Settings stay as they are on the radio now; only the channels, zones, talkgroups, RX and scan lists and radio IDs come from the backup.");
+                return new KeyValuePair<Dictionary<string, CsvTable>, List<string>>(RadioCsv.ToTables(cp, CpsFormat.BuiltIn()), notes);
+            }, () => "");
+        }
+
+        /// <summary>
+        /// Shared by Write and Restore: read the radio, build the tables (<paramref name="build"/> gets the read and the
+        /// folder with its CSVs), encode, review, write, verify. <paramref name="after"/> runs after a good write and
+        /// returns extra text for the closing message.
+        /// </summary>
+        void WriteCodeplugToRadio(string what, Func<MemoryImage, string, KeyValuePair<Dictionary<string, CsvTable>, List<string>>> build, Func<string> after)
+        {
+            // 1. What's on the radio now: the base to write into, and the backup.
+            string folder = RadioPort.NewReadFolder(" write");
+            MemoryImage original;
+            try { original = RadioProgressDialog.Run(this, "Reading the radio", pr => RadioPort.Read(RadioPort.Choose(null, null), pr)); }
+            catch (Exception ex) { Ui.Error(this, "Reading the radio failed:\n\n" + ex.Message); return; }
+            string before = Path.Combine(folder, "before");
+            try
+            {
+                Directory.CreateDirectory(before);
+                original.Save(Path.Combine(folder, "before.img"));
+                RadioCsv.WriteTo(RadioCsv.ToTables(RadioCodeplug.Decode(original), CpsFormat.BuiltIn()), before);
+            }
+            catch (Exception ex) { Ui.Error(this, "Couldn't save or decode what was read:\n\n" + ex.Message); return; }
+
+            // 2. The codeplug, written into that read.
+            Dictionary<string, CsvTable> tables;
+            List<string> notes;
+            EncodeResult enc;
+            int changed;
+            try
+            {
+                var built = build(original, before);
+                tables = built.Key;
+                notes = built.Value;
+                enc = RadioEncoder.Encode(original, tables, session.Format);
+                if (enc.Errors.Count == 0)
+                {
+                    RadioWriter.BlocksToWrite(original, enc.Image); // refuses an image that doesn't hold everything a write sends
+                }
+                changed = enc.Errors.Count == 0 ? RadioWriter.ChangedBlocks(original, enc.Image).Count : 0;
+            }
+            catch (Exception ex) { Ui.Error(this, "Couldn't prepare the write:\n\n" + ex.Message + "\n\nNothing was written. What was read is in " + folder + "."); return; }
+            if (enc.Errors.Count > 0)
+            {
+                using (var d = new IssuesDialog("This can't be written to the radio. Nothing was written.", enc.Errors, notes.Concat(enc.Notes), false))
+                    d.ShowDialog(this);
+                return;
+            }
+            if (changed == 0)
+            {
+                Ui.Info(this, "The radio already holds " + what + ". Nothing to write.");
+                return;
+            }
+
+            // 3. Show what changes, then ask.
+            var now = RadioCodeplug.Decode(original);
+            var next = RadioCodeplug.Decode(enc.Image);
+            var oldNames = new HashSet<string>(now.Channels.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+            var newNames = new HashSet<string>(next.Channels.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+            var lines = new List<string>();
+            var added = next.Channels.Where(c => !oldNames.Contains(c.Name)).Select(c => c.Name).ToList();
+            var removed = now.Channels.Where(c => !newNames.Contains(c.Name)).Select(c => c.Name).ToList();
+            if (added.Count > 0) lines.Add("New channels (" + added.Count + "): " + Shorten(added));
+            if (removed.Count > 0) lines.Add("Channels taken off the radio (" + removed.Count + "): " + Shorten(removed));
+            lines.AddRange(notes.Concat(enc.Notes).Distinct());
+            string head = "Write " + what + " to the radio?\n\n" +
+                          "On the radio now:  " + Counts(now) + "\n" +
+                          "After writing:       " + Counts(next) + "\n\n" +
+                          "This replaces the channels, zones, talkgroups, RX group lists, scan lists and radio IDs on the radio. Its settings stay as they are.";
+            using (var d = new IssuesDialog(head, new string[0], lines, true, "Write to radio"))
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+            string text = "Ready to write.\n\n" +
+                          "  - Close the BTECH CPS if it's open.\n" +
+                          "  - Don't touch the radio or unplug the cable until this is done (about half a minute; the radio restarts).\n\n" +
+                          "What's on the radio now was saved in:\n" + folder + "\n" +
+                          "Radio > Restore codeplug from a backup puts it back (pick before.img there). A CPS codeplug file (.rdt) is a good second backup.";
+            if (MessageBox.Show(this, text, "Write to radio", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+
+            // 4. Write and check.
+            try
+            {
+                enc.Image.Save(Path.Combine(folder, "written.img"));
+                RadioCsv.WriteTo(tables.ToDictionary(kv => kv.Key, kv => kv.Value), Path.Combine(folder, "written"));
+            }
+            catch (Exception ex) { Ui.Error(this, "Couldn't save the backup of what's being written:\n\n" + ex.Message + "\n\nNothing was written."); return; }
+            WriteResult result;
+            RadioWriter.Enabled = true;
+            try
+            {
+                result = RadioProgressDialog.Run(this, "Writing to the radio", pr => RadioPort.Write(RadioPort.Choose(null, null), original, enc.Image, pr),
+                    "Writing to the radio. Don't touch the radio or unplug the cable until this window closes.");
+            }
+            catch (Exception ex)
+            {
+                try { File.WriteAllText(Path.Combine(folder, "error.txt"), ex.ToString()); } catch { }
+                bool wrote = ex.Message.Contains("after reconnecting") || ex.Message.Contains("couldn't reconnect");
+                Ui.Error(this, (wrote
+                    ? "The radio was written, but checking it afterwards failed:\n\n" + ex.Message + "\n\nUse Radio > Read codeplug from radio to see what it holds now."
+                    : "Writing failed:\n\n" + ex.Message) +
+                    "\n\nTo put the old codeplug back: Radio > Restore codeplug from a backup, and pick before.img in " + folder + ". If the radio misbehaves, write a saved codeplug with the BTECH CPS.");
+                return;
+            }
+            finally
+            {
+                RadioWriter.Enabled = false;
+            }
+            try { File.WriteAllLines(Path.Combine(folder, "write.log"), result.Log.Concat(lines.Select(l => "Note: " + l))); } catch { }
+            string extra = after();
+            Ui.Info(this, "Done: " + Counts(next) + " written and checked on the radio." + extra +
+                          "\n\nWhat was on the radio before, and what was written, are saved in:\n" + folder, "Write to radio");
+        }
+
+        static string Counts(RadioCodeplug cp) =>
+            Plural(cp.Channels.Count, "channel") + ", " + Plural(cp.Zones.Count, "zone") + ", " + Plural(cp.Contacts.Count, "talkgroup") + ", " +
+            Plural(cp.GroupLists.Count, "RX list") + ", " + Plural(cp.ScanLists.Count, "scan list");
+
+        static string Shorten(List<string> names) =>
+            string.Join(", ", names.Take(12)) + (names.Count > 12 ? " and " + (names.Count - 12) + " more" : "");
 
         static string Plural(int n, string word)
         {

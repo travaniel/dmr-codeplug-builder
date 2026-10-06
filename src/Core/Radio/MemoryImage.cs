@@ -85,6 +85,13 @@ namespace CodeplugBuilder.Core.Radio
             }
         }
 
+        public MemoryImage Clone()
+        {
+            var c = new MemoryImage { Model = Model, Version = Version, Bands = Bands, ReadAtUtc = ReadAtUtc };
+            foreach (var kv in blocks) c.blocks[kv.Key] = (byte[])kv.Value.Clone();
+            return c;
+        }
+
         public byte U8(uint addr) => Get(addr, 1)[0];
 
         /// <summary>Bit <paramref name="index"/> of a bitmap at <paramref name="addr"/>, least significant bit first.</summary>

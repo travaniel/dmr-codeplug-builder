@@ -509,6 +509,129 @@ namespace CodeplugBuilder.Tests
         }
     }
 
+    static class RadioEncoderTests
+    {
+        /// <summary>A simulated radio holding <paramref name="p"/>'s generated codeplug, and a full read of it.</summary>
+        static (FakeRadio radio, MemoryImage read) RadioWith(Project p)
+        {
+            RadioWriter.Enabled = true; // the simulated radio has no sectors
+            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            string dir = Path.Combine(Path.GetTempPath(), "cpb-radio-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                g.WriteTo(dir);
+                var radio = new FakeRadio(FakeCodeplug.FromExport(dir));
+                return (radio, RadioReader.Read(new AnytoneLink(radio, radio.DiscardInput)));
+            }
+            finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+        }
+
+        /// <summary>Differences in the columns the radio holds (the rest of Channel.CSV comes from the template).</summary>
+        static List<string> Diffs(IEnumerable<KeyValuePair<string, CsvTable>> expected, Dictionary<string, CsvTable> actual) =>
+            expected.SelectMany(kv => RadioCsv.CompareTables(kv.Key, kv.Value, actual[kv.Key]))
+                    .Where(d => !d.StartsWith(CpsFormat.ChannelFile) || RadioCsv.DecodedChannelColumns.Any(c => d.Contains("[" + c + "]"))).ToList();
+
+        static Dictionary<string, CsvTable> Decode(MemoryImage img) => RadioCsv.ToTables(RadioCodeplug.Decode(img), CpsFormat.BuiltIn());
+
+        [Test]
+        static void ReencodingWhatTheRadioHoldsGivesTheSameCodeplug()
+        {
+            var (_, read) = RadioWith(Fixtures.Sample());
+            var tables = Decode(read);
+            var enc = RadioEncoder.Encode(read, tables);
+            Assert.Equal(0, enc.Errors.Count, "errors: " + string.Join("; ", enc.Errors));
+            var diffs = Diffs(tables, Decode(enc.Image));
+            Assert.Equal(0, diffs.Count, string.Join("\n", diffs));
+        }
+
+        [Test]
+        static void WritesANewCodeplugTheWayTheCpsDoes()
+        {
+            var (radio, read) = RadioWith(Fixtures.Sample());
+            var p = Fixtures.Sample(30);
+            p.Talkgroups.Add(new Talkgroup("Texas", 3148));
+            p.Repeaters[0].Talkgroups.Add(new RepeaterTalkgroup(3148, 1));
+            p.Options.ScanListPerZone = true;
+            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            var enc = RadioEncoder.Encode(read, g.Files().ToDictionary(f => f.Key, f => f.Value));
+            Assert.Equal(0, enc.Errors.Count, "errors: " + string.Join("; ", enc.Errors));
+            var diffs = Diffs(g.Files(), Decode(enc.Image));
+            Assert.Equal(0, diffs.Count, string.Join("\n", diffs));
+            var img = enc.Image;
+
+            // Contact ID map: (BCD ID << 1 | group) → slot, sorted by key.
+            var tg = g.TalkGroups;
+            var keys = new List<uint>();
+            for (int i = 0; i < tg.Rows.Count; i++)
+            {
+                uint key = BitConverter.ToUInt32(img.Get(Dmr6x2Pro.ContactMap + (uint)(8 * i), 4), 0);
+                int slot = (int)BitConverter.ToUInt32(img.Get(Dmr6x2Pro.ContactMap + (uint)(8 * i) + 4, 4), 0);
+                var row = tg.Rows[slot];
+                uint bcd = Convert.ToUInt32(tg.Get(row, "Radio ID"), 16); // "3148" read as hex is its BCD
+                Assert.Equal(bcd << 1 | (tg.Get(row, "Call Type") == CallTypes.Group ? 1u : 0u), key, "map key for " + tg.Get(row, "Name"));
+                keys.Add(key);
+            }
+            Assert.True(keys.SequenceEqual(keys.OrderBy(k => k)), "map sorted by key");
+
+            // Scan list tail: one byte per member with its zone's index, FF after the last member.
+            var cp = RadioCodeplug.Decode(img);
+            var first = cp.ScanLists[0];
+            int members = first.Members().Count();
+            byte[] raw = img.Get(Dmr6x2Pro.ScanListAddress(first.Index), 0xC0);
+            int zoneIndex = cp.Zones.First(z => z.Members.Contains(first.Members().First())).Index;
+            Assert.Equal((byte)zoneIndex, raw[0x84], "first member's zone");
+            if (members < 50) Assert.Equal((byte)0xFF, raw[0x84 + members], "FF after the last member");
+
+            // Zone slots not in use: A 0, B 1. Tone fields not in use: 0.
+            Assert.Equal(0, img.Get(Dmr6x2Pro.ZoneA + 2 * 249, 2)[0], "unused zone A");
+            Assert.Equal(1, img.Get(Dmr6x2Pro.ZoneB + 2 * 249, 2)[0], "unused zone B");
+            var ch = cp.Channels.First(c => c.TxSignaling == 0 && c.RxSignaling == 0);
+            Assert.Equal(0, ch.TxDcs + ch.RxDcs + ch.TxCtcssIndex + ch.RxCtcssIndex, "unused tone fields");
+
+            // Through the simulated radio: new channels land where nothing was read, which the writer allows.
+            RadioWriter.Write(new AnytoneLink(radio, radio.DiscardInput), read, img);
+            var again = RadioReader.Read(new AnytoneLink(radio, radio.DiscardInput));
+            diffs = Diffs(g.Files(), Decode(again));
+            Assert.Equal(0, diffs.Count, "after the write: " + string.Join("\n", diffs));
+        }
+
+        [Test]
+        static void AScanListKeptFromTheRadioLosesChannelsThatAreGone()
+        {
+            var p = Fixtures.Sample(3);
+            var (_, plain) = RadioWith(p);
+            // FakeCodeplug has no scan lists: put the generated ones in with the encoder.
+            p.Options.ScanListPerZone = true;
+            var read = RadioEncoder.Encode(plain, CodeplugGenerator.Generate(p, CpsFormat.BuiltIn()).Files().ToDictionary(f => f.Key, f => f.Value)).Image;
+            var tables = Decode(read);
+            int lists = tables[CpsFormat.ScanListFile].Rows.Count;
+            Assert.True(lists >= 2, "the radio has scan lists");
+
+            // Take every channel of zone "Metro" off; the scan list table isn't given.
+            var metro = RadioCodeplug.Decode(read).Zones.First(z => z.Name == "Metro");
+            var gone = new HashSet<string>(metro.Members.Select(m => RadioCodeplug.Decode(read).ChannelAt(m).Name));
+            var ch = tables[CpsFormat.ChannelFile];
+            ch.Rows.RemoveAll(r => gone.Contains(ch.Get(r, "Channel Name")));
+            tables.Remove(CpsFormat.ScanListFile);
+            var enc = RadioEncoder.Encode(read, tables);
+            Assert.Equal(0, enc.Errors.Count, "errors: " + string.Join("; ", enc.Errors));
+            var after = RadioCodeplug.Decode(enc.Image);
+            Assert.Equal(lists - 1, after.ScanLists.Count, "the Metro list is gone");
+            Assert.True(after.ScanLists.All(s => s.Members().All(m => after.ChannelAt(m) != null)), "no member points at a missing channel");
+        }
+
+        [Test]
+        static void RefusesWhatCantBeWritten()
+        {
+            var (_, read) = RadioWith(Fixtures.Sample());
+            var tables = Decode(read);
+            var ch = tables[CpsFormat.ChannelFile];
+            ch.Set(ch.Rows[0], "Nobody", "Contact");
+            var enc = RadioEncoder.Encode(read, tables);
+            Assert.True(enc.Errors.Any(e => e.Contains("Nobody")), "unknown talkgroup is an error");
+        }
+    }
+
     static class RadioTests
     {
         [Test]

@@ -25,13 +25,22 @@ namespace CodeplugBuilder.Core.Radio
         public static List<uint> ChangedBlocks(MemoryImage original, MemoryImage edited)
         {
             var result = new List<uint>();
+            HashSet<uint> elements = null;
             foreach (var run in edited.Runs())
             {
                 for (int i = 0; i < run.Value.Length; i += MemoryImage.BlockSize)
                 {
                     uint addr = run.Key + (uint)i;
                     if (!original.HasBlock(addr))
-                        throw new InvalidOperationException("The edited image has data at 0x" + addr.ToString("X7") + " that was never read from the radio; refusing to write it.");
+                    {
+                        // A new channel, zone, contact... (RadioEncoder) lands where nothing was read. Allowed only inside
+                        // the records the edited image's own bitmaps say exist; anything else is refused.
+                        elements = elements ?? ElementBlocks(edited);
+                        if (!elements.Contains(addr))
+                            throw new InvalidOperationException("The edited image has data at 0x" + addr.ToString("X7") + " that was never read from the radio; refusing to write it.");
+                        result.Add(addr);
+                        continue;
+                    }
                     byte[] a = original.Get(addr, MemoryImage.BlockSize);
                     for (int j = 0; j < MemoryImage.BlockSize; j++)
                         if (a[j] != run.Value[i + j]) { result.Add(addr); break; }
@@ -49,11 +58,21 @@ namespace CodeplugBuilder.Core.Radio
         {
             ChangedBlocks(original, edited); // refuses data that was never read
             var blocks = Dmr6x2Pro.WriteSet(edited);
-            var missing = blocks.Where(b => !edited.HasBlock(b) || !original.HasBlock(b)).ToList();
+            var elements = ElementBlocks(edited);
+            var missing = blocks.Where(b => !edited.HasBlock(b) || (!original.HasBlock(b) && !elements.Contains(b))).ToList();
             if (missing.Count > 0)
                 throw new InvalidOperationException("The image doesn't hold everything a write must send (" + missing.Count + " blocks, first 0x" + missing[0].ToString("X7")
                     + "). Read the radio again with this version of the program.");
             return blocks;
+        }
+
+        static HashSet<uint> ElementBlocks(MemoryImage img)
+        {
+            var set = new HashSet<uint>();
+            foreach (var r in Dmr6x2Pro.ElementRanges(img))
+                for (uint a = r.Address; a < r.Address + (uint)r.Length; a += MemoryImage.BlockSize)
+                    set.Add(a);
+            return set;
         }
 
         /// <summary>Reads <paramref name="blocks"/> in a new session; returns the ones that don't hold <paramref name="edited"/>'s data.</summary>
@@ -105,11 +124,11 @@ namespace CodeplugBuilder.Core.Radio
                     progress?.Report(new ReadProgress { Done = done, Total = total, What = what });
                 }
 
-                // 1. The radio must still hold exactly what was read.
+                // 1. The radio must still hold exactly what was read (blocks of new records weren't read: nothing to compare).
                 foreach (uint b in blocks)
                 {
                     cancel.ThrowIfCancellationRequested();
-                    if (!Same(link.ReadBlock(b), original.Get(b, MemoryImage.BlockSize)))
+                    if (original.HasBlock(b) && !Same(link.ReadBlock(b), original.Get(b, MemoryImage.BlockSize)))
                         throw new RadioProtocolException("The radio's memory at 0x" + b.ToString("X7") + " changed since it was read (programmed with the CPS or changed on the radio?). Nothing was written. Read the radio again and redo the changes.");
                     Step("checking");
                 }
