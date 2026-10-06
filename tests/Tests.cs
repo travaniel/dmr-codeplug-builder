@@ -488,12 +488,12 @@ namespace CodeplugBuilder.Tests
             try
             {
                 var written = g.WriteTo(dir);
-                Assert.Equal(6, written.Count, "5 CSVs + LST");
+                Assert.Equal(7, written.Count, "6 CSVs (scan lists on by default) + LST");
                 byte[] bytes = File.ReadAllBytes(Path.Combine(dir, "Channel.CSV"));
                 Assert.True(bytes[0] == (byte)'"', "no BOM");
                 Assert.True(bytes[bytes.Length - 2] == '\r' && bytes[bytes.Length - 1] == '\n', "ends with CRLF");
                 string lst = File.ReadAllText(Path.Combine(dir, GeneratedCodeplug.DefaultListFileName));
-                Assert.Equal("5\r\n0,\"Channel.CSV\"\r\n1,\"RadioIDList.CSV\"\r\n2,\"Zone.CSV\"\r\n5,\"TalkGroups.CSV\"\r\n8,\"ReceiveGroupCallList.CSV\"\r\n", lst, "list file");
+                Assert.Equal("6\r\n0,\"Channel.CSV\"\r\n1,\"RadioIDList.CSV\"\r\n2,\"Zone.CSV\"\r\n3,\"ScanList.CSV\"\r\n5,\"TalkGroups.CSV\"\r\n8,\"ReceiveGroupCallList.CSV\"\r\n", lst, "list file");
             }
             finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
         }
@@ -703,6 +703,17 @@ namespace CodeplugBuilder.Tests
 
     static class ProjectTests
     {
+        [Test]
+        static void ScanListsDefaultOnForNewProjectsOnly()
+        {
+            Assert.True(new Project().Options.ScanListPerZone, "new project");
+            var p = new Project();
+            p.Options.ScanListPerZone = false;
+            Assert.True(!ProjectStore.FromJson(ProjectStore.ToJson(p)).Options.ScanListPerZone, "saved off stays off");
+            string dir = Fixtures.RequireExport();
+            Assert.True(!CpsImporter.Import(dir).Project.Options.ScanListPerZone, "imported from the CPS");
+        }
+
         [Test]
         static void JsonRoundTrip()
         {

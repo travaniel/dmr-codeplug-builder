@@ -266,7 +266,7 @@ namespace CodeplugBuilder.Core
         void Init()
         {
             RxGroupListPerRepeater = true;
-            ScanListPerZone = false;
+            ScanListPerZone = true;   // verified in CPS 1.22e; CpsImporter turns it off for imported codeplugs
             WriteRadioIdList = true;
             MaxNameLength = 16;
             MaxChannels = 4000;

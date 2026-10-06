@@ -24,8 +24,9 @@ Getting started
 
 What the import replaces
 ------------------------
-The Channel, Zone, Talk Groups, Receive Group Call List and Radio ID lists (and the Scan List if you
-turn scan lists on in Settings). Everything else in the codeplug stays as it was.
+The Channel, Zone, Talk Groups, Receive Group Call List and Radio ID lists, plus the Scan List when
+scan lists are on (one per zone; on for new codeplugs, off for one imported from the CPS; see
+Settings). Everything else in the codeplug stays as it was.
 
 Channels you made by hand in the CPS are removed by the import unless you turn on Settings > "Keep
 channels, zones and talkgroups made in the CPS" and point it at a fresh Export All of your codeplug.

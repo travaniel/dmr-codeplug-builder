@@ -41,7 +41,8 @@ per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches ev
    **Import**, check a few channels, then write to the radio.
 
 The import replaces the CPS's **Channel, Zone, Talk Groups, Receive Group Call List and Radio ID
-List** (and **Scan List** if you turn scan lists on). Everything else in the codeplug, such as optional
+List**, plus the **Scan List** when scan lists are on (the default for new codeplugs; off for one imported
+from the CPS, so the scan lists you made there stay). Everything else in the codeplug, such as optional
 settings, APRS and the digital contact database, stays as it was.
 
 If the file list won't import, use **Tool > Import** and load each CSV yourself, in this order:
@@ -78,7 +79,7 @@ hotspot; analog channels, zones and channel names are kept.
   **Export All** of your codeplug: then they're written back as they were (same channel numbers), with the zones,
   talkgroups and lists they use. Channels keep their numbers between generations either way.
 - Confirmed: a codeplug that brings new talkgroups imports cleanly and exports back unchanged.
-- Confirmed: scan lists (one per zone, off by default) import cleanly and export back unchanged. They copy
+- Confirmed: scan lists (one per zone) import cleanly and export back unchanged. They copy
   the settings of a scan list made in the CPS. With scan lists off, scan lists you made in the CPS stay as
   long as their channels keep their names.
 

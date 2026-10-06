@@ -28,8 +28,9 @@ Export All), so the generator copies that exact layout.
   the channels that used the talkgroup (after a confirmation). CSV import, sort, a small menu of common
   BrandMeister talkgroups (9, 91, 93, 3100, 9990 private, 4000).
 - **Zones tab:** zone order, rename (or merge), A/B channel per zone, live list of members.
-- **Settings tab:** Radio ID name + DMR ID, RX group list per repeater (on), scan list per zone (off;
-  template row from a real CPS scan list), write RadioIDList.CSV (on), CPS format source, radio limits.
+- **Settings tab:** Radio ID name + DMR ID, RX group list per repeater (on), scan list per zone (on for new
+  codeplugs, off for ones imported from the CPS; template row from a real CPS scan list), write RadioIDList.CSV
+  (on), CPS format source, radio limits.
 - **File menu:** new/open/save (`.cpb` JSON), *Import from CPS export* (builds a project from an Export
   All folder), *Generate CSV files* (validates, shows warnings, asks where to save the `.LST`, writes the
   CSVs next to it, explains how to import).
@@ -464,7 +465,8 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 **P1: make the import bulletproof**
 1. ~~Run section 6 items 1-3 in the real CPS~~ (done 2026-10-06, all fine, new talkgroups included).
 2. ~~Real scan-list template~~ (done 2026-10-06, test `BuiltInScanTemplateIsTheRealCpsRow`). Scan-lists-on import
-   verified. Remaining: whether scan lists default to on; Scan List 2-8 support.
+   verified; on by default for new codeplugs since 2026-10-06 (`CpsImporter` keeps imports off). Remaining: Scan
+   List 2-8 support.
 3. ~~Stable channel numbers~~: done in 1.2 (section 4, Channel.CSV `No.`; test `ChannelNumbersStayPut`).
 4. ~~Merge mode~~: done in 1.2 (section 4, "Merge mode"; test `MergeKeepsWhatWasMadeInTheCps`), verified in the
    real CPS 2026-10-06.
