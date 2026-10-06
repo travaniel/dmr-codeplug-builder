@@ -9,6 +9,12 @@ namespace CodeplugBuilder.Tests
 {
     sealed class TestAttribute : Attribute { }
 
+    /// <summary>Thrown by a test that can't run here (e.g. on CI, where the user's CPS export isn't available).</summary>
+    sealed class SkipException : Exception
+    {
+        public SkipException(string reason) : base(reason) { }
+    }
+
     static class Assert
     {
         public static void True(bool cond, string message)
@@ -31,7 +37,7 @@ namespace CodeplugBuilder.Tests
         static int Main(string[] args)
         {
             ExportFolder = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("CPS_EXPORT");
-            int failed = 0, passed = 0;
+            int failed = 0, passed = 0, skipped = 0;
             foreach (var m in typeof(Program).Assembly.GetTypes().SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
                          .Where(m => m.GetCustomAttribute<TestAttribute>() != null).OrderBy(m => m.DeclaringType.Name).ThenBy(m => m.Name))
             {
@@ -42,6 +48,11 @@ namespace CodeplugBuilder.Tests
                     passed++;
                     Console.WriteLine("  PASS  " + name);
                 }
+                catch (TargetInvocationException ex) when (ex.InnerException is SkipException)
+                {
+                    skipped++;
+                    Console.WriteLine("  SKIP  " + name + " (" + ex.InnerException.Message + ")");
+                }
                 catch (TargetInvocationException ex)
                 {
                     failed++;
@@ -49,7 +60,7 @@ namespace CodeplugBuilder.Tests
                 }
             }
             Console.WriteLine();
-            Console.WriteLine(passed + " passed, " + failed + " failed");
+            Console.WriteLine(passed + " passed, " + failed + " failed" + (skipped > 0 ? ", " + skipped + " skipped" : ""));
             return failed == 0 ? 0 : 1;
         }
     }
@@ -119,7 +130,7 @@ namespace CodeplugBuilder.Tests
         public static string RequireExport()
         {
             if (string.IsNullOrEmpty(Program.ExportFolder) || !Directory.Exists(Program.ExportFolder))
-                throw new Exception("Pass the CPS export folder as the first argument.");
+                throw new SkipException("no CPS export folder (pass it as the first argument or set CPS_EXPORT)");
             return Program.ExportFolder;
         }
     }
@@ -201,6 +212,28 @@ namespace CodeplugBuilder.Tests
             Assert.Equal(5, f.FrequencyDecimals, "frequency decimals");
             Assert.Equal("A-Analog", f.Channels.Get(f.AnalogTemplate, "Channel Type"), "analog template");
             Assert.Equal("D-Digital", f.Channels.Get(f.DigitalTemplate, "Channel Type"), "digital template");
+        }
+
+        [Test]
+        static void BuiltInScanTemplateIsTheRealCpsRow()
+        {
+            // Captured from a scan list made in CPS 1.22e (2026-10-06): the same values DefaultScanRow guessed.
+            var f = CpsFormat.BuiltIn();
+            Assert.True(f.ScanTemplate != null, "built-in ScanList.CSV has a template row");
+            var expect = new[] { "Off", "Off", "Off", "Off", "Selected", "2.0", "3.0", "3.1", "3.1" };
+            var cols = new[] { "Scan Mode", "Priority Channel Select", "Priority Channel 1", "Priority Channel 2", "Revert Channel",
+                               "Look Back Time A[s]", "Look Back Time B[s]", "Dropout Delay Time[s]", "Dwell Time[s]" };
+            for (int i = 0; i < cols.Length; i++) Assert.Equal(expect[i], f.ScanLists.Get(f.ScanTemplate, cols[i]), cols[i]);
+
+            var p = Fixtures.Sample();
+            p.Options.ScanListPerZone = true;
+            var g = CodeplugGenerator.Generate(p, f);
+            Assert.True(g.ScanLists.Rows.Count > 0, "scan lists generated");
+            foreach (var row in g.ScanLists.Rows)
+            {
+                Assert.True(!g.ScanLists.Get(row, "Scan Channel Member").Contains("Channel 1"), "template members are replaced");
+                for (int i = 0; i < cols.Length; i++) Assert.Equal(expect[i], g.ScanLists.Get(row, cols[i]), "generated " + cols[i]);
+            }
         }
 
         [Test]

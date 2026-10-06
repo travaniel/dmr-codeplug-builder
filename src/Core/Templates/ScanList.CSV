@@ -1,1 +1,2 @@
 "No.","Scan List Name","Scan Channel Member","Scan Mode","Priority Channel Select","Priority Channel 1","Priority Channel 2","Revert Channel","Look Back Time A[s]","Look Back Time B[s]","Dropout Delay Time[s]","Dwell Time[s]"
+"1","Scan List 1","Channel 1|Channel 2","Off","Off","Off","Off","Selected","2.0","3.0","3.1","3.1"

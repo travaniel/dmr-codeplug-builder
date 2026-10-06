@@ -28,8 +28,8 @@ Export All), so the generator copies that exact layout.
   the channels that used the talkgroup (after a confirmation). CSV import, sort, a small menu of common
   BrandMeister talkgroups (9, 91, 93, 3100, 9990 private, 4000).
 - **Zones tab:** zone order, rename (or merge), A/B channel per zone, live list of members.
-- **Settings tab:** Radio ID name + DMR ID, RX group list per repeater (on), scan list per zone (off,
-  unverified), write RadioIDList.CSV (on), CPS format source, radio limits.
+- **Settings tab:** Radio ID name + DMR ID, RX group list per repeater (on), scan list per zone (off;
+  template row from a real CPS scan list), write RadioIDList.CSV (on), CPS format source, radio limits.
 - **File menu:** new/open/save (`.cpb` JSON), *Import from CPS export* (builds a project from an Export
   All folder), *Generate CSV files* (validates, shows warnings, asks where to save the `.LST`, writes the
   CSVs next to it, explains how to import).
@@ -98,6 +98,12 @@ importing 24 channels, and the old "Group List 1" RX list disappeared when ours 
 editor also shows a *DMR MODE* field (`DMO/simplex` on the hotspot channels), which comes from the
 template row.
 
+**New talkgroups (verified 2026-10-06):** a wizard-made codeplug (`CPSnow\cpswizardtest`: 223 channels, 31
+talkgroups, most new to the radio, 10 zones, 16 RX lists) imported into the CPS holding the radio's own codeplug,
+and its Export All (`CPSnow\afterwizard`) reproduced all five generated files **byte for byte**. So Channel before
+TalkGroups is fine even when the contacts are new. The same import emptied the radio's scan list ("Scan List 1",
+whose members were all replaced) although the `.LST` had no ScanList.CSV.
+
 **.LST:** first line is the entry count, then `index,"File.CSV"`. Section numbers from the export:
 0 Channel, 1 RadioIDList, 2 Zone, 3 ScanList, 4 AnalogAddressBook, 5 TalkGroups, 6 PrefabricatedSMS,
 7 FM, 8 ReceiveGroupCallList, 9 5ToneEncode, 10 2ToneEncode, 11 DTMFEncode, 12 HotKey_QuickCall,
@@ -141,7 +147,7 @@ Export All of the codeplug and writes back what the program doesn't manage:
   presumably `Mid`); Band Width `12.5K` / `25K`; tones `Off` or `94.8` (DCS assumed `D023N`); Contact
   Call Type `Group Call` / `Private Call`; Busy channel Lock-Out/TX Permit `Off` (analog), `Always`
   (digital); Squelch Mode `Carrier` / `CTCSS/DCS`; TX Prohibit `On` / `Off`; Receive Group List `None`
-  when unused; Scan List N empty (not `None`) when unused; Custom CTCSS `251.1`; Extend Encryption Type
+  when unused; Scan List N empty (not `None`) when unused, otherwise a scan list **name**; Custom CTCSS `251.1`; Extend Encryption Type
   `Normal Encryption`.
 - Contact = a talkgroup **name**. There is no talkgroup ID column in this version. Analog channels still
   carry a contact (the CPS default contact was the user's own ID as a group call).
@@ -161,8 +167,14 @@ guide warns that duplicate entries make the write to the radio fail.
 
 **ScanList.CSV:** No., Scan List Name, Scan Channel Member, Scan Mode, Priority Channel Select, Priority
 Channel 1, Priority Channel 2, Revert Channel, Look Back Time A[s], Look Back Time B[s], Dropout Delay
-Time[s], Dwell Time[s]. The export had **no rows**, so the values the generator uses (Off, Off, Off, Off,
-Selected, 2.0, 3.0, 3.1, 3.1) are educated guesses from the AnyTone family.
+Time[s], Dwell Time[s]. No member frequency columns (the generator's `Scan Channel Member RX/TX Frequency`
+sets are skipped). A real row (Export All 2026-10-06, `CPSnow\ScanList.CSV`): `"1","Scan List 1","a|b|c","Off",
+"Off","Off","Off","Selected","2.0","3.0","3.1","3.1"`, members by channel name. Those are exactly the values
+`DefaultScanRow` had guessed; the row is now the built-in template (`CpsFormat.ScanTemplate`, member names
+neutralized), so output is unchanged. Membership lives here only: the 13 member channels had **empty**
+`Scan List 1` in Channel.CSV, while a hand-made channel that is *not* a member had `Scan List 1 = "Scan List 1"`.
+So Channel's Scan List 1-8 pick the list(s) the channel scans with, independent of membership. The generator sets
+Scan List 1 of each zone member to its zone's list (both at once); the CPS accepting that is still to check.
 
 **RadioIDList.CSV:** No., Radio ID, Name.
 
@@ -422,14 +434,13 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 0. **1.2 UI by hand:** wizard and Add from map with the mouse (hover box, wheel zoom, drag, county clicks, List
    ticks with the creatingHandle guard), at the user's scaling; open the user's project and check no "*".
 
-1. ~~Partial `.LST`~~, ~~import order~~, ~~replace or overwrite~~: verified, see section 4. Still worth
-   one test: import a codeplug that adds a **new** talkgroup and uses it on a channel, to confirm the
-   Channel-before-TalkGroups order doesn't raise a conflict when the contact is new.
+1. ~~Partial `.LST`~~, ~~import order~~, ~~replace or overwrite~~, ~~new talkgroups~~: verified, see section 4.
 2. (merged into 1)
 3. Because imports replace whole lists, channels made by hand in the CPS are lost on the next import
    unless they're in the project or merge mode is on (1.2). Merge mode is engine-tested on a modified copy of the
    user's export; a real CPS round (make a channel in the CPS, Export All, Generate with merge, import) is still to do.
-4. **ScanList.CSV values** (section 4). Make one scan list in the CPS, export, and compare.
+4. ~~ScanList.CSV values~~: confirmed from a real scan list (section 4). Still to check: import a codeplug
+   generated with scan lists on (`CPSnow\scangen`) and Export All, to see the CPS keeps Channel's Scan List 1.
 5. **Real Windows rendering:** checked at the user's scaling on Windows 11 (all tabs, list checkboxes,
    editor fields, hotspot grid). Still to check: 125%/150% on another monitor, cue banners,
    ErrorProvider icons, menu shortcuts.
@@ -440,11 +451,9 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 ## 7. Roadmap (in priority order)
 
 **P1: make the import bulletproof**
-1. ~~Run section 6 items 1-3 in the real CPS~~ (done 2026-10-06, all fine). Remaining: the new-talkgroup
-   import test in section 6.
-2. Real scan-list template: add the captured row to `src/Core/Templates/ScanList.CSV` (the generator
-   already prefers `CpsFormat.ScanTemplate` over `DefaultScanRow`), update the Settings hint, consider
-   turning scan lists on by default, and support membership in Scan List 1-8.
+1. ~~Run section 6 items 1-3 in the real CPS~~ (done 2026-10-06, all fine, new talkgroups included).
+2. ~~Real scan-list template~~ (done 2026-10-06, test `BuiltInScanTemplateIsTheRealCpsRow`). Remaining: verify a
+   scan-lists-on import (section 6 item 4), then decide whether scan lists default to on; Scan List 2-8 support.
 3. ~~Stable channel numbers~~: done in 1.2 (section 4, Channel.CSV `No.`; test `ChannelNumbersStayPut`).
 4. ~~Merge mode~~: done in 1.2 (section 4, "Merge mode"; test `MergeKeepsWhatWasMadeInTheCps`).
 5. Windows polish: test DPI; consider `PerMonitorV2` via app.config; fix anything Mono hid.

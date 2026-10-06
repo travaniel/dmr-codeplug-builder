@@ -77,9 +77,9 @@ hotspot; analog channels, zones and channel names are kept.
   unless you turn on **Settings > Keep channels, zones and talkgroups made in the CPS** and point it at a fresh
   **Export All** of your codeplug: then they're written back as they were (same channel numbers), with the zones,
   talkgroups and lists they use. Channels keep their numbers between generations either way.
-- Your export had no scan list to copy, so scan lists (off by default) use the CPS's usual defaults.
-  If the CPS rejects `ScanList.CSV`, create one scan list in the CPS, export again, and load that folder
-  in Settings.
+- Confirmed: a codeplug that brings new talkgroups imports cleanly and exports back unchanged.
+- Scan lists (off by default) copy the settings of a scan list made in the CPS. A codeplug generated with
+  scan lists on hasn't been imported into the CPS yet.
 
 ## Building from source
 
@@ -89,6 +89,10 @@ hotspot; analog channels, zones and channel names are kept.
   see the script). The optional export folder turns on the round-trip tests.
 
 Output: `src/App/bin/Release/net48/CodeplugBuilder.exe`.
+
+Tests: `dotnet run --project tests -- [path-to-CPS-export]`. Without an export folder the round-trip tests are
+skipped. GitHub Actions builds and tests every push (`.github/workflows/build.yml`); pushing a tag like `v1.3`
+makes a release with a zip of the exe, its config and `docs/README.txt` (`release.yml`).
 
 ### Command line
 

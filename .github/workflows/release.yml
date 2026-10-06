@@ -1,0 +1,39 @@
+name: Release
+
+# Push a tag such as v1.3 to build, test and publish a GitHub release with the zip attached.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build the app (.NET Framework 4.8)
+        run: dotnet build src/App/CodeplugBuilder.csproj -c Release
+
+      - name: Run the engine tests
+        run: dotnet run --project tests -c Release
+
+      - name: Make the zip
+        shell: pwsh
+        run: |
+          $dir = "dist/DMR Codeplug Builder"
+          New-Item -ItemType Directory $dir | Out-Null
+          Copy-Item src/App/bin/Release/net48/CodeplugBuilder.exe, src/App/bin/Release/net48/CodeplugBuilder.exe.config, docs/README.txt $dir
+          Compress-Archive -Path $dir -DestinationPath "dist/DMR-Codeplug-Builder-$env:GITHUB_REF_NAME.zip"
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME "dist/DMR-Codeplug-Builder-$env:GITHUB_REF_NAME.zip" --title "DMR Codeplug Builder $env:GITHUB_REF_NAME" --generate-notes

@@ -51,8 +51,8 @@ namespace CodeplugBuilder.App
             Span(Ui.Hint("With this on, a repeater's channels also play every other talkgroup that repeater carries on the same slot, " +
                          "not just the channel's own talkgroup. Turn it off to hear only the selected talkgroup.", wrap));
             chkScanLists = Check("Make a scan list for each zone (up to 50 channels each)");
-            Span(Ui.Hint("Your CPS export had no scan list to copy, so these use the CPS's usual defaults. If the CPS rejects ScanList.CSV, " +
-                         "make one scan list in the CPS, export again, and load that folder below.", wrap));
+            Span(Ui.Hint("Each list copies the settings of a scan list made in the CPS (scan mode off, revert to the selected channel), " +
+                         "and every channel in the zone scans its zone's list.", wrap));
 
             Section("Channels made in the CPS");
             chkKeep = Check("Keep channels, zones and talkgroups made in the CPS (merge with a CPS export)");
