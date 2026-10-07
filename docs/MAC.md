@@ -119,6 +119,9 @@ Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0
 - Wizard zones step (`WizardView.cs`): clicking a grouping option regrouped with the first ticked option instead of the one clicked,
   because the new button's checked event fires before the old one is unchecked. "One zone per country" gave state zones. `Rezone` now
   takes the clicked scheme.
+- Writing a codeplug with more than 250 digital repeaters failed with "RX group list ... outside 1-250" (the generator made one RX group
+  list per repeater and the radio holds 250). Past 250, repeaters now share an earlier list with the same talkgroups, or get none, and
+  a note says so. The refusal happened before anything was written to the radio.
 
 **Not verified on a real Mac yet**
 

@@ -198,6 +198,8 @@ namespace CodeplugBuilder.Core
             g.RxGroupLists = f.RxGroupLists.CloneHeader();
             var rgTemplate = f.RxGroupLists.Rows.FirstOrDefault();
             var rgNamer = new UniqueNamer(max, "RX List");
+            var listBySet = new Dictionary<string, string>();
+            int groupListsOver = 0;
             if (o.RxGroupListPerRepeater)
             {
                 foreach (var r in p.ActiveRepeaters().Where(x => x.IsDigital))
@@ -213,7 +215,16 @@ namespace CodeplugBuilder.Core
                         g.Notes.Add(r.Name + " has " + members.Count + " talkgroups; its receive group list keeps the first " + o.MaxRxGroupMembers + ".");
                         members = members.Take(o.MaxRxGroupMembers).ToList();
                     }
+                    // The radio holds 250 RX group lists. Past that, a repeater shares an earlier list with the same talkgroups, or has none.
+                    string setKey = string.Join(",", members.Select(t => t.Id).OrderBy(x => x));
+                    if (g.RxGroupLists.Rows.Count >= CodeplugBuilder.Core.Radio.Dmr6x2Pro.MaxGroupLists)
+                    {
+                        if (listBySet.TryGetValue(setKey, out string shared)) foreach (var c in g.ChannelList.Where(c => c.Repeater == r)) c.RxGroupList = shared;
+                        else groupListsOver++;
+                        continue;
+                    }
                     string listName = rgNamer.Claim(r.Name);
+                    if (!listBySet.ContainsKey(setKey)) listBySet[setKey] = listName;
                     var row = g.RxGroupLists.NewRow(rgTemplate);
                     g.RxGroupLists.Set(row, Num(g.RxGroupLists.Rows.Count + 1), "No.");
                     g.RxGroupLists.Set(row, listName, "Group Name");
@@ -222,6 +233,8 @@ namespace CodeplugBuilder.Core
                     g.RxGroupLists.Rows.Add(row);
                     foreach (var c in g.ChannelList.Where(c => c.Repeater == r)) c.RxGroupList = listName;
                 }
+                if (groupListsOver > 0)
+                    g.Notes.Add("The radio holds " + CodeplugBuilder.Core.Radio.Dmr6x2Pro.MaxGroupLists + " RX group lists. " + groupListsOver + " repeater(s) beyond that have no RX group list (they receive only their channel's talkgroup); repeaters with the same talkgroups share a list.");
             }
 
             // ---- Zones ---------------------------------------------------------------------

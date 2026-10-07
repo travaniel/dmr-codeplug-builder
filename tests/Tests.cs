@@ -870,6 +870,20 @@ namespace CodeplugBuilder.Tests
             var issues = Validator.Validate(p);
             Assert.True(issues.Any(i => i.Severity == Severity.Error && i.Message.Contains("4000")), string.Join("\n", issues.Take(5)));
         }
+
+        [Test]
+        static void MoreThan250RepeatersKeepsRxGroupListsWithinTheRadiosLimit()
+        {
+            var p = Fixtures.Sample(extraRepeaters: 300);
+            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            Assert.True(g.RxGroupLists.Rows.Count <= 250, "RX group lists: " + g.RxGroupLists.Rows.Count);
+            var names = new HashSet<string>(g.RxGroupLists.Rows.Select(r => g.RxGroupLists.Get(r, "Group Name")), StringComparer.OrdinalIgnoreCase);
+            foreach (var row in g.Channels.Rows)
+            {
+                string l = g.Channels.Get(row, "Receive Group List");
+                Assert.True(l == "None" || names.Contains(l), "channel uses a list that doesn't exist: " + l);
+            }
+        }
     }
 
     static class TalkgroupCsvTests
