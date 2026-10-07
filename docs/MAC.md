@@ -94,3 +94,42 @@ flows. If the Windows app keeps being developed, move those flows into a UI-free
 - App icon (`src/Mac/app.icns`, made from the Windows icon) and `src/Mac/Info.plist.in`.
 - `.github/workflows/mac.yml`: a macOS GitHub runner builds the app, runs the engine tests, prints the diagnostics report, draws the
   start page, the map and every wizard step to PNGs, and packages ad-hoc signed `.app` zips (artifacts of the run).
+
+## First real-Mac test (2026-10-07)
+
+Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0.425 SDK, runtime 8.0.31), built from source with
+`dotnet build src/Mac/CodeplugBuilder.Mac.csproj -c Release`. Radio: BTECH DMR-6X2 PRO, operator W6OZZ.
+
+**Verified on a real Mac**
+
+- Build: 0 warnings, 0 errors. Engine tests: 66 passed, 0 failed, 12 skipped (no CPS export folder).
+- `--diagnose`: system, folders (all writable), map data (251 countries, 4,594 states, 3,222 US counties, 63,003 places, 18,777
+  highways), RadioID.net and BrandMeister lookups all OK.
+- The app starts and shows the start page and map; the new-codeplug wizard runs.
+- Wizard zones step: "One zone per country" etc. now regroup correctly (see the fix below).
+- **Radio detection:** with the cable in and the radio on, the radio appears as `/dev/cu.usbmodem0000000100001` and
+  `RadioPort.FindRadioPorts` picks it ("Found as the radio"). `ioreg` shows it as "GD32 Virtual ComPort in FS Mode",
+  idVendor 0x28E9, idProduct 0x018A.
+- **Radio > Read codeplug from radio works.** It wrote `Radio reads/<date time>/radio.img` (header `CPBIMG01`, model `D6X2UV2`) and the
+  six CSVs. The result matched what is on the radio: 17 channels (7 NOAA weather, 8 hotspot), zones Hotspot and Weather, 8 talkgroups,
+  the Hotspot receive group list, two scan lists and radio ID 3226509 "Austin W6OZZ". Read only; nothing was written to the radio.
+
+**Fixed**
+
+- Wizard zones step (`WizardView.cs`): clicking a grouping option regrouped with the first ticked option instead of the one clicked,
+  because the new button's checked event fires before the old one is unchecked. "One zone per country" gave state zones. `Rezone` now
+  takes the clicked scheme.
+
+**Not verified on a real Mac yet**
+
+- Writing to the radio (Radio > Write codeplug, Restore): the Mac serial port handling for writes has not been tried. Keep a CPS
+  backup (`.rdt`) made on Windows before the first write.
+- Map interaction (drag, wheel zoom, trackpad pinch, county picking), the rest of the wizard (callsign lookup, county picking,
+  talkgroups, Finish), the Repeaters / Hotspot / Zones tabs, Save / Open and Export CSV on a real Mac.
+- Radio settings editor, the signed `.app` bundle from the GitHub workflow.
+
+**Known issues**
+
+- Help > Diagnostics (`--diagnose`) says "no device with vendor 0x28e9" for the USB check even with the radio connected and detected; the
+  `system_profiler` call returned nothing from the shell used. Detection itself does not depend on it.
+- A zone for "One zone per country" is named "United States of" (the country name is cut to 16 characters).
