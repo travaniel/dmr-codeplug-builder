@@ -104,3 +104,94 @@ namespace CodeplugBuilder.Mac
         }
     }
 }
+
+namespace CodeplugBuilder.Mac
+{
+    /// <summary>
+    /// <c>--wizard-walkthrough folder [callsign]</c>: drives the whole new-codeplug wizard (Texas, real downloads and callsign
+    /// lookup, Tom Green County), saves a picture of every step, then validates and generates the finished project.
+    /// </summary>
+    static class WizardWalkthrough
+    {
+        public static void Run(Avalonia.Controls.Window host, string folder, string callsign)
+        {
+            host.Opened += async (s, e) =>
+            {
+                Directory.CreateDirectory(folder);
+                var log = new System.Collections.Generic.List<string>();
+                try
+                {
+                    var w = new NewCodeplugWizardView(host);
+                    host.Content = w;
+                    host.Width = 1180; host.Height = 820;
+                    async Task Shot(string name)
+                    {
+                        await Task.Delay(400);
+                        var size = new PixelSize((int)host.Width, (int)host.Height);
+                        using (var bmp = new RenderTargetBitmap(size)) { bmp.Render(host); bmp.Save(Path.Combine(folder, name + ".png")); }
+                        log.Add(name + ": " + w.Current.Title + (w.NextEnabled ? "" : "  [Next blocked: " + w.BlockerText + "]"));
+                    }
+                    async Task Until(Func<bool> done, int seconds)
+                    {
+                        var t = DateTime.Now;
+                        while (!done() && (DateTime.Now - t).TotalSeconds < seconds) await Task.Delay(250);
+                    }
+                    var atlas = GeoAtlas.BuiltIn();
+
+                    // 1 region
+                    var region = (RegionStepView)w.Current;
+                    await Until(() => region.Picker.Map.Atlas != null, 20);
+                    region.Picker.Map.ClickArea(atlas.Find("US-TX"));
+                    await Shot("1-region");
+                    await w.PressNext();
+
+                    // 2 radio
+                    var radio = (RadioStepView)w.Current;
+                    radio.CallBox.Text = callsign;
+                    await radio.PressLookup();
+                    await Shot("2-radio");
+                    await w.PressNext();
+
+                    // 3 areas
+                    var areas = (AreasStepView)w.Current;
+                    await Until(() => w.Data.Download != null && w.Data.Download.Done, 120);
+                    await Task.Delay(500);
+                    log.Add("download: " + w.Data.Download?.Status + " (" + (w.Data.Download?.Repeaters.Count ?? 0) + " repeaters)");
+                    areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == "Tom Green County"));
+                    areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == "Travis County" && c.Parent.Code == "US-TX"));
+                    await Shot("3-areas");
+                    await w.PressNext();
+
+                    // 4 zones
+                    await Shot("4-zones");
+                    await w.PressNext();
+
+                    // 5 talkgroups
+                    var tgs = (ZoneTalkgroupsStepView)w.Current;
+                    await Task.Delay(300);
+                    tgs.Editor.PressStarterSet();
+                    await Shot("5-talkgroups");
+                    Project result = null;
+                    w.Finished += (o, p) => result = p;
+                    await w.PressNext();
+                    if (result == null) log.Add("did not finish");
+                    else
+                    {
+                        result.SyncZones();
+                        var issues = Validator.Validate(result, CpsFormat.BuiltIn());
+                        log.Add("project: " + result.Repeaters.Count + " repeaters, " + result.ChannelCount() + " channels, " + result.Zones.Count + " zones, " +
+                                issues.Count(i => i.Severity == Severity.Error) + " errors, " + issues.Count(i => i.Severity == Severity.Warning) + " warnings");
+                        foreach (var i in issues.Where(i => i.Severity == Severity.Error).Take(5)) log.Add("  error: " + i.Message);
+                        var g = CodeplugGenerator.Generate(result, CpsFormat.BuiltIn());
+                        g.WriteTo(Path.Combine(folder, "csv"));
+                        log.Add("generated " + g.ChannelList.Count + " channels in " + g.ZoneList.Count + " zones");
+                    }
+                    w.CancelDownload();
+                }
+                catch (Exception ex) { log.Add("ERROR " + ex); }
+                File.WriteAllLines(Path.Combine(folder, "wizard.log"), log);
+                host.Close();
+            };
+        }
+    }
+}

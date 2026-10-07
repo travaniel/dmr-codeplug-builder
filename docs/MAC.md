@@ -67,11 +67,16 @@ zoom levels, county/state/country picking, highways with route tags, dots, badge
 opened Texas (356 repeaters, 3 of them BrandMeister-only), picked Tom Green County (8 repeaters) and drew it. Dev switches
 `--map` and `--map-snapshot folder` show the map alone.
 
+**Milestone 4 (same day):** the new-codeplug wizard (`WizardView.cs`: region, radio, areas, zones, zone talkgroups; start page choice and
+File > New codeplug). The UI-free `WizardState` moved out of the Windows `Wizard.cs` into `WizardState.cs`, which both apps compile.
+Checked with `--wizard-walkthrough folder [callsign]`, which drives all five steps with real downloads and the real callsign
+lookup (Texas, Tom Green and Travis counties, 356 repeaters downloaded, W6OZZ found), takes a picture per step, then validates
+and generates the result: 13 repeaters, 41 channels, 0 errors, CSVs written.
+
 Not ported yet, in the order I would do them:
 
-1. (done) editors and zones.
-2. (done) the map.
-3. The new-codeplug wizard (`Wizard.cs`: region, radio, areas, zones, zone talkgroups), Find repeaters online, Browse BrandMeister, From RepeaterBook.
+1. (done) editors and zones, the map, Add from map, the wizard.
+2. Find repeaters online, Browse BrandMeister, From RepeaterBook.
 4. Settings tab extras (CPS format folder, merge mode, renumber), radio settings editor, About with the credits.
 5. App icon (`.icns`), signing and notarization if the app is shared outside this Mac.
 

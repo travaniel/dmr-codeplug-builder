@@ -89,7 +89,8 @@ namespace CodeplugBuilder.Mac
         Menu BuildMenu()
         {
             var file = new MenuItem { Header = "_File" };
-            file.Items.Add(Item("_New empty codeplug", NewEmpty, Key.N, Cmd));
+            file.Items.Add(Item("_New codeplug (map wizard)...", StartWizard, Key.N, Cmd));
+            file.Items.Add(Item("New _empty codeplug", NewEmpty));
             file.Items.Add(Item("_Open...", OpenProject, Key.O, Cmd));
             file.Items.Add(Item("_Save", Save, Key.S, Cmd, true));
             file.Items.Add(Item("Save _as...", SaveAs, Key.S, Cmd | KeyModifiers.Shift, true));
@@ -144,11 +145,11 @@ namespace CodeplugBuilder.Mac
             var panel = new StackPanel { Spacing = 10, Width = 520, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             panel.Children.Add(new TextBlock { Text = Dialogs.AppName, FontSize = 28, FontWeight = Avalonia.Media.FontWeight.Bold });
             panel.Children.Add(new TextBlock { Text = "Build a codeplug for the BTECH DMR-6X2 PRO.", Opacity = 0.8, Margin = new Thickness(0, 0, 0, 10) });
+            panel.Children.Add(Big("Set up a new codeplug", "Pick your area on a map. DMR repeaters and their talkgroups come from RadioID.net and BrandMeister, then you choose zones and talkgroups.", StartWizard));
             panel.Children.Add(Big("Read from the radio", "Connect the programming cable, switch the radio on and read what's on it.", ImportFromRadio));
             panel.Children.Add(Big("Import from a CPS export", "Use the folder from the CPS's Tool > Export > Export All.", ImportFromCps));
             panel.Children.Add(Big("Open a project", "A .cpb file you saved before.", OpenProject));
             panel.Children.Add(Big("Start empty", "A blank codeplug to fill in by hand.", NewEmpty));
-            panel.Children.Add(new TextBlock { Text = "The map-based new-codeplug wizard is not in the Mac version yet.", Opacity = 0.6, FontSize = 12, Margin = new Thickness(0, 8, 0, 0) });
             return panel;
         }
 
@@ -226,9 +227,54 @@ namespace CodeplugBuilder.Mac
             return tabs;
         }
 
-        void ShowStart() { host.Child = startPage; UpdateMenus(); UpdateTitle(); status.Text = ""; }
+        void ShowStart() { DropWizard(); host.Child = startPage; UpdateMenus(); UpdateTitle(); status.Text = ""; }
 
-        void ShowWorkspace() { host.Child = workspace; UpdateMenus(); UpdateTitle(); RefreshStatus(); }
+        void ShowWorkspace() { DropWizard(); host.Child = workspace; UpdateMenus(); UpdateTitle(); RefreshStatus(); }
+
+        // ---------------- New codeplug wizard ----------------
+
+        NewCodeplugWizardView wizard;
+        bool wizardFromWorkspace;
+
+        void DropWizard()
+        {
+            if (wizard == null) return;
+            wizard.CancelDownload();
+            wizard = null;
+        }
+
+        async Task StartWizard()
+        {
+            if (wizard != null) return;
+            if (InWorkspace && !await ConfirmDiscard()) return;
+            wizardFromWorkspace = InWorkspace;
+            wizard = new NewCodeplugWizardView(this);
+            var w = wizard;
+            w.Finished += (s, project) => FinishWizard(w, project);
+            w.Cancelled += async (s, e) =>
+            {
+                if (w.HasProgress && !await Dialogs.Ask(this, "Leave the new codeplug setup? Nothing from it is saved.", "Leave")) return;
+                if (wizardFromWorkspace) ShowWorkspace(); else ShowStart();
+            };
+            host.Child = w;
+            status.Text = "";
+            UpdateMenus();
+            UpdateTitle();
+        }
+
+        async void FinishWizard(NewCodeplugWizardView w, Project p)
+        {
+            var notes = w.Data.Notes;
+            session.Replace(p, null, true);
+            ShowWorkspace();
+            if (workspace is TabControl tc) tc.SelectedIndex = 0;
+            int dmr = p.Repeaters.Count(r => r.IsDigital), fm = p.Repeaters.Count(r => !r.IsDigital);
+            int zones = p.UsedZoneNames().Count;
+            string head = "Your new codeplug has " + Plural(dmr, "DMR repeater") + (fm > 0 ? ", " + Plural(fm, "analog channel") : "") +
+                          (p.HotspotEnabled ? ", your hotspot" : "") + " and " + p.ChannelCount() + " channels in " + Plural(zones, "zone") + ".\n\n" +
+                          "Check it on the Repeaters and Zones tabs, save it (File > Save), then use Radio > Write codeplug to radio or Export > Export CSV files for the CPS.";
+            await Dialogs.List(this, head, new string[0], notes, false);
+        }
 
         bool InWorkspace => host.Child == workspace;
 
@@ -515,7 +561,15 @@ namespace CodeplugBuilder.Mac
 
         async void OnWindowClosing(object sender, WindowClosingEventArgs e)
         {
-            if (discardOnClose || !InWorkspace || !session.Dirty) return;
+            if (discardOnClose) return;
+            if (wizard != null)
+            {
+                if (!wizard.HasProgress) { DropWizard(); return; }
+                e.Cancel = true;
+                if (await Dialogs.Ask(this, "Leave the new codeplug setup? Nothing from it is saved.", "Leave")) { DropWizard(); discardOnClose = true; Close(); }
+                return;
+            }
+            if (!InWorkspace || !session.Dirty) return;
             e.Cancel = true;
             if (await ConfirmDiscard()) { discardOnClose = true; Close(); }
         }

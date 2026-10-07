@@ -39,6 +39,7 @@
     <Compile Include="..\App\Online.cs" Link="Shared\Online.cs" />
     <Compile Include="..\App\RegionDownload.cs" Link="Shared\RegionDownload.cs" />
     <Compile Include="..\App\RadioPort.cs" Link="Shared\RadioPort.cs" />
+    <Compile Include="..\App\WizardState.cs" Link="Shared\WizardState.cs" />
     <EmbeddedResource Include="..\Core\Templates\*.CSV" LogicalName="CodeplugBuilder.Templates.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\Core\Geo\atlas.gz" LogicalName="CodeplugBuilder.Geo.atlas.gz" />
     <EmbeddedResource Include="..\Core\Geo\roads.gz" LogicalName="CodeplugBuilder.Geo.roads.gz" />

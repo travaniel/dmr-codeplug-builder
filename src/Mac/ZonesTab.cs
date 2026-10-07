@@ -323,6 +323,7 @@ namespace CodeplugBuilder.Mac
         }
 
         public string Zone => zone;
+        internal void PressStarterSet() { AddStarterSet(); }
 
         public void Bind(Project p, string zoneName)
         {
