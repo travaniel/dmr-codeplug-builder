@@ -70,6 +70,9 @@ namespace CodeplugBuilder.App
             lblWaiting = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Ui.HintColor, Visible = false };
             btnChirp = Ui.Button("Add analog repeaters from CHIRP files...", (s, e) => AddChirpFiles());
             var chirpRow = Ui.Row(btnChirp, Ui.Hint("FM repeaters exported from RepeaterBook in CHIRP format, one file per state (the file or folder name says which: \"Texas.csv\", \"TX.csv\"). They show green on the map.", Ui.S(760)));
+            var credit = new LinkLabel { Text = RepeaterBookApi.Attribution, AutoSize = true, Margin = new Padding(3, Ui.S(7), 3, 3) };
+            credit.LinkClicked += (s, e) => { try { System.Diagnostics.Process.Start(RepeaterBookApi.SiteUrl); } catch { } };
+            chirpRow.Controls.Add(credit);
             chirpRow.Dock = DockStyle.Bottom;
 
             Controls.Add(tabs);
@@ -119,7 +122,7 @@ namespace CodeplugBuilder.App
         {
             all = download == null ? new List<OnlineRepeater>() : download.Repeaters.Where(r => r.InRadioBand && InScope(r)).ToList();
             counts.Clear();
-            foreach (var r in all)
+            foreach (var r in all.Where(x => !x.IsAnalog)) // badges count DMR repeaters from RadioID.net and BrandMeister only
             {
                 var loc = r.Location ?? GeoLocation.Unknown;
                 foreach (var a in new[] { loc.Country, loc.State, loc.County })
@@ -231,7 +234,8 @@ namespace CodeplugBuilder.App
 
         void UpdateMap()
         {
-            Picker.Map.Dots = all.Where(r => r.Location?.Lat != null)
+            // RepeaterBook (analog) rows are listed on the List tab only, never drawn on the map.
+            Picker.Map.Dots = all.Where(r => !r.IsAnalog && r.Location?.Lat != null)
                                  .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, Tag = r })
                                  .ToList();
         }

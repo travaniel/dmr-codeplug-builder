@@ -60,7 +60,7 @@ namespace CodeplugBuilder.App
 
             root.Controls.Add(Ui.Hint("1. Click Open RepeaterBook and sign in there. 2. Search for your county or city. 3. Export the results " +
                                       "in CHIRP format. The file is picked up from your Downloads folder as soon as it lands (or click Choose file). " +
-                                      "Analog (FM) repeaters only; DMR repeaters come from Add from map / Find online.", Ui.S(940)), 0, 0);
+                                      "Analog (FM) repeaters only; DMR repeaters come from Add from map / Find online. " + RepeaterBookApi.Attribution, Ui.S(940)), 0, 0);
 
             cboState = Ui.Combo(true, BrandMeister.UsStates.Select(s => s.Key).ToArray());
             cboState.Width = Ui.S(160);

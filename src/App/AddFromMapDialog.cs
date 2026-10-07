@@ -177,6 +177,7 @@ namespace CodeplugBuilder.App
                 if (r.NewTalkgroups.Count > 0)
                     lines.Add("New talkgroups: " + string.Join(", ", r.NewTalkgroups.Select(t => t.Name + " (" + t.Id + ")")) + ".");
                 lines.AddRange(r.Notes);
+                if (r.Added.Any(x => !x.IsDigital)) lines.Add(RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")");
                 int bare = r.Added.Count(x => x.Talkgroups.Count == 0);
                 if (bare > 0) lines.Add(bare + " of them have no talkgroups yet. Tick some for their zones on the Zones tab.");
                 string head = "Added " + r.Added.Count + " repeater" + (r.Added.Count == 1 ? "" : "s") + " (" + r.Channels + " channels).";

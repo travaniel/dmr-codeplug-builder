@@ -101,6 +101,38 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void RepeaterBookRequestLimits()
+        {
+            var t0 = new DateTime(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
+            var budget = new RequestBudget();
+            Assert.Equal(TimeSpan.Zero, budget.WaitBeforeNext(t0), "first request goes at once");
+            budget.Record(t0);
+            Assert.Equal(TimeSpan.FromSeconds(2), budget.WaitBeforeNext(t0), "2 seconds between requests");
+            Assert.Equal(TimeSpan.FromSeconds(0.5), budget.WaitBeforeNext(t0.AddSeconds(1.5)), "the gap counts down");
+            Assert.Equal(TimeSpan.Zero, budget.WaitBeforeNext(t0.AddSeconds(2)), "gap over");
+
+            // 30 requests spread over 60 s: the 31st waits until the first is an hour old.
+            budget = new RequestBudget();
+            for (int i = 0; i < RepeaterBookApi.MaxRequestsPerHour; i++) budget.Record(t0.AddSeconds(i * 2));
+            var now = t0.AddSeconds(80);
+            Assert.True(budget.HourlyCapReached(now), "hourly cap reached");
+            Assert.Equal(TimeSpan.FromSeconds(3600 - 80), budget.WaitBeforeNext(now), "wait for the oldest to age out");
+            Assert.True(!budget.HourlyCapReached(t0.AddHours(1).AddSeconds(1)), "free again after an hour");
+
+            // Saved history keeps the cap across restarts; old entries drop out.
+            var restored = new RequestBudget(budget.History);
+            Assert.True(restored.HourlyCapReached(now), "history survives a restart");
+            restored.Record(t0.AddHours(2));
+            Assert.Equal(1, restored.History.Count, "entries older than an hour are dropped");
+
+            Assert.Equal(60, RepeaterBookApi.BackoffSeconds(0, null), "first 429: 60 s");
+            Assert.Equal(120, RepeaterBookApi.BackoffSeconds(60, null), "then doubles");
+            Assert.Equal(17, RepeaterBookApi.BackoffSeconds(60, 17), "Retry-After wins");
+            Assert.Equal(3600, RepeaterBookApi.BackoffSeconds(3000, null), "never more than an hour");
+            Assert.True(RepeaterBookApi.UserAgent.StartsWith("W6OZZ-CPS/"), "identifies the app");
+        }
+
+        [Test]
         static void AtlasHasHighways()
         {
             var roads = GeoAtlas.BuiltIn().Roads;

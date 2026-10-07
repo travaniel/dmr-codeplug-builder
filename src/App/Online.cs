@@ -14,7 +14,7 @@ namespace CodeplugBuilder.App
     /// <summary>Downloads from RadioID.net and BrandMeister (parsing lives in Core/OnlineData.cs).</summary>
     static partial class Online
     {
-        const string UserAgent = "DMRCodeplugBuilder/1.2 (Windows; BTECH DMR-6X2 PRO codeplug tool)";
+        const string UserAgent = RepeaterBookApi.UserAgent; // the same string everywhere, as registered with RepeaterBook
         static Dictionary<int, string> bmCache;
 
         static string BmCacheFile => Path.Combine(AppSettings.Folder, "brandmeister-talkgroups.json");

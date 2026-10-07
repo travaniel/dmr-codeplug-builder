@@ -256,6 +256,24 @@ then each user generates their own token for it from the API Apps dashboard)
 then send `X-RB-App-Token: rbuapp_...` and a User-Agent with an app name and contact email. The exact JSON
 key names weren't captured (no token); get a real response before writing the parser.
 
+**RepeaterBook API application (2026-10):** applied as a public, non-commercial, open-source desktop program that helps users
+program their own radio (about 100 users, each with their own app-bound token). What the application promised, and what
+the code already does:
+- User-Agent `W6OZZ-CPS/1.3 (+https://github.com/travaniel/dmr-codeplug-builder)` (`RepeaterBookApi.UserAgent`, also used for
+  RadioID.net and BrandMeister). It must match the approved value exactly.
+- Attribution "Data courtesy of RepeaterBook.com." with a link on the pick list's CHIRP row, in the RepeaterBook import dialog,
+  in the Add-from-map summary when analog repeaters were added, and in Help > About (Windows and Mac).
+- RepeaterBook (analog) rows are never drawn on the map and are not counted in the map's area badges; they are on the List
+  tab only. The map shows DMR repeaters from RadioID.net and BrandMeister.
+- No RepeaterBook data ships with the program, there is no bulk or nationwide download, and nothing is stored beyond the
+  channels the user puts in their own project.
+- Limits for the (not yet written) client are constants in `src/Core/RepeaterBookApi.cs`: one request at a time, 2 s apart,
+  5 states per click, 30 requests per hour per installation (`RequestBudget`, history kept so it survives restarts), 10 pages
+  per state, 429 backoff 60 s doubling or Retry-After. Results in memory for the session only. Each user pastes their own token
+  into Settings; never embed or share one.
+When a token arrives: look at one real response first, then write the client and parser to these limits, add the Settings field
+(Windows and Mac), keep it off until a token is present, and make sure the fields used match what the application listed.
+
 ## 4c. The built-in map (atlas)
 
 `src/Core/Geo/atlas.gz` (~3.7 MB, embedded as `CodeplugBuilder.Geo.atlas.gz`) is made by `tools/GeoBuild`

@@ -91,6 +91,9 @@ namespace CodeplugBuilder.Mac
             lblWaiting = new TextBlock { TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, IsVisible = false, TextWrapping = TextWrapping.Wrap };
             var chirpButton = UiKit.Button("Add analog repeaters from CHIRP files...", async () => await AddChirpFiles());
             chirpRow = UiKit.Row(chirpButton, new TextBlock { Text = "FM repeaters exported from RepeaterBook in CHIRP format, one file per state. They show green on the map.", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 560 });
+            var credit = new TextBlock { Text = RepeaterBookApi.Attribution, Foreground = Brushes.CornflowerBlue, TextDecorations = TextDecorations.Underline, Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand), VerticalAlignment = VerticalAlignment.Center };
+            credit.PointerPressed += (s, e) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RepeaterBookApi.SiteUrl) { UseShellExecute = true }); } catch { } };
+            ((StackPanel)chirpRow).Children.Add(credit);
             ((StackPanel)chirpRow).Margin = new Thickness(0, 6, 0, 0);
 
             var dock = new DockPanel();
@@ -128,7 +131,7 @@ namespace CodeplugBuilder.Mac
         {
             all = download == null ? new List<OnlineRepeater>() : download.Repeaters.Where(r => r.InRadioBand && InScope(r)).ToList();
             counts.Clear();
-            foreach (var r in all)
+            foreach (var r in all.Where(x => !x.IsAnalog)) // badges count DMR repeaters from RadioID.net and BrandMeister only
             {
                 var loc = r.Location ?? GeoLocation.Unknown;
                 foreach (var a in new[] { loc.Country, loc.State, loc.County })
@@ -243,7 +246,8 @@ namespace CodeplugBuilder.Mac
 
         void UpdateMap()
         {
-            Picker.Map.Dots = all.Where(r => r.Location?.Lat != null)
+            // RepeaterBook (analog) rows are listed on the List tab only, never drawn on the map.
+            Picker.Map.Dots = all.Where(r => !r.IsAnalog && r.Location?.Lat != null)
                                  .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, Tag = r })
                                  .ToList();
         }
