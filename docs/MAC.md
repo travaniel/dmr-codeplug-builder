@@ -60,12 +60,18 @@ BrandMeister, ticks, slots, starter set, copy to all zones). Files: `RepeaterEdi
 `RepeaterEditor.cs`, `RepeatersPage.cs`, `HotspotPage.cs`, `ZonesPage.cs`, `ZoneTalkgroupsEditor.cs`: keep the two in step
 when one changes.
 
-Not ported yet, in the order I'd do them:
+**Milestone 3 (same day):** the map and Add from map. `RegionMapView.cs` is the Windows `RegionMap` in Avalonia (same Mercator view,
+zoom levels, county/state/country picking, highways with route tags, dots, badges, labels; drawn with `StreamGeometry` and
+`DrawingContext`), `RegionPickerView.cs` its toolbar, `AreaChooserView.cs` the Map + List picker (with CHIRP files), and
+`AddFromMapWindow.cs` (also `RegionWindow`) *Repeaters > Add from map*. Checked with real downloads: `--addmap-check out.png`
+opened Texas (356 repeaters, 3 of them BrandMeister-only), picked Tom Green County (8 repeaters) and drew it. Dev switches
+`--map` and `--map-snapshot folder` show the map alone.
 
-1. (done, see milestone 2)
-2. The map: `RegionMap` is GDI+ (Mercator, polygons, roads, dots). Port it to an Avalonia `Control` using `DrawingContext`
-   (`StreamGeometry` per area, the same projection and level-of-detail rules).
-3. The new-codeplug wizard, Add from map, area chooser, Find repeaters online, Browse BrandMeister, From RepeaterBook.
+Not ported yet, in the order I would do them:
+
+1. (done) editors and zones.
+2. (done) the map.
+3. The new-codeplug wizard (`Wizard.cs`: region, radio, areas, zones, zone talkgroups), Find repeaters online, Browse BrandMeister, From RepeaterBook.
 4. Settings tab extras (CPS format folder, merge mode, renumber), radio settings editor, About with the credits.
 5. App icon (`.icns`), signing and notarization if the app is shared outside this Mac.
 

@@ -67,6 +67,7 @@ namespace CodeplugBuilder.Mac
             AddButton("Delete", async () => await Delete());
             buttons.Children.Add(btnUp); btnUp.Margin = new Thickness(0, 0, 6, 6);
             buttons.Children.Add(btnDown); btnDown.Margin = new Thickness(0, 0, 6, 6);
+            AddButton("Add from map...", async () => await AddFromMap());
             AddButton("Add NOAA weather", async () => await AddWeather());
 
             var filterRow = new DockPanel { Margin = new Thickness(0, 4, 0, 6) };
@@ -83,7 +84,7 @@ namespace CodeplugBuilder.Mac
             editor = new RepeaterEditorView(false);
             empty = new TextBlock
             {
-                Text = "Add a repeater with the buttons on the left, or File > Import from a CPS export to load your current codeplug.\n\n(Add from map, Find online and From RepeaterBook come in a later step of the Mac port.)",
+                Text = "Click \"Add from map...\" to add DMR repeaters near you from RadioID.net and BrandMeister, or add one by hand with the buttons on the left, or File > Import from a CPS export to load your current codeplug.\n\n(Find online and From RepeaterBook come in a later step of the Mac port.)",
                 Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap, TextAlignment = Avalonia.Media.TextAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 420,
             };
@@ -164,6 +165,15 @@ namespace CodeplugBuilder.Mac
             session.MarkDirty();
             Reload(r);
             editor.FocusName();
+        }
+
+        /// <summary>Opens the map picker and shows what it added.</summary>
+        async System.Threading.Tasks.Task AddFromMap()
+        {
+            var first = await AddFromMapWindow.Run(owner, session);
+            if (first == null) return;
+            cboFilter.SelectedIndex = 0;
+            Reload(first);
         }
 
         async System.Threading.Tasks.Task AddWeather()
