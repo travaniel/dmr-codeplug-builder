@@ -28,6 +28,10 @@ foreach ($rid in $Runtimes) {
     $macos = Join-Path $stage "$appName.app\Contents\MacOS"
     New-Item -ItemType Directory -Force $macos | Out-Null
     Copy-Item -Recurse -Force (Join-Path $pub '*') $macos
+    $resources = Join-Path $stage "$appName.app\Contents\Resources"
+    New-Item -ItemType Directory -Force $resources | Out-Null
+    Copy-Item (Join-Path $root 'src\Mac\app.icns') $resources
+    # (The same plist is in src/Mac/Info.plist.in, which the macOS CI job uses.)
     $plist = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -40,6 +44,7 @@ foreach ($rid in $Runtimes) {
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleExecutable</key><string>CodeplugBuilderMac</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>app</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>

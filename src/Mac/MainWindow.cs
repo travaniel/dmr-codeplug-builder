@@ -105,9 +105,12 @@ namespace CodeplugBuilder.Mac
             radio.Items.Add(Item("_Read codeplug from radio...", ImportFromRadio, Key.R, Cmd));
             radio.Items.Add(Item("_Write codeplug to radio...", WriteProjectToRadio, Key.None, KeyModifiers.None, true));
             radio.Items.Add(Item("Re_store codeplug from a backup...", RestoreRadioBackup));
+            radio.Items.Add(new Separator());
+            radio.Items.Add(Item("Radio _port...", ChooseRadioPort));
 
             var help = new MenuItem { Header = "_Help" };
             help.Items.Add(Item("Check for _problems", async () => { RefreshStatus(); await ShowIssues(); }, Key.None, KeyModifiers.None, true));
+            help.Items.Add(Item("_Diagnostics...", ShowDiagnostics));
             help.Items.Add(Item("_About", ShowAbout));
 
             var menu = new Menu();

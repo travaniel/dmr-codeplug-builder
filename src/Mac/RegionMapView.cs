@@ -83,6 +83,20 @@ namespace CodeplugBuilder.Mac
             Focusable = true;
             ClipToBounds = true;
             Cursor = new Cursor(StandardCursorType.Hand);
+            // A Mac trackpad pinch zooms (Avalonia raises Pinch for the trackpad's magnify gesture). Not tried on a real Mac yet.
+            AddHandler(Gestures.PinchEvent, OnPinch);
+            AddHandler(Gestures.PinchEndedEvent, (s, e) => lastPinch = 1);
+        }
+
+        double lastPinch = 1;
+
+        void OnPinch(object sender, PinchEventArgs e)
+        {
+            if (!viewSet) return;
+            double factor = lastPinch > 0 ? e.Scale / lastPinch : 1;
+            lastPinch = e.Scale;
+            if (factor > 0 && Math.Abs(factor - 1) > 0.001) ZoomAt(e.ScaleOrigin, factor);
+            e.Handled = true;
         }
 
         public GeoAtlas Atlas

@@ -8,6 +8,12 @@ namespace CodeplugBuilder.Mac
         [STAThread]
         public static int Main(string[] args)
         {
+            // --diagnose: print the diagnostics report to the terminal and quit (no window), e.g. from CI or Terminal.
+            if (Array.IndexOf(args, "--diagnose") >= 0)
+            {
+                Console.WriteLine(Diagnostics.Report(Array.IndexOf(args, "--offline") < 0));
+                return 0;
+            }
             return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
 

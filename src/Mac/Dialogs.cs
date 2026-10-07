@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using CodeplugBuilder.Core.Radio;
 
@@ -68,6 +69,44 @@ namespace CodeplugBuilder.Mac
             body.Children.Add(Buttons(buttons.ToArray()));
             w.Content = body;
             return await w.ShowDialog<bool>(owner);
+        }
+
+        /// <summary>Pick one line from a list; returns its index, or -1 when cancelled.</summary>
+        public static async Task<int> Choose(Window owner, string title, string text, IList<string> items, int selected)
+        {
+            var w = Make(title, 560);
+            var list = new ListBox { ItemsSource = items, SelectedIndex = selected, MaxHeight = 260, Margin = new Thickness(0, 8, 0, 0) };
+            int result = -1;
+            var body = new StackPanel { Margin = new Thickness(18) };
+            body.Children.Add(Text(text));
+            body.Children.Add(list);
+            body.Children.Add(Buttons(Button("Cancel", () => w.Close()), Button("OK", () => { result = list.SelectedIndex; w.Close(); }, true)));
+            w.Content = body;
+            await w.ShowDialog(owner);
+            return result;
+        }
+
+        /// <summary>A resizable window with selectable monospaced text and Copy / Save buttons (the diagnostics report).</summary>
+        public static async Task Report(Window owner, string title, string text)
+        {
+            var w = new Window { Title = title, Width = 900, Height = 640, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false };
+            var box = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Menlo, Consolas, Courier New, monospace"), FontSize = 12 };
+            var status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+            var copy = new Button { Content = "Copy" };
+            copy.Click += async (s, e) =>
+            {
+                try { await w.Clipboard.SetTextAsync(text); status.Text = "Copied to the clipboard."; }
+                catch (Exception ex) { status.Text = "Couldn't copy: " + ex.Message; }
+            };
+            var close = new Button { Content = "Close", IsDefault = true };
+            close.Click += (s, e) => w.Close();
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0), Children = { copy, close, status } };
+            var dock = new DockPanel { Margin = new Thickness(12) };
+            DockPanel.SetDock(buttons, Dock.Bottom);
+            dock.Children.Add(buttons);
+            dock.Children.Add(new ScrollViewer { Content = box, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto });
+            w.Content = dock;
+            await w.ShowDialog(owner);
         }
 
         /// <summary>A one-line text prompt; null when cancelled.</summary>

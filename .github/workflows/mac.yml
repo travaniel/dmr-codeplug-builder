@@ -1,0 +1,79 @@
+name: Mac build and checks
+
+# A real macOS machine builds the Mac version, runs the engine tests there, prints a diagnostics report (system, serial ports,
+# map data, online sources), draws the map and the whole new-codeplug wizard to pictures, and packages signed .app bundles.
+# Everything is attached to the run as artifacts. Run it by hand from the Actions tab, or it runs on every push.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Engine tests on macOS
+        run: dotnet run --project tests -c Release
+
+      - name: Build the Mac app
+        run: dotnet build src/Mac/CodeplugBuilder.Mac.csproj -c Release
+
+      - name: Diagnostics report
+        run: dotnet src/Mac/bin/Release/net8.0/CodeplugBuilderMac.dll --diagnose | tee diagnose.txt
+
+      - name: Draw the map, the start page and the wizard
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          CODEPLUGBUILDER_SETTINGS: ${{ runner.temp }}/cpb-settings
+        run: |
+          mkdir -p shots
+          DLL=src/Mac/bin/Release/net8.0/CodeplugBuilderMac.dll
+          dotnet $DLL --snapshot shots/start.png
+          dotnet $DLL --map-snapshot shots/map
+          dotnet $DLL --wizard-walkthrough shots/wizard W6OZZ
+          cat shots/wizard/wizard.log || true
+
+      - name: Package signed .app bundles (Apple Silicon and Intel)
+        run: |
+          VERSION=$(grep -m1 '<Version>' src/Mac/CodeplugBuilder.Mac.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+          mkdir -p dist
+          for RID in osx-arm64 osx-x64; do
+            ARCH=${RID#osx-}
+            dotnet publish src/Mac/CodeplugBuilder.Mac.csproj -c Release -r $RID --self-contained true -p:DebugType=none -o publish/$RID
+            APP="stage/$RID/W6OZZ CPS.app"
+            mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+            cp -R publish/$RID/. "$APP/Contents/MacOS/"
+            cp src/Mac/app.icns "$APP/Contents/Resources/"
+            sed "s/@VERSION@/$VERSION/g" src/Mac/Info.plist.in > "$APP/Contents/Info.plist"
+            chmod +x "$APP/Contents/MacOS/CodeplugBuilderMac"
+            # Ad-hoc signature (no Apple developer account): enough for Apple Silicon to run it; Gatekeeper still asks on first open.
+            codesign --force --deep --sign - "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            ditto -c -k --keepParent "$APP" "dist/W6OZZ-CPS-mac-$ARCH.zip"
+          done
+          (cd dist && shasum -a 256 *.zip | tee SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-diagnostics
+          path: diagnose.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-screenshots
+          path: shots
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-app-zips
+          path: dist

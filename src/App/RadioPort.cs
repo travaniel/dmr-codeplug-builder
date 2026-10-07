@@ -17,6 +17,12 @@ namespace CodeplugBuilder.App
     {
         const string UsbKey = @"SYSTEM\CurrentControlSet\Enum\USB\VID_28E9&PID_018A";
 
+        /// <summary>Settings key for a port chosen by hand; empty means "find the radio by its USB ID".</summary>
+        public const string SavedPortKey = "RadioPort";
+
+        /// <summary>Every serial port the system lists right now (for a port picker and for diagnostics).</summary>
+        public static List<string> AllPorts() { return SerialPort.GetPortNames().OrderBy(p => p, StringComparer.Ordinal).ToList(); }
+
         /// <summary>Documents\DMR Codeplug Builder\Radio reads: every read and write is kept there as a backup.</summary>
         public static string ReadsFolder =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DMR Codeplug Builder", "Radio reads");
@@ -61,6 +67,13 @@ namespace CodeplugBuilder.App
         /// <summary>Picks the port to use: the given one, else the only radio port found.</summary>
         public static string Choose(string requested, List<string> log)
         {
+            // A port the user picked on purpose (the Mac version's Radio > Radio port...) wins, as long as it is there right now.
+            string saved = AppSettings.Get(SavedPortKey);
+            if (string.IsNullOrEmpty(requested) && !string.IsNullOrEmpty(saved) && SerialPort.GetPortNames().Contains(saved, StringComparer.Ordinal))
+            {
+                log?.Add("Using the saved radio port " + saved);
+                return saved;
+            }
             // After leaving programming mode the radio drops off USB for a few seconds; wait for it.
             var radios = FindRadioPorts();
             for (int i = 0; i < 20 && radios.Count == 0 && string.IsNullOrEmpty(requested); i++)
@@ -108,8 +121,15 @@ namespace CodeplugBuilder.App
             {
                 try
                 {
-                    if (!SerialPort.GetPortNames().Contains(portName, StringComparer.OrdinalIgnoreCase)) { Thread.Sleep(500); continue; }
-                    using (var port = Open(portName))
+                    // The port may come back under another name (a different COM number, or another /dev/cu.usbmodem*): follow the radio.
+                    string target = portName;
+                    if (!SerialPort.GetPortNames().Contains(portName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var found = FindRadioPorts();
+                        if (found.Count != 1) { Thread.Sleep(500); continue; }
+                        target = found[0];
+                    }
+                    using (var port = Open(target))
                     {
                         var bad = RadioWriter.Verify(new AnytoneLink(port.BaseStream, port.DiscardInBuffer), edited, result.Blocks);
                         if (bad.Count > 0)

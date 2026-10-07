@@ -82,3 +82,15 @@ Not ported yet, in the order I would do them:
 
 Known duplication to remove later: the Windows `MainForm` and `MainWindow` each hold the open/save/import/generate/radio
 flows. If the Windows app keeps being developed, move those flows into a UI-free class in `src/Core` that both call.
+
+## Getting ready to test on a Mac (2026-10-07)
+
+- `docs/MAC-TESTING.md`: the step-by-step first run on a real Mac, with what to expect and what to report.
+- **Help > Diagnostics** (and `CodeplugBuilderMac --diagnose` in Terminal): a copyable report of the system, writable folders, map data,
+  serial ports, the radio's USB entry (`system_profiler`, vendor 0x28e9) and whether RadioID.net and BrandMeister answer.
+- **Radio > Radio port...**: pick the serial port by hand if automatic detection (`/dev/cu.usbmodem*`) misses the radio; it is
+  remembered (`RadioPort` in the settings file). After a write the verify step now follows the radio if it comes back under another name.
+- Map: trackpad pinch zoom (untried), alongside two-finger scroll.
+- App icon (`src/Mac/app.icns`, made from the Windows icon) and `src/Mac/Info.plist.in`.
+- `.github/workflows/mac.yml`: a macOS GitHub runner builds the app, runs the engine tests, prints the diagnostics report, draws the
+  start page, the map and every wizard step to PNGs, and packages ad-hoc signed `.app` zips (artifacts of the run).

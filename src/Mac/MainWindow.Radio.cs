@@ -197,3 +197,34 @@ namespace CodeplugBuilder.Mac
             string.Join(", ", names.Take(12)) + (names.Count > 12 ? " and " + (names.Count - 12) + " more" : "");
     }
 }
+
+namespace CodeplugBuilder.Mac
+{
+    sealed partial class MainWindow
+    {
+        /// <summary>Radio > Radio port...: leave it on automatic (the radio is found by its USB ID), or pick the serial port by hand.</summary>
+        async Task ChooseRadioPort()
+        {
+            var ports = RadioPort.AllPorts();
+            var radios = RadioPort.FindRadioPorts();
+            string saved = AppSettings.Get(RadioPort.SavedPortKey);
+            var items = new List<string> { "Automatic (find the radio by its USB ID)" };
+            items.AddRange(ports.Select(p => p + (radios.Contains(p) ? "   <- looks like the radio" : "")));
+            int selected = string.IsNullOrEmpty(saved) ? 0 : Math.Max(0, ports.IndexOf(saved) + 1);
+            string text = ports.Count == 0
+                ? "No serial ports are listed right now. Connect the programming cable and switch the radio on, then try again. (Help > Diagnostics shows what the Mac sees.)"
+                : "Pick the port the radio is on. On a Mac it is called /dev/cu.usbmodem... Leave this on Automatic unless the radio isn't found.";
+            int pick = await Dialogs.Choose(this, "Radio port", text, items, selected);
+            if (pick < 0) return;
+            AppSettings.Set(RadioPort.SavedPortKey, pick == 0 ? null : ports[pick - 1]);
+            await Dialogs.Info(this, pick == 0 ? "The radio will be found automatically." : "Using " + ports[pick - 1] + " for the radio.");
+        }
+
+        /// <summary>Help > Diagnostics: what this computer looks like to the program (copy it into a bug report).</summary>
+        async Task ShowDiagnostics()
+        {
+            string report = await Task.Run(() => Diagnostics.Report(true));
+            await Dialogs.Report(this, "Diagnostics", report);
+        }
+    }
+}
