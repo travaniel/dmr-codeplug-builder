@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The Mac version (also runs on Windows and Linux, which is how it is built and checked here): an Avalonia UI on
+    .NET 8 over the same src/Core engine as the Windows app. The Windows app (src/App, WinForms) is unchanged and keeps
+    its zero-NuGet rule; this project uses the Avalonia and System.IO.Ports packages.
+    Build:   dotnet build src\Mac\CodeplugBuilder.Mac.csproj -c Release
+    Package: bash tools/package-mac.sh   (publishes osx-arm64 and osx-x64 .app bundles, works from Windows too)
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>CodeplugBuilderMac</AssemblyName>
+    <RootNamespace>CodeplugBuilder.Mac</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Product>W6OZZ CPS</Product>
+    <Version>1.3.0</Version>
+    <Copyright>Copyright © 2026</Copyright>
+    <ApplicationIcon>..\App\app.ico</ApplicationIcon>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <!-- The shared Windows files use HttpWebRequest and the registry (the latter only on Windows, guarded in RadioPort). -->
+    <NoWarn>$(NoWarn);CA1416;SYSLIB0014</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Logic the Windows app keeps next to its forms but that has no UI in it (shared, not copied). -->
+    <Compile Include="..\App\Session.cs" Link="Shared\Session.cs" />
+    <Compile Include="..\App\Online.cs" Link="Shared\Online.cs" />
+    <Compile Include="..\App\RegionDownload.cs" Link="Shared\RegionDownload.cs" />
+    <Compile Include="..\App\RadioPort.cs" Link="Shared\RadioPort.cs" />
+    <EmbeddedResource Include="..\Core\Templates\*.CSV" LogicalName="CodeplugBuilder.Templates.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Core\Geo\atlas.gz" LogicalName="CodeplugBuilder.Geo.atlas.gz" />
+    <EmbeddedResource Include="..\Core\Geo\roads.gz" LogicalName="CodeplugBuilder.Geo.roads.gz" />
+  </ItemGroup>
+</Project>

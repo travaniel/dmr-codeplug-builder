@@ -30,6 +30,15 @@ namespace CodeplugBuilder.App
         {
             var present = new HashSet<string>(SerialPort.GetPortNames(), StringComparer.OrdinalIgnoreCase);
             var found = new List<string>();
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+            {
+                // macOS and Linux have no registry to ask: the radio's USB CDC port shows up as /dev/cu.usbmodem* (macOS;
+                // the tty.* twin is for incoming calls and is skipped) or /dev/ttyACM* (Linux). Not verified on a Mac yet.
+                foreach (string p in present.OrderBy(x => x, StringComparer.Ordinal))
+                    if (p.StartsWith("/dev/cu.usbmodem", StringComparison.Ordinal) || p.StartsWith("/dev/ttyACM", StringComparison.Ordinal))
+                        found.Add(p);
+                return found;
+            }
             try
             {
                 using (var usb = Registry.LocalMachine.OpenSubKey(UsbKey))
