@@ -30,7 +30,8 @@ namespace CodeplugBuilder.Mac
         readonly DispatcherTimer statusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         readonly List<MenuItem> projectItems = new List<MenuItem>();
         Control startPage, workspace;
-        DataGrid talkgroupGrid, repeaterGrid, zoneGrid;
+        DataGrid talkgroupGrid;
+        ZonesTab zonesTab;
         TextBox radioIdName, radioId;
         bool loading, discardOnClose;
         List<Issue> lastIssues = new List<Issue>();
@@ -197,29 +198,6 @@ namespace CodeplugBuilder.Mac
             tgPage.Children.Add(talkgroupGrid);
 
             // Repeaters and zones (lists for now)
-            repeaterGrid = NewGrid();
-            repeaterGrid.IsReadOnly = true;
-            repeaterGrid.Columns.Add(Col("Name", "Name", true, 190));
-            repeaterGrid.Columns.Add(Col("Mode", "Mode", true, 90));
-            repeaterGrid.Columns.Add(Col("Receive MHz", "RxMHz", true, 130));
-            repeaterGrid.Columns.Add(Col("Transmit MHz", "TxMHz", true, 130));
-            repeaterGrid.Columns.Add(Col("CC", "ColorCode", true, 60));
-            repeaterGrid.Columns.Add(Col("Zone", "Zone", true, 180));
-            repeaterGrid.Columns.Add(Col("City", "City", true, 140));
-            repeaterGrid.Columns.Add(Col("State", "State", true, 120));
-            var repPage = new DockPanel { Margin = new Thickness(12) };
-            var repNote = new TextBlock { Text = "Editing repeaters, the hotspot, zone talkgroups and the map come in the next steps of the Mac port. Open, Export and the radio already work.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
-            DockPanel.SetDock(repNote, Dock.Top);
-            repPage.Children.Add(repNote);
-            repPage.Children.Add(repeaterGrid);
-
-            zoneGrid = NewGrid();
-            zoneGrid.IsReadOnly = true;
-            zoneGrid.Columns.Add(Col("Zone", "Name", true, 240));
-            zoneGrid.Columns.Add(Col("A channel", "AChannel", true, 200));
-            zoneGrid.Columns.Add(Col("B channel", "BChannel", true, 200));
-            var zonePage = new DockPanel { Margin = new Thickness(12) };
-            zonePage.Children.Add(zoneGrid);
 
             // Settings
             radioIdName = new TextBox { Width = 260 };
@@ -237,10 +215,14 @@ namespace CodeplugBuilder.Mac
             settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "DMR ID", Width = 60, VerticalAlignment = VerticalAlignment.Center }, radioId } });
 
             var tabs = new TabControl();
+            zonesTab = new ZonesTab(session, this);
+            tabs.Items.Add(new TabItem { Header = "Repeaters", Content = new RepeatersTab(session, this) });
+            tabs.Items.Add(new TabItem { Header = "Hotspot", Content = new HotspotTab(session) });
             tabs.Items.Add(new TabItem { Header = "Talkgroups", Content = tgPage });
-            tabs.Items.Add(new TabItem { Header = "Repeaters", Content = repPage });
-            tabs.Items.Add(new TabItem { Header = "Zones", Content = zonePage });
+            tabs.Items.Add(new TabItem { Header = "Zones", Content = zonesTab });
             tabs.Items.Add(new TabItem { Header = "Settings", Content = settings });
+            // Counts on the Zones tab follow edits made on the other tabs.
+            tabs.SelectionChanged += (s, e) => { if (e.Source == tabs && tabs.SelectedItem is TabItem t && t.Content == zonesTab) zonesTab.Refresh(); };
             return tabs;
         }
 
@@ -258,8 +240,6 @@ namespace CodeplugBuilder.Mac
             lastGoodId.Clear();
             foreach (var t in p.Talkgroups) lastGoodId[t] = t.Id;
             talkgroupGrid.ItemsSource = p.Talkgroups.ToList();
-            repeaterGrid.ItemsSource = p.AllRepeaters().Where(r => r != p.Hotspot || p.HotspotEnabled).ToList();
-            zoneGrid.ItemsSource = p.Zones.ToList();
             radioIdName.Text = p.RadioIdName;
             radioId.Text = p.RadioId.ToString(CultureInfo.InvariantCulture);
             loading = false;

@@ -48,12 +48,21 @@ close the BTECH CPS (it can't run on a Mac anyway; it is Windows-only).
 Done and checked by running it (on Windows): window, start page, menus with shortcuts (Cmd on Mac, Ctrl elsewhere), open /
 save / save as, import from a CPS export folder, export the CSV files + `.LST` (same validation and generator as the
 Windows app), the Talkgroups tab (edit names, IDs with references following, call type, add, delete), read-only lists of
-repeaters and zones, the Settings tab (radio ID name and number), problem check and status line, and the radio flows
+the Settings tab (radio ID name and number), problem check and status line, and the radio flows
 (read, write with the review dialog and backups, restore), all through `Dialogs.cs`.
+
+**Milestone 2 (same day):** the Repeaters tab (list with on/off ticks, zone filter, add DMR / analog, duplicate, delete, move,
+NOAA weather, and the full editor: frequencies with offset helper and band checks, tones, color code, zone with its talkgroup
+set applied, the talkgroup assignment grid with slots, names, move, switch slot), the Hotspot tab (same editor), and the Zones
+tab (order, rename / merge, A/B channels, channel list, and the zone talkgroup editor with search over the project and
+BrandMeister, ticks, slots, starter set, copy to all zones). Files: `RepeaterEditorView.cs`, `RepeatersTab.cs`
+(also `HotspotTab`), `ZonesTab.cs` (also `ZoneTalkgroupsView`), `UiKit.cs`. The Windows files they follow are
+`RepeaterEditor.cs`, `RepeatersPage.cs`, `HotspotPage.cs`, `ZonesPage.cs`, `ZoneTalkgroupsEditor.cs`: keep the two in step
+when one changes.
 
 Not ported yet, in the order I'd do them:
 
-1. Repeater / hotspot editor (the talkgroup assignment grid) and the Zones tab (order, rename, A/B, zone talkgroup sets).
+1. (done, see milestone 2)
 2. The map: `RegionMap` is GDI+ (Mercator, polygons, roads, dots). Port it to an Avalonia `Control` using `DrawingContext`
    (`StreamGeometry` per area, the same projection and level-of-detail rules).
 3. The new-codeplug wizard, Add from map, area chooser, Find repeaters online, Browse BrandMeister, From RepeaterBook.

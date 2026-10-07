@@ -70,6 +70,22 @@ namespace CodeplugBuilder.Mac
             return await w.ShowDialog<bool>(owner);
         }
 
+        /// <summary>A one-line text prompt; null when cancelled.</summary>
+        public static async Task<string> Prompt(Window owner, string title, string label, string value, int maxLength = 0)
+        {
+            var w = Make(title, 420);
+            var box = new TextBox { Text = value ?? "", MaxLength = maxLength > 0 ? maxLength : 0, Margin = new Thickness(0, 8, 0, 0) };
+            var body = new StackPanel { Margin = new Thickness(18) };
+            body.Children.Add(Text(label));
+            body.Children.Add(box);
+            string result = null;
+            body.Children.Add(Buttons(Button("Cancel", () => w.Close()), Button("OK", () => { result = box.Text; w.Close(); }, true)));
+            w.Content = body;
+            w.Opened += (s, e) => { box.Focus(); box.SelectAll(); };
+            await w.ShowDialog(owner);
+            return result;
+        }
+
         /// <summary>A heading, then problems (red) and notes in a scrolling list; with <paramref name="ask"/> there is a Cancel and the answer matters.</summary>
         public static async Task<bool> List(Window owner, string head, IEnumerable<string> problems, IEnumerable<string> notes, bool ask, string ok = "OK")
         {
