@@ -475,12 +475,12 @@ namespace CodeplugBuilder.Mac
             foreach (var c in ZonePlanner.Choices)
             {
                 var rb = new RadioButton { Content = c.Value, Tag = c.Key, GroupName = group };
-                rb.IsCheckedChanged += async (o, e) => { if (rb.IsChecked == true && !loading) await Rezone(); };
+                rb.IsCheckedChanged += async (o, e) => { if (rb.IsChecked == true && !loading) await Rezone((ZoneScheme)rb.Tag); };
                 options.Add(rb);
                 left.Children.Add(rb);
             }
             txtSingle = new TextBox { Width = 200, MaxLength = 16, Margin = new Thickness(22, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
-            UiKit.OnText(txtSingle, async () => { if (!loading && Scheme == ZoneScheme.Single) await Rezone(); });
+            UiKit.OnText(txtSingle, async () => { if (!loading && Scheme == ZoneScheme.Single) await Rezone(ZoneScheme.Single); });
             // Typing a name means "everything in one zone".
             txtSingle.GotFocus += (o, e) => { var single = options.First(x => (ZoneScheme)x.Tag == ZoneScheme.Single); if (single.IsChecked != true) single.IsChecked = true; };
             left.Children.Add(txtSingle);
@@ -521,12 +521,12 @@ namespace CodeplugBuilder.Mac
             Fill(null);
         }
 
-        async Task Rezone()
+        async Task Rezone(ZoneScheme scheme)
         {
             var p = State.Project;
             string single = Naming.Clean(txtSingle.Text ?? "", 16).Length > 0 ? Naming.Clean(txtSingle.Text, 16) : "DMR";
             // Typing a new name for the one zone renames it (keeping its talkgroups), unless that name is taken.
-            if (Scheme == ZoneScheme.Single && State.Scheme == ZoneScheme.Single)
+            if (scheme == ZoneScheme.Single && State.Scheme == ZoneScheme.Single)
             {
                 if (Project.SameZone(single, State.SingleZone)) return;
                 if (p.FindZone(State.SingleZone) != null && p.FindZone(single) == null)
@@ -538,7 +538,7 @@ namespace CodeplugBuilder.Mac
                 }
             }
             // Zone talkgroup sets belong to zone names; regrouping makes new zones without them.
-            if (State.HasZoneWork && Scheme != State.Scheme &&
+            if (State.HasZoneWork && scheme != State.Scheme &&
                 !await Dialogs.Ask(Owner, "Regrouping makes new zones, so the talkgroups you ticked for each zone are cleared.\n\nRegroup anyway?", "Regroup"))
             {
                 loading = true;
@@ -546,7 +546,7 @@ namespace CodeplugBuilder.Mac
                 loading = false;
                 return;
             }
-            State.Scheme = Scheme;
+            State.Scheme = scheme;
             State.SingleZone = single;
             ZonePlanner.Apply(p, p.Repeaters.Where(r => r.IsDigital), State.Scheme, State.SingleZone);
             WizardState.SortZones(p);
