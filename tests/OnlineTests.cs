@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using CodeplugBuilder.Core;
@@ -188,14 +189,15 @@ namespace CodeplugBuilder.Tests
         static void ChirpFilesOnTheMap()
         {
             string S(string path) { var s = RepeaterBookImport.StateFromName(path); return s.HasValue ? s.Value.Key + "/" + s.Value.Value : "none"; }
-            Assert.Equal("Texas/United States", S(@"C:\x\Texas.csv"), "full name");
-            Assert.Equal("Texas/United States", S(@"C:\x\TX.csv"), "code");
-            Assert.Equal("New Mexico/United States", S(@"C:\x\rb_chirp_New_Mexico.csv"), "two words, underscores");
-            Assert.Equal("West Virginia/United States", S(@"C:\x\west-virginia repeaters.csv"), "not Virginia");
-            Assert.Equal("Oklahoma/United States", S(@"C:\States\Oklahoma\rb_chirp_2610061815.csv"), "folder name");
-            Assert.Equal("Ontario/Canada", S(@"C:\x\ON.csv"), "province");
-            Assert.Equal("none", S(@"C:\x\rb_chirp_2610061815.csv"), "doesn't say");
-            Assert.Equal("none", S(@"C:\x\repeaters in my area.csv"), "lower-case words aren't codes (\"in\")");
+            // Path.Combine, so the paths are right on Windows and on a Mac.
+            Assert.Equal("Texas/United States", S(Path.Combine("x", "Texas.csv")), "full name");
+            Assert.Equal("Texas/United States", S(Path.Combine("x", "TX.csv")), "code");
+            Assert.Equal("New Mexico/United States", S(Path.Combine("x", "rb_chirp_New_Mexico.csv")), "two words, underscores");
+            Assert.Equal("West Virginia/United States", S(Path.Combine("x", "west-virginia repeaters.csv")), "not Virginia");
+            Assert.Equal("Oklahoma/United States", S(Path.Combine("States", "Oklahoma", "rb_chirp_2610061815.csv")), "folder name");
+            Assert.Equal("Ontario/Canada", S(Path.Combine("x", "ON.csv")), "province");
+            Assert.Equal("none", S(Path.Combine("x", "rb_chirp_2610061815.csv")), "doesn't say");
+            Assert.Equal("none", S(Path.Combine("x", "repeaters in my area.csv")), "lower-case words aren't codes (\"in\")");
 
             // A county export as a Texas file: placed at their towns, then added by the wizard's path with county zones.
             string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment\r\n" +

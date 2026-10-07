@@ -23,12 +23,15 @@ jobs:
         run: dotnet run --project tests -c Release
 
       - name: Build the Mac app
+        if: ${{ !cancelled() }}
         run: dotnet build src/Mac/CodeplugBuilder.Mac.csproj -c Release
 
       - name: Diagnostics report
+        if: ${{ !cancelled() }}
         run: dotnet src/Mac/bin/Release/net8.0/CodeplugBuilderMac.dll --diagnose | tee diagnose.txt
 
       - name: Draw the map, the start page and the wizard
+        if: ${{ !cancelled() }}
         continue-on-error: true
         timeout-minutes: 12
         env:
@@ -42,6 +45,7 @@ jobs:
           cat shots/wizard/wizard.log || true
 
       - name: Package signed .app bundles (Apple Silicon and Intel)
+        if: ${{ !cancelled() }}
         run: |
           VERSION=$(grep -m1 '<Version>' src/Mac/CodeplugBuilder.Mac.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
           mkdir -p dist
@@ -62,6 +66,7 @@ jobs:
           (cd dist && shasum -a 256 *.zip | tee SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: mac-diagnostics
           path: diagnose.txt
@@ -74,6 +79,7 @@ jobs:
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: mac-app-zips
           path: dist
