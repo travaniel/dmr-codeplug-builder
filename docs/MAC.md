@@ -113,6 +113,12 @@ Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0
 - **Radio > Read codeplug from radio works.** It wrote `Radio reads/<date time>/radio.img` (header `CPBIMG01`, model `D6X2UV2`) and the
   six CSVs. The result matched what is on the radio: 17 channels (7 NOAA weather, 8 hotspot), zones Hotspot and Weather, 8 talkgroups,
   the Hotspot receive group list, two scan lists and radio ID 3226509 "Austin W6OZZ". Read only; nothing was written to the radio.
+- **Radio > Write codeplug to radio works.** A small project (6 zones: Aptos, Bonny Doon, Capitola, Oakland, Santa Cruz, Santa Maria; 49 new
+  channels plus the 2 VFO rows; it replaced the hotspot and weather channels) was written after a CPS backup (`.rdt`) was made on Windows.
+  The app checked 5,490 blocks against the earlier read first, wrote them (722 changed), and verified them after the radio reconnected
+  (`write.log`, `before.img`, `written.img` kept in `Radio reads/<date time> write/`). A separate read afterwards gave six CSVs
+  byte-identical to what was written, and an image that differs from `written.img` only in the 8 timestamp bytes in its header. The radio
+  restarted and works with the new codeplug.
 
 **Fixed**
 
@@ -125,11 +131,11 @@ Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0
 
 **Not verified on a real Mac yet**
 
-- Writing to the radio (Radio > Write codeplug, Restore): the Mac serial port handling for writes has not been tried. Keep a CPS
-  backup (`.rdt`) made on Windows before the first write.
+- Radio > Restore codeplug from a backup (not tried on a Mac), and the radio settings editor. Keep a CPS backup (`.rdt`) made on Windows
+  before any write.
 - Map interaction (drag, wheel zoom, trackpad pinch, county picking), the rest of the wizard (callsign lookup, county picking,
   talkgroups, Finish), the Repeaters / Hotspot / Zones tabs, Save / Open and Export CSV on a real Mac.
-- Radio settings editor, the signed `.app` bundle from the GitHub workflow.
+- The signed `.app` bundle from the GitHub workflow.
 
 **Known issues**
 
