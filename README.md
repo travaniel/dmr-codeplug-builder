@@ -7,6 +7,13 @@ files plus a `.LST` file list that the CPS imports in one step.
 It runs on Windows 10 and 11 with the .NET Framework 4.8 that Windows already includes, so there is
 nothing to install.
 
+A Mac version (an Avalonia app over the same engine) is in progress in `src/Mac`; see `docs/MAC.md`.
+
+> **Unofficial.** This is an independent hobby project. It is not made by, endorsed by or affiliated with BTECH,
+> RepeaterBook, RadioID.net or BrandMeister. Check what it writes before you load it into your radio, and keep
+> a backup of your codeplug (a CPS `.rdt` file); you use it at your own risk.
+
+
 ## Using it
 
 **From scratch:** *File > New codeplug* (or *Set up a new codeplug* on the start page) is a five-step
@@ -126,9 +133,26 @@ list of improvements. `docs/MAC.md` covers the Mac version.
 | --- | --- |
 | `src/Core` | The engine, no UI: models, CSV reader/writer, CPS format, generator, importer, validation, online data parsing, the map atlas and automatic zones, built-in CPS templates and `Geo/atlas.gz` |
 | `src/App` | The Windows Forms GUI (start page, wizard, map, tabs) |
+| `src/Mac` | The Mac version: an Avalonia GUI over the same engine (also runs on Windows and Linux) |
 | `tests` | Engine tests (a console runner). The key one imports a real CPS export and regenerates it, checking Channel, Zone, TalkGroups and RadioIDList come back identical |
 | `tools/GeoBuild` | Builds `src/Core/Geo/atlas.gz` from the public boundary and place files (zips in `tools/geodata`, not in the repo; see HANDOFF 4c) |
 | `docs` | `HANDOFF.md`: background, format reference, verification status, roadmap |
 
 Projects are saved as readable JSON (`.cpb`). The built-in map uses US Census and Natural Earth data
 (public domain) and GeoNames place names (CC BY 4.0).
+
+## Data sources and credits
+
+- **DMR repeaters and users:** [RadioID.net](https://radioid.net) (repeater lists, DMR ID lookup).
+- **Talkgroup names and repeaters on the network:** [BrandMeister](https://brandmeister.network).
+- **Analog repeaters:** RepeaterBook's own CHIRP export, which you download yourself from
+  [repeaterbook.com](https://www.repeaterbook.com) and import into the program. *Data courtesy of RepeaterBook.com.*
+  This program does not call RepeaterBook's API, ships no RepeaterBook data, and has no bulk-download feature.
+  If an API client is added later, each user will use their own RepeaterBook token (never a shared one), and
+  requests will be limited to the areas the user picks.
+- **Map:** boundaries from the US Census Bureau and Natural Earth (public domain); highways from Natural Earth;
+  place names from [GeoNames](https://www.geonames.org), licensed under CC BY 4.0.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
