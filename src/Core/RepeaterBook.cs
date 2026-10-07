@@ -8,9 +8,9 @@ namespace CodeplugBuilder.Core
 {
     // RepeaterBook without the API, through CHIRP files. Two flavours, both checked on real files (2026-10-06):
     //
-    // RepeaterBook's own "CHIRP" export (Brown County, TX):
+    // RepeaterBook's own "CHIRP" export (one county):
     //   Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment
-    //   1,"K5BWD",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,"Brownwood",
+    //   1,"K0TSTA",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,"Brownwood",
     // Name is the callsign, Comment the city ("Brownwood, Bangs Hill"); no county or state; rows end with an extra comma.
     //
     // CHIRP's own CSV after its RepeaterBook query (all of Texas, 1,365 lines: 1,025 FM, 173 DN, 124 DMR, 43 DV):
@@ -173,7 +173,7 @@ namespace CodeplugBuilder.Core
 
         /// <summary>
         /// The project's analog repeater that is this machine, or null: same frequencies and either its callsign (a word of
-        /// the name or notes starting with it: "AC5KT2" for AC5KT) or the same town. Frequency pairs are reused across a
+        /// the name or notes starting with it: "N0FAKE2" for N0FAKE) or the same town. Frequency pairs are reused across a
         /// state, so frequencies alone aren't enough.
         /// </summary>
         public static Repeater FindExisting(Project p, ChirpChannel c)
@@ -218,8 +218,8 @@ namespace CodeplugBuilder.Core
         }
 
         /// <summary>
-        /// "K5BWD Brownwood". A callsign with several machines in the same town gets the band instead ("K5BWD VHF",
-        /// "K5BWD UHF"), the way hams usually name them.
+        /// "K0TSTA Brownwood". A callsign with several machines in the same town gets the band instead ("K0TSTA VHF",
+        /// "K0TSTA UHF"), the way hams usually name them.
         /// </summary>
         public static string ChannelName(ChirpChannel c, IEnumerable<ChirpChannel> all)
         {

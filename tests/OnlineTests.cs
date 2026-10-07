@@ -146,38 +146,38 @@ namespace CodeplugBuilder.Tests
         [Test]
         static void RepeaterBookChirpExport()
         {
-            // A real RepeaterBook CHIRP export (Brown County, TX, 2026-10-06), CRLF and trailing commas as downloaded.
+            // An invented export in the format of RepeaterBook's CHIRP download (made-up callsigns), CRLF and trailing commas as downloaded.
             string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment\r\n" +
-                         "1,\"K5BWD\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "2,\"KA9DNO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
-                         "3,\"AI5TX\",443.925000,+,5,,88.5,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "4,\"WD9ARW\",443.900000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood, Bangs Hill\",\r\n" +
-                         "5,\"N5AG\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
-                         "6,\"AC5KT\",147.000000,+,0.6,TSQL,94.8,94.8,023,NN,FM,5,\"Bangs\",\r\n" +
-                         "7,\"K5BWD\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "8,\"W5CBT\",146.820000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
+                         "1,\"K0TSTA\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "2,\"W0DEMO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
+                         "3,\"N0SAMP\",443.925000,+,5,,88.5,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "4,\"K0LOCL\",443.900000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood, Bangs Hill\",\r\n" +
+                         "5,\"W0XTRA\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
+                         "6,\"N0FAKE\",147.000000,+,0.6,TSQL,94.8,94.8,023,NN,FM,5,\"Bangs\",\r\n" +
+                         "7,\"K0TSTA\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "8,\"W0TONE\",146.820000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
             var t = CsvTable.Parse(csv);
             Assert.True(ChirpCsv.IsChirp(t), "recognized");
             var all = ChirpCsv.Parse(t);
             Assert.Equal(8, all.Count, "rows");
-            var k5bwdUhf = all[0];
-            Assert.Equal(449.7m, k5bwdUhf.TxMHz, "+5");
-            Assert.True(k5bwdUhf.ToneEncode == "94.8" && k5bwdUhf.ToneDecode == "94.8" && k5bwdUhf.ToneSquelch, "TSQL = tone both ways, like the user's K5BWD UHF");
-            var w5cbt = all[7];
-            Assert.True(w5cbt.TxMHz == 146.22m && w5cbt.ToneEncode == "94.8" && w5cbt.ToneDecode == "Off" && !w5cbt.ToneSquelch, "Tone = encode only, like the user's W5CBT");
+            var uhfOne = all[0];
+            Assert.Equal(449.7m, uhfOne.TxMHz, "+5");
+            Assert.True(uhfOne.ToneEncode == "94.8" && uhfOne.ToneDecode == "94.8" && uhfOne.ToneSquelch, "TSQL = tone both ways, like a typical UHF machine");
+            var toneOne = all[7];
+            Assert.True(toneOne.TxMHz == 146.22m && toneOne.ToneEncode == "94.8" && toneOne.ToneDecode == "Off" && !toneOne.ToneSquelch, "Tone = encode only, like a transmit-tone-only machine");
             Assert.Equal("Off", all[2].ToneEncode, "no tone mode: carrier");
             Assert.Equal("Brownwood", all[3].City, "city from \"Brownwood, Bangs Hill\"");
-            Assert.Equal("K5BWD UHF", RepeaterBookImport.ChannelName(k5bwdUhf, all), "same callsign twice: band");
-            Assert.Equal("KA9DNO Cross Pla", RepeaterBookImport.ChannelName(all[1], all), "callsign + city");
+            Assert.Equal("K0TSTA UHF", RepeaterBookImport.ChannelName(uhfOne, all), "same callsign twice: band");
+            Assert.Equal("W0DEMO Cross Pla", RepeaterBookImport.ChannelName(all[1], all), "callsign + city");
 
-            // The user's analog channels from the same area are already in the project.
+            // Analog channels from the same area are already in the project.
             var p = new Project { RadioIdName = "Test", RadioId = 1 };
             void Analog(string name, decimal rx, decimal tx) { var r = Repeater.NewAnalog(name); r.RxMHz = rx; r.TxMHz = tx; p.Repeaters.Add(r); }
-            Analog("K5BWD VHF", 146.94m, 146.34m); Analog("WD9ARW", 443.9m, 448.9m); Analog("AI5TX", 443.925m, 448.925m);
-            Analog("K5BWD UHF", 444.7m, 449.7m); Analog("W5CBT", 146.82m, 146.22m);
+            Analog("K0TSTA VHF", 146.94m, 146.34m); Analog("K0LOCL", 443.9m, 448.9m); Analog("N0SAMP", 443.925m, 448.925m);
+            Analog("K0TSTA UHF", 444.7m, 449.7m); Analog("W0TONE", 146.82m, 146.22m);
             var res = RepeaterBookImport.Add(p, all, all, (c, loc) => "Brown Co", c => GeoLocation.Unknown);
-            Assert.Equal("KA9DNO Cross Pla,AC5KT Bangs", string.Join(",", res.Added.Select(r => r.Name)), "only the new ones");
-            Assert.True(res.Notes[0].Contains("N5AG 224.720 (outside the radio's bands)") && res.Notes[0].Contains("already in the project as \"K5BWD UHF\""), "skips explained: " + res.Notes[0]);
+            Assert.Equal("W0DEMO Cross Pla,N0FAKE Bangs", string.Join(",", res.Added.Select(r => r.Name)), "only the new ones");
+            Assert.True(res.Notes[0].Contains("W0XTRA 224.720 (outside the radio's bands)") && res.Notes[0].Contains("already in the project as \"K0TSTA UHF\""), "skips explained: " + res.Notes[0]);
             Assert.True(res.Added.All(r => r.Zone == "Brown Co" && !r.IsDigital && r.Bandwidth == Bandwidths.Wide), "zone, analog, wide");
             p.Talkgroups.Add(new Talkgroup("Local", 9)); // analog channels still need a contact in the CPS
             var errors = Validator.Validate(p, CpsFormat.BuiltIn()).Where(i => i.Severity == Severity.Error).Select(i => i.Message).ToList();
@@ -197,12 +197,12 @@ namespace CodeplugBuilder.Tests
             Assert.Equal("none", S(@"C:\x\rb_chirp_2610061815.csv"), "doesn't say");
             Assert.Equal("none", S(@"C:\x\repeaters in my area.csv"), "lower-case words aren't codes (\"in\")");
 
-            // Brown County export as a Texas file: placed at their towns, then added by the wizard's path with county zones.
+            // A county export as a Texas file: placed at their towns, then added by the wizard's path with county zones.
             string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment\r\n" +
-                         "1,\"K5BWD\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "2,\"KA9DNO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
-                         "5,\"N5AG\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
-                         "7,\"K5BWD\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
+                         "1,\"K0TSTA\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
+                         "2,\"W0DEMO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
+                         "5,\"W0XTRA\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
+                         "7,\"K0TSTA\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
             var atlas = GeoAtlas.BuiltIn();
             var listings = RepeaterBookImport.ToListings(ChirpCsv.Parse(CsvTable.Parse(csv)), "Texas", "United States", atlas);
             Assert.Equal(3, listings.Count, "224 MHz left out");
@@ -215,7 +215,7 @@ namespace CodeplugBuilder.Tests
             var o = new OnlineImportOptions { ZoneFor = r => ZonePlanner.ZoneName(r, ZoneScheme.County), Scheme = ZoneScheme.County,
                                               DefaultTalkgroups = OnlineImporter.SuggestedDefaults("Texas") };
             var res = OnlineImporter.AddRepeaters(p, listings, o, null);
-            Assert.Equal("K5BWD UHF|Brown Co,KA9DNO Cross Pla|Callahan Co,K5BWD VHF|Brown Co", string.Join(",", res.Added.Select(r => r.Name + "|" + r.Zone)), "names and county zones");
+            Assert.Equal("K0TSTA UHF|Brown Co,W0DEMO Cross Pla|Callahan Co,K0TSTA VHF|Brown Co", string.Join(",", res.Added.Select(r => r.Name + "|" + r.Zone)), "names and county zones");
             Assert.True(res.Added.All(r => !r.IsDigital && r.Talkgroups.Count == 0), "analog, no default talkgroups");
             Assert.Equal(3, res.Channels, "one channel each");
             Assert.True(OnlineImporter.FindExisting(p, listings[0]) != null, "now in the project");
@@ -226,23 +226,23 @@ namespace CodeplugBuilder.Tests
         [Test]
         static void ChirpQueryExport()
         {
-            // CHIRP's own CSV after its RepeaterBook query of Texas (2026-10-06): real lines.
+            // Invented lines in the format of CHIRP's own CSV after its RepeaterBook query (made-up callsigns).
             string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,RxDtcsCode,CrossMode,Mode,TStep,Skip,Power,Comment,URCALL,RPT1CALL,RPT2CALL,DVCODE\r\n" +
-                "0,St Davids Surgical Hospital,29.640000,-,0.100000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,FM,5.00,,50W,\"WD5EMS near Round Rock, Williamson County, Texas OPEN\",,,,\r\n" +
-                "28,Westlake Hills,145.110000,-,0.600000,Cross,103.5,88.5,023,NN,023,Tone->DTCS,FM,5.00,,50W,\"N5ZUA near Austin, Travis County, Texas OPEN\",,,,\r\n" +
+                "0,Hill Hospital,29.640000,-,0.100000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,FM,5.00,,50W,\"K0EMSX near Round Rock, Williamson County, Texas OPEN\",,,,\r\n" +
+                "28,Westlake Hills,145.110000,-,0.600000,Cross,103.5,88.5,023,NN,023,Tone->DTCS,FM,5.00,,50W,\"W0ZUAX near Austin, Travis County, Texas OPEN\",,,,\r\n" +
                 "81,Sun City,145.270000,-,0.600000,Tone,103.5,88.5,023,NN,023,Tone->Tone,FM,5.00,,50W,\"near Georgetown, Williamson County, Texas OPEN\",,,,\r\n" +
-                "274,N5ZUA,146.800000,-,0.600000,Cross,100.0,67.0,023,NN,023,Tone->Tone,FM,5.00,,50W,\"N5ZUA near La Grange, Fayette County, Texas OPEN\",,,,\r\n" +
-                "721,WA5JRS,441.375000,+,5.000000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,DN,5.00,,50W,\"WA5JRS near Grand Prairie, Tarrant County, Texas OPEN\",,,,\r\n";
+                "274,W0ZUAX,146.800000,-,0.600000,Cross,100.0,67.0,023,NN,023,Tone->Tone,FM,5.00,,50W,\"W0ZUAX near La Grange, Fayette County, Texas OPEN\",,,,\r\n" +
+                "721,K0JRSX,441.375000,+,5.000000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,DN,5.00,,50W,\"K0JRSX near Grand Prairie, Tarrant County, Texas OPEN\",,,,\r\n";
             var all = ChirpCsv.Parse(CsvTable.Parse(csv));
             Assert.Equal(5, all.Count, "rows");
             var westlake = all[1];
-            Assert.Equal("N5ZUA", westlake.Callsign, "callsign from the comment, not the site name");
+            Assert.Equal("W0ZUAX", westlake.Callsign, "callsign from the comment, not the site name");
             Assert.True(westlake.City == "Austin" && westlake.County == "Travis County" && westlake.State == "Texas" && westlake.Status == "OPEN", "comment parts");
             Assert.True(westlake.ToneEncode == "103.5" && westlake.ToneDecode == "D023N" && westlake.ToneSquelch, "Cross Tone->DTCS");
             Assert.True(all[3].ToneEncode == "100.0" && all[3].ToneDecode == "67.0", "Cross Tone->Tone: rTone out, cTone in");
             Assert.Equal("Sun City", all[2].Callsign, "no callsign in the comment: the Name column");
             Assert.True(RepeaterBookImport.Problem(all[0]) != null && RepeaterBookImport.Problem(all[4]) != null, "10 m and Fusion left out");
-            Assert.Equal("N5ZUA Austin", RepeaterBookImport.ChannelName(westlake, all), "same callsign in another town: still the town");
+            Assert.Equal("W0ZUAX Austin", RepeaterBookImport.ChannelName(westlake, all), "same callsign in another town: still the town");
 
             var listings = RepeaterBookImport.ToListings(all, null, "United States", GeoAtlas.BuiltIn());
             Assert.Equal(3, listings.Count, "FM in band");
@@ -250,10 +250,10 @@ namespace CodeplugBuilder.Tests
 
             // Frequency pairs repeat across a state: another town's machine on the same pair is not a duplicate.
             var p = new Project();
-            var other = Repeater.NewAnalog("KB5XYZ Lubbock"); other.RxMHz = 145.11m; other.TxMHz = 144.51m; other.City = "Lubbock";
+            var other = Repeater.NewAnalog("K0XYZB Lubbock"); other.RxMHz = 145.11m; other.TxMHz = 144.51m; other.City = "Lubbock";
             p.Repeaters.Add(other);
             Assert.True(RepeaterBookImport.FindExisting(p, westlake) == null, "same pair, other callsign and town");
-            other.Name = "N5ZUA West";
+            other.Name = "W0ZUAX West";
             Assert.True(RepeaterBookImport.FindExisting(p, westlake) == other, "same pair and callsign");
         }
 
@@ -295,8 +295,8 @@ namespace CodeplugBuilder.Tests
  {""callsign"":""W1BAD"",""city"":""Nowhere"",""color_code"":1,""frequency"":""927.01250"",""offset"":""-25.000"",""state"":""Texas"",""talkgroups"":[]}
 ]}";
 
-        const string UserJson = @"{""count"":1,""page"":1,""pages"":1,""per_page"":200,""results"":[{""account_unvalidated"":0,""callsign"":""W6OZZ"",""city"":""Los Angeles"",
-""country"":""United States"",""fname"":""Austin"",""id"":3226509,""lastheard"":""Tue, 15 Sep 2026 04:54:04 GMT"",""name"":""Austin"",""radio_id"":3226509,""state"":""California"",""surname"":""""}]}";
+        const string UserJson = @"{""count"":1,""page"":1,""pages"":1,""per_page"":200,""results"":[{""account_unvalidated"":0,""callsign"":""K0TEST"",""city"":""Los Angeles"",
+""country"":""United States"",""fname"":""Pat"",""id"":1234567,""lastheard"":""Tue, 15 Sep 2026 04:54:04 GMT"",""name"":""Pat"",""radio_id"":1234567,""state"":""California"",""surname"":""""}]}";
 
         const string BmJson = @"{""1"":""Local"",""9"":""Local"",""91"":""World-wide"",""93"":""North America"",""3100"":""USA Bridge"",""3148"":""Texas - 10 Minute Limit"",
 ""31487"":""TX ARES EmComm"",""310997"":""Parrot"",""202"":""Διεθνές Ελλάδα"",""x"":""ignored""}";
@@ -350,9 +350,9 @@ namespace CodeplugBuilder.Tests
         {
             var users = RadioId.ParseUsers(UserJson);
             Assert.Equal(1, users.Count, "users");
-            Assert.Equal(3226509, users[0].Id, "id");
-            Assert.Equal("Austin W6OZZ", users[0].SuggestedName(), "radio ID name");
-            Assert.Equal("W6OZZ", new RadioIdUser { FirstName = "Bartholomew-Maximilian", Callsign = "W6OZZ" }.SuggestedName(), "long first name falls back to callsign");
+            Assert.Equal(1234567, users[0].Id, "id");
+            Assert.Equal("Pat K0TEST", users[0].SuggestedName(), "radio ID name");
+            Assert.Equal("K0TEST", new RadioIdUser { FirstName = "Bartholomew-Maximilian", Callsign = "K0TEST" }.SuggestedName(), "long first name falls back to callsign");
 
             var bm = BrandMeister.ParseTalkgroups(BmJson);
             Assert.Equal(9, bm.Count, "numeric keys only");

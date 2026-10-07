@@ -232,12 +232,12 @@ per-state/country lists (Texas 343 of 354), so the app keeps those as the list a
 listed country is ignored). Cached a week as `radioid-positions.txt` (~300 KB). North America: repeaters the map
 couldn't place exactly went from 1,073 to 77 of 5,525.
 
-**RepeaterBook CHIRP export** (what the app uses, no token; checked on the user's Brown County, TX export
+**RepeaterBook CHIRP export** (what the app uses, no token; checked on a one-county export
 2026-10-06, file `rb_chirp_<yyMMddHHmm>.csv` in Downloads): header
 `Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment`, CRLF,
 an extra trailing comma on every row. Name = callsign, Frequency = output, Comment = city ("Brownwood, Bangs Hill").
 No county, state, color code or digital modes. Tone semantics are CHIRP's and match the user's CPS channels: `TSQL`
-→ cToneFreq both ways + tone squelch (K5BWD UHF), `Tone` → rToneFreq transmit only (W5CBT), blank → carrier.
+→ cToneFreq both ways + tone squelch (K0TSTA UHF), `Tone` → rToneFreq transmit only (W0TONE), blank → carrier.
 The export's county search includes towns just over the line (Cross Plains is in Callahan County).
 
 **CHIRP's own CSV after its RepeaterBook query** (the user's `TexasRepeaters.csv`, 2026-10-06, 1,365 lines: 1,025 FM,

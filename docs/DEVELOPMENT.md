@@ -9,21 +9,19 @@ with **Tool > Import > Import From File List**.
 and hasn't been verified, and the prioritized roadmap. **Read it before changing `src/Core` or anything
 about the CSV output.**
 
-## The user's setup
+## Setup the author uses
 
-- Radio: BTECH DMR-6X2 PRO (firmware 1.21a). CPS 1.22e: `C:\Users\Austin Thompson\DMR_6X2Pro_1.22\DMR_6X2Pro.exe`
-- Reference "Export All" of their codeplug (26 CSVs + `testplug.LST`):
-  `C:\Users\Austin Thompson\Documents\DMR-6X2-PRO-121e\CodePlugs\`. The round-trip tests need this folder.
-- App folder: `C:\Users\Austin Thompson\Documents\DMR-6X2-PRO-121e\DMR Codeplug Builder\` (built exe,
-  their project `My 6X2 Codeplug.cpb`, and this source in `Source\`).
-- Radio ID name in the CPS: `Austin W6OZZ`. Their hotspot is 433.550 MHz simplex, CC 1.
+- Radio: BTECH DMR-6X2 PRO (firmware 1.21a), with the BTECH CPS 1.22e on Windows.
+- A reference "Export All" of a real codeplug (26 CSVs + a `.LST`) in a folder of your own. The round-trip tests need it; without
+  it they are skipped, and everything else still runs. Point the test runner at that folder (see below).
+- The author keeps the built exe and a personal project (`.cpb`) in a folder next to this source; neither is in the repository.
 
 ## Build and test
 
 Windows (normal case):
 ```
 dotnet build src\App\CodeplugBuilder.csproj -c Release      # or open CodeplugBuilder.sln in VS 2022
-dotnet run --project tests -- "C:\Users\Austin Thompson\Documents\DMR-6X2-PRO-121e\CodePlugs"
+dotnet run --project tests -- "<folder with a CPS Export All>"
 ```
 The exe lands in `src\App\bin\Release\net48\`. Copy it (and `CodeplugBuilder.exe.config`) to the app folder.
 The tests need the .NET 8 SDK; the app needs the .NET Framework 4.8 targeting pack (VS ".NET desktop
