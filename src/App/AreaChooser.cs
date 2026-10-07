@@ -69,7 +69,7 @@ namespace CodeplugBuilder.App
             lblSummary = new Label { Dock = DockStyle.Bottom, AutoSize = false, Height = Ui.S(26), Font = Ui.BoldFont, TextAlign = ContentAlignment.MiddleLeft };
             lblWaiting = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Ui.HintColor, Visible = false };
             btnChirp = Ui.Button("Add analog repeaters from CHIRP files...", (s, e) => AddChirpFiles());
-            var chirpRow = Ui.Row(btnChirp, Ui.Hint("FM repeaters exported from RepeaterBook in CHIRP format, one file per state (the file or folder name says which: \"Texas.csv\", \"TX.csv\"). They show green on the map.", Ui.S(760)));
+            var chirpRow = Ui.Row(btnChirp, Ui.Hint("FM repeaters exported from RepeaterBook in CHIRP format, one file per state (the file or folder name says which: \"Texas.csv\", \"TX.csv\"). They are listed on the List tab.", Ui.S(760)));
             var credit = new LinkLabel { Text = RepeaterBookApi.Attribution, AutoSize = true, Margin = new Padding(3, Ui.S(7), 3, 3) };
             credit.LinkClicked += (s, e) => { try { System.Diagnostics.Process.Start(RepeaterBookApi.SiteUrl); } catch { } };
             chirpRow.Controls.Add(credit);

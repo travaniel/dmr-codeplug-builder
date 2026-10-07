@@ -90,7 +90,7 @@ namespace CodeplugBuilder.Mac
             lblSummary = new TextBlock { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             lblWaiting = new TextBlock { TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, IsVisible = false, TextWrapping = TextWrapping.Wrap };
             var chirpButton = UiKit.Button("Add analog repeaters from CHIRP files...", async () => await AddChirpFiles());
-            chirpRow = UiKit.Row(chirpButton, new TextBlock { Text = "FM repeaters exported from RepeaterBook in CHIRP format, one file per state. They show green on the map.", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 560 });
+            chirpRow = UiKit.Row(chirpButton, new TextBlock { Text = "FM repeaters exported from RepeaterBook in CHIRP format, one file per state. They are listed on the List tab.", Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 560 });
             var credit = new TextBlock { Text = RepeaterBookApi.Attribution, Foreground = Brushes.CornflowerBlue, TextDecorations = TextDecorations.Underline, Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand), VerticalAlignment = VerticalAlignment.Center };
             credit.PointerPressed += (s, e) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RepeaterBookApi.SiteUrl) { UseShellExecute = true }); } catch { } };
             ((StackPanel)chirpRow).Children.Add(credit);
