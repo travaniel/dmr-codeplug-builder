@@ -1,0 +1,211 @@
+# DMR Codeplug Builder: developer guide
+
+A Windows desktop app (C# WinForms on .NET Framework 4.8) that builds CSV codeplugs for the
+**BTECH DMR-6X2 PRO** CPS (customer programming software). The user edits talkgroups, repeaters, an
+MMDVM hotspot and zones; the app writes the CPS's CSV files plus a `.LST` file list that the CPS loads
+with **Tool > Import > Import From File List**.
+
+`HANDOFF.md` (same folder) has the full story: design decisions, the complete CPS CSV format reference, what has
+and hasn't been verified, and the prioritized roadmap. **Read it before changing `src/Core` or anything
+about the CSV output.**
+
+## The user's setup
+
+- Radio: BTECH DMR-6X2 PRO (firmware 1.21a). CPS 1.22e: `C:\Users\Austin Thompson\DMR_6X2Pro_1.22\DMR_6X2Pro.exe`
+- Reference "Export All" of their codeplug (26 CSVs + `testplug.LST`):
+  `C:\Users\Austin Thompson\Documents\DMR-6X2-PRO-121e\CodePlugs\`. The round-trip tests need this folder.
+- App folder: `C:\Users\Austin Thompson\Documents\DMR-6X2-PRO-121e\DMR Codeplug Builder\` (built exe,
+  their project `My 6X2 Codeplug.cpb`, and this source in `Source\`).
+- Radio ID name in the CPS: `Austin W6OZZ`. Their hotspot is 433.550 MHz simplex, CC 1.
+
+## Build and test
+
+Windows (normal case):
+```
+dotnet build src\App\CodeplugBuilder.csproj -c Release      # or open CodeplugBuilder.sln in VS 2022
+dotnet run --project tests -- "C:\Users\Austin Thompson\Documents\DMR-6X2-PRO-121e\CodePlugs"
+```
+The exe lands in `src\App\bin\Release\net48\`. Copy it (and `CodeplugBuilder.exe.config`) to the app folder.
+The tests need the .NET 8 SDK; the app needs the .NET Framework 4.8 targeting pack (VS ".NET desktop
+development" workload) or internet access so the SDK can fetch reference assemblies.
+
+Linux (how version 1.0 was built): `bash build.sh <export-folder>` compiles against Mono's 4.8 reference
+assemblies with NuGet switched off (`tools/nuget.offline.config`). See HANDOFF for the Mono + Xvfb +
+xdotool recipe used to screenshot and click through the UI without Windows.
+
+Command line (no console on Windows; a log is written next to the output):
+```
+CodeplugBuilder.exe --generate "My 6X2 Codeplug.cpb" OutFolder [--format CpsExportFolder] [--merge CpsExportFolder]
+CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
+```
+
+## Rules that keep the output importable
+
+1. **Never address CSV columns by index.** Use `CsvTable.Set(row, value, "Column Name", "Alias")` /
+   `Get(...)`. A column the template lacks is skipped; a column we don't manage keeps the CPS value.
+2. **Every generated row starts as a copy of a row the CPS itself exported** (`CpsFormat.AnalogTemplate`,
+   `DigitalTemplate`, `VfoRows`, `ScanTemplate`). Don't build rows from scratch.
+3. CSV dialect: every field double-quoted, comma separated, CRLF, trailing CRLF, no BOM, ASCII
+   (read/written as Latin-1 by `CsvTable`).
+4. **Names are the foreign keys.** This CPS's Zone.CSV and ReceiveGroupCallList.CSV refer to channels and
+   talkgroups by name only (no frequencies, no IDs). Names must be unique (case-insensitive), at most 16
+   characters, with no `|` or `"`. Always go through `UniqueNamer` / `Naming.Clean`.
+5. Keep the VFO rows (No. 4001 and 4002) in Channel.CSV, pointed at a contact and radio ID that exist.
+   APRS.CSV refers to channel 4001 by number.
+6. Analog channels still need a valid Contact (the generator uses the first talkgroup) and Radio ID.
+7. After any change in `src/Core`, run the tests with the export folder.
+   `ImportTests.RoundTripReproducesUsersCodeplug` must stay green: importing the user's export and
+   regenerating it has to reproduce Channel (channel numbers included), Zone, TalkGroups and RadioIDList byte-for-byte.
+8. New facts about the CPS format go into the format section of `docs/HANDOFF.md`.
+
+## Code constraints
+
+- The app targets **.NET Framework 4.8** so it runs on stock Windows 10/11 with nothing to install.
+  C# `latest` syntax is fine, but no APIs newer than 4.8: no `TextBox.PlaceholderText`,
+  `Dictionary.GetValueOrDefault`, `string.Contains(char)`, `Math.Clamp`, ranges (`^1`, `..`),
+  records or `init`. The test runner (net8.0) compiles the same Core files, so Core must build on both.
+- **Zero NuGet dependencies** in the app and tests. JSON uses `DataContractJsonSerializer`.
+- The csproj uses plain `<Reference Include="System.Windows.Forms" />` instead of `UseWindowsForms`,
+  because the Linux SDK has no WindowsDesktop SDK. Keep it that way so both platforms build.
+- `src/Core` has no UI and nothing Windows-only. It is compiled into both projects through
+  `<Compile Include="..\Core\**\*.cs" />`. Templates in `src/Core/Templates` are embedded resources
+  named `CodeplugBuilder.Templates.<File>.CSV`.
+- `DataContractJsonSerializer` doesn't run constructors: each model sets its defaults in an
+  `[OnDeserializing]` `Init()`. Put defaults for new fields there, and keep old `.cpb` files loading
+  (`Project.Normalize()` repairs nulls).
+- The UI is built in code (no designer files): TableLayoutPanel / FlowLayoutPanel with Dock/Anchor, and
+  `Ui.S(px)` around every fixed pixel size so high-DPI screens scale. `Ui.InitSplitter` sets
+  SplitContainer splitters once they have their real size.
+
+## Architecture
+
+`src/Core` (engine, no UI)
+
+| File | What it does |
+| --- | --- |
+| `Csv.cs` | `CsvTable`: header + rows, name-based `Get`/`Set` (punctuation-insensitive matching, aliases), `NewRow(template)`, parse/write in the CPS dialect |
+| `Models.cs` | `Project` (radio ID, talkgroups, repeaters, hotspot, zone order + A/B, options), `Repeater` (digital or analog; digital carries `RepeaterTalkgroup {TalkgroupId, Slot, ChannelName override}`), `Talkgroup`, `ZoneInfo`, `GenerationOptions`. `SyncZones()` adds new zone names and drops unused ones; `RenameZone()` |
+| `CpsFormat.cs` | One CPS version's layout: the six template tables (built-in resources or an Export All folder), template rows, frequency decimals, `.LST` writer with the CPS's section numbers |
+| `Generator.cs` | `CodeplugGenerator.Generate(project, format)` → `GeneratedCodeplug` (tables, channel/zone lists, notes). Channel numbers: stored ones kept, new ones lowest free, rows in number order; `KeepChannelNumbers` stores them after a Generate. Order: talkgroups → channel names → RX group lists → zones (split at 250) → scan lists → channel rows → VFO rows → radio ID. `WriteTo(folder, lstName)` |
+| `CpsImporter.cs` | Export All folder → `Project`: groups digital channels by frequency pair + color code + zone into repeaters, picks the hotspot, keeps channel names |
+| `Validation.cs` | `Validator.Validate(project, format)` → errors (block Generate) and warnings |
+| `Naming.cs`, `Tones.cs` | 16-character names, uniqueness, auto channel names; CTCSS/DCS normalization |
+| `ProjectStore.cs`, `TalkgroupCsv.cs` | `.cpb` JSON save/load (atomic); talkgroup CSV import |
+| `Json.cs` | Minimal JSON reader (objects → `Dictionary<string, object>`, numbers → `decimal`) for the online APIs |
+| `OnlineData.cs` | RadioID.net repeater/user parsing (by state or country), BrandMeister talkgroup names + US state TGs (31 + FIPS), `Networks.Normalize`, `BandPlan` (offsets), `OnlineImporter.AddRepeaters` (repeaters + talkgroups + location into a project; same-callsign repeaters get prefix `CALL2`; applies zone talkgroup sets), `Presets.AddNoaaWeather`. Pure: no HTTP |
+| `Geo.cs` | `GeoAtlas`: the embedded map (`Geo/atlas.gz`: countries, states/provinces, US counties, ~63k places). `Locate(city, state, country)` → `GeoLocation` (point + areas), `AreaAt`, `FindCountry/State/Place`, `Key()` name folding |
+| `RepeaterBook.cs` | RepeaterBook without the API: `ChirpCsv` reads a CHIRP export (Name = callsign, Comment = city, CHIRP tone modes), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, zone suggestion from the county, `Add`). `StateFromName` (state from the file/folder name), `ToListings` (CHIRP lines as `OnlineRepeater`s with `Analog` set, placed at their towns, so the map picker and `OnlineImporter.AddRepeaters` take them like DMR listings) |
+| `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
+| `Zoning.cs` | `ZonePlanner`: automatic zone names per county/city/state/country/band/single, `Apply`, one spelling per zone (`Canonical`) |
+| `Radio/*.cs` | Direct radio access (HANDOFF 4d): `AnytoneLink` (serial protocol over a Stream), `MemoryImage` (16-byte blocks, `radio.img`), `Dmr6x2Pro` (memory map, read plan, `RadioReader`, CPS write set), `RadioCodeplug` (decoder), `RadioCsv` (→ CPS CSVs, `Compare`), `RadioEncoder` (CPS tables → image, the reverse), `RadioWriter` (full CPS-style write, guards), `RadioSettings` (table of optional settings: read/write/report; App `RadioSettingsForm` is the dev editor) |
+| (`Models.cs`) | Zone talkgroup sets: `ZoneInfo.Talkgroups`, `RepeaterTalkgroup.FromZone`, `Project.AddZoneTalkgroup / RemoveZoneTalkgroup / SetZoneTalkgroupSlot / ApplyZoneTalkgroups`, `DefaultSlot`. Repeater location fields (`City`, `State`, `Country`, `County`, `AreaCode`, `Latitude/Longitude`, `SourceId`). All optional, never read by the generator |
+
+`src/App` (WinForms)
+
+| File | What it does |
+| --- | --- |
+| `Program.cs` | Entry point, DPI scale, CLI (`--generate`, `--import`), dev switches (`--map`, `--map-snapshot`, `--ui-walkthrough`, see below), crash handler |
+| `Session.cs` | `Session` (project, path, dirty flag, CPS format; events `Changed`, `Replaced`, `TalkgroupsChanged`) and `AppSettings` (`%APPDATA%\DMR Codeplug Builder\settings.txt`, or `CODEPLUGBUILDER_SETTINGS`; custom CPS format folder; keys `LastProject`, `Region`, `Callsign`...) |
+| `MainForm.cs` | Menu, start page / wizard / workspace (tabs + status bar) switching, Generate / Import / Open / Save flows |
+| `StartPage.cs` | First screen when there's no project to reopen: new codeplug (wizard), import, open, empty |
+| `Wizard.cs` | `NewCodeplugWizard` (File > New codeplug): `RegionStep` → `RadioStep` → `AreasStep` → `ZonesStep` → `ZoneTalkgroupsStep`; `WizardState.Build()` makes the project |
+| `RegionMap.cs`, `RegionPicker.cs` | GDI+ Mercator map (pan/zoom, pick countries/states/counties, dots, badges) and its toolbar (levels, Find, zoom) |
+| `RegionDownload.cs` | Background RadioID download for map areas (US states by state, elsewhere by country), places each repeater, cached for the run |
+| `AreaChooser.cs` | Map + List tabs for picking downloaded repeaters by area or one by one (wizard step 3 and Add from map) |
+| `ZoneTalkgroupsEditor.cs` | One zone's talkgroups: ticked = zone set on every repeater; search project + BrandMeister; starter set; copy to all zones (wizard step 5 and the Zones tab) |
+| `AddFromMapDialog.cs` | *Repeaters > Add from map* (and `RegionDialog`) |
+| `DevTools.cs` | `--ui-walkthrough`: drives the start page and whole wizard off screen with real downloads, saves PNGs, generates the CSVs |
+| `RepeatersPage.cs` + `RepeaterEditor.cs` | Repeater list and the editor (fields, offset helper, talkgroup assignment grid). The editor is shared with `HotspotPage.cs` |
+| `TalkgroupsPage.cs` | Master talkgroup grid; changing an ID rewrites references on every repeater |
+| `ZonesPage.cs`, `SettingsPage.cs`, `IssuesDialog.cs`, `Ui.cs` | Zone order/rename/A-B, settings, problem list dialog, layout helpers (`Ui.SetUpGrid` for every DataGridView) |
+| `Online.cs` | HTTP (`HttpWebRequest`, 30 s timeout), all-pages RadioID download, BrandMeister names cached a week in `%APPDATA%`, callsign → DMR ID lookup flow |
+| `OnlineRepeaterDialog.cs`, `TalkgroupBrowserDialog.cs` | *Find repeaters online* (state → tick → add, default talkgroups grid) and *Browse BrandMeister* |
+| `RepeaterBookDialog.cs` | *Repeaters > From RepeaterBook*: opens repeaterbook.com, picks the CHIRP export up from Downloads (or Choose file), list with ticks, one zone / per county / per city. Dev check: `--repeaterbook-snapshot project.cpb export.csv folder` |
+
+**ListView checkboxes:** on Windows a `ListView` raises `ItemChecked` for every item while it creates its
+handle. Every checkbox ListView here ignores those (`creatingHandle` flag set in `HandleCreated`, cleared
+by `BeginInvoke`); copy that pattern for new ones.
+
+**Zone talkgroup sets** are the "pick talkgroups per zone" feature. The generator never reads them: they only
+add `RepeaterTalkgroup` entries (marked `FromZone`) to the repeaters in the zone, so the CSV output still comes
+from `Repeater.Talkgroups` alone and the round trip is unaffected. Unticking takes back only `FromZone`
+channels; *Remove from zone* removes the talkgroup from every repeater in the zone. A repeater that changes zone
+(`RepeaterEditor.ApplyZone`) or is added online gets `ApplyZoneTalkgroups`.
+
+**Mac version (started 2026-10-06):** `src/Mac` is an Avalonia UI on .NET 8 sharing `src/Core` and the UI-free App files
+(`Session`, `Online`, `RegionDownload`, `RadioPort`, linked, not copied). Those four files must stay free of WinForms; the
+WinForms bit of `Online` lives in `OnlineUi.cs`. It may use NuGet (Avalonia, System.IO.Ports); the Windows app may not.
+Package with `tools/package-mac.ps1`. Status, first-launch steps and the port order are in `docs/MAC.md`.
+
+**Highways** are in `src/Core/Geo/roads.gz` (~0.5 MB, embedded, written by the same `tools/GeoBuild` run from `ne_10m_roads.zip`);
+`GeoAtlas.BuiltIn().Roads`, drawn by `RegionMap.DrawRoads`, switch in `RegionPicker`. The map works without the file.
+
+**The map atlas** (`src/Core/Geo/atlas.gz`, ~3.7 MB, embedded) is built by `tools/GeoBuild` from the zips in
+`tools/geodata` (not in the repo, read without extracting; sources and URLs in HANDOFF 4c): `dotnet run --project tools\GeoBuild -c Release -- tools\geodata src\Core\Geo\atlas.gz`.
+Don't name embedded resources `*.bin.gz`: MSBuild takes "bin" for a culture and makes a satellite assembly.
+
+**Checking the UI without clicking:** `CodeplugBuilder.exe --ui-walkthrough <folder> [callsign]` (set
+`CODEPLUGBUILDER_SETTINGS` to a scratch folder first so the user's settings and LastProject stay untouched) and
+`--map-snapshot <folder>`. Both draw real forms off screen with `DrawToBitmap`; they can't test real mouse clicks.
+
+**Data flow:** pages mutate `Session.Project` directly and call `session.MarkDirty()`. That updates the
+title and restarts a 400 ms timer; `MainForm.RefreshStatus()` then runs the generator and validator for
+the status bar. Generate runs `Validator`, then `CodeplugGenerator`, then `WriteTo`. Pages rebind on
+`Session.Replaced` (new/open/import). `RepeaterEditor` guards with its `loading` flag while binding, so
+programmatic changes don't fire edits.
+
+## Status
+
+- **1.3 (2026-10-06):** renamed W6OZZ CPS (display name only; exe, settings and backup folders unchanged). Bottom bar has
+  *Read from radio* / *Write to radio*; CSV export moved to the new **Export** menu (Ctrl+G). Names are shortened, not cut
+  (`Naming.Fit`), both-slot talkgroups get TS1/TS2, clashes try smarter names before " 2"; unnamed talkgroups are named from
+  repeater notes, other repeaters' IDs and RadioID.net lookups (`TalkgroupNames`, `Online.NameTalkgroups`); same-named
+  counties in different states get separate zones. Old projects keep their channel names (FileVersion 2 migration). NOAA
+  preset in WX1-WX7 order (was by frequency, so the radio showed WX2, WX4, WX5, WX3...); `Presets.SortNoaaWeather` repairs
+  saved projects on load. Repeaters are placed by their DMR-MARC map coordinates (RadioID `/api/rptr/map/`), and the wizard
+  warns before going on with no repeaters picked. *Repeaters > From RepeaterBook* imports a
+  RepeaterBook CHIRP export (analog; no API token), checked on the user's Brown County export. The map step (wizard and
+  Add from map) also takes CHIRP files, one per state (*Add analog repeaters from CHIRP files...*): green dots, picked
+  with the DMR ones; also reads CHIRP's own RepeaterBook-query CSV (county and state from the comment). Dev:
+  `CODEPLUGBUILDER_WALK_CHIRP=<Texas csv>` mixes a file into `--ui-walkthrough`. 75 tests.
+- **Radio read/write (in progress, 2026-10-06):** step 1 (read + decode) built as backend + dev switches
+  `--radio-read/--radio-decode/--radio-compare` in `RadioCli.cs`; 53 tests. Own code only (qdmr/dmrconfig are GPL).
+  A real read decodes byte-identical to the CPS export; writes copy the CPS write exactly (USB capture) and a settings
+  write verified on the radio (HANDOFF 4d). In the app since 2026-10-06 (user asked): **Radio** menu with *Read codeplug
+  from radio* (Ctrl+R: read, keep image + CSVs in DocumentsDMR Codeplug BuilderRadio reads, import as a project) and
+  *Radio settings* (RadioSettingsForm: read, edit, Write to radio with confirmation, before/after images kept).
+  **Whole-codeplug writes (2026-10-06):** `RadioEncoder` writes the six CPS tables into a full read; its image of a test
+  codeplug equals the CPS's own write of it in all 5,990 blocks, and the first app write (the user's codeplug) read back
+  byte for byte. Menu: *Radio > Write codeplug to radio* and *Restore codeplug from a backup* (MainForm). Dev switch
+  `--radio-encode`. 65 tests. Rules learned from the CPS are in HANDOFF 4d ("Writing a whole codeplug").
+
+- **1.2 (2026-10-06):** start page, new-codeplug wizard on a built-in world map (region → radio → areas →
+  zones → zone talkgroups), *Repeaters > Add from map*, zone talkgroup sets on the Zones tab, auto zones by
+  county/city/state/country/band, stable channel numbers (kept from the CPS import and from the first Generate;
+  Settings > Renumber), merge mode (Settings > Keep channels made in the CPS). 47 tests. `--ui-walkthrough` ran the whole wizard on Texas with real
+  downloads (353 repeaters, 18 picked, 95 channels, no validation errors). **Not yet clicked through on
+  screen** (computer-use access to the app was declined): mouse interaction, hover, wheel zoom, drag,
+  scaling and the "*" on open still need a hand check. Outside the US about half the repeaters are placed
+  by city (GeoNames cities15000 only has towns of 15,000+); the rest get their state/province or country.
+- **1.1 (2026-10-06):** online data. *File > New from online data* and *Repeaters > Find online* (RadioID.net
+  DMR repeaters with their published talkgroups), *Talkgroups > Browse BrandMeister*, *Settings > Look up by
+  callsign*, NOAA preset. 34 tests (7 online ones use trimmed real API responses); the importer was also run
+  over all 353 Texas repeaters (1898 channels, no validation errors). Driven by hand in the real Windows app.
+  Analog repeaters online are **not** done: RepeaterBook needs an approved per-user token (see HANDOFF).
+- **1.0 verified:** 27 engine tests pass, including the byte-for-byte round trip of the user's codeplug. The
+  real net48 exe was run under Mono + Xvfb and driven with xdotool: add repeater, new zone, talkgroups,
+  hotspot, talkgroup ID edit, import, save, generate.
+- **Verified on Windows (2026-10-06):** builds with the .NET 8 SDK; the generated codeplug imports into
+  CPS 1.22e with the 5-entry `.LST`, no conflicts, and each file replaces its whole list (no leftover
+  channels). Two Windows-only UI bugs fixed (dirty-on-open, highlighted combo text); see HANDOFF.
+- **Verified in the CPS (2026-10-06, later):** a wizard codeplug with new talkgroups imports and re-exports byte for
+  byte. The scan-list template row is now a real CPS row (same values as the old defaults, output unchanged).
+  Merge mode is verified in the real CPS (hand-made channel, number, zone and the CPS's scan list all survived),
+  and so is a scan-lists-on import (all six files re-export byte for byte). Scan lists are now on by default for new
+  codeplugs; `CpsImporter` sets them off so CPS-made scan lists survive and the round trip holds.
+- **Not verified yet:** high-DPI scaling other than the user's own.
+
+## Recommended next steps (details and more in HANDOFF)
+
+1. Click through the wizard and Add from map on screen (hover, wheel zoom, drag, county picking, list ticks).
+2. Analog repeaters online: RepeaterBook with a user-supplied token (RadioID.net and BrandMeister are done).

@@ -1,6 +1,7 @@
 # Handoff: DMR Codeplug Builder 1.2
 
-Written at the end of the session that built version 1.0 (October 2026), for whoever picks this up next.for the next person. `DEVELOPMENT.md` is the short version; this file has the reasoning, the full CPS
+Written at the end of the session that built version 1.0 (October 2026), for whoever picks this up next.
+`DEVELOPMENT.md` is the short version; this file has the reasoning, the full CPS
 format notes, what is and isn't proven, and the roadmap.
 
 ## 1. What the user asked for

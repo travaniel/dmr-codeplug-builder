@@ -116,9 +116,9 @@ A log file is written next to the output (a Windows GUI program has no console).
 
 ## Working on it
 
-The developer notes (`docs/DEVELOPMENT.md`) cover (build commands, how the code is
-wired, the rules that keep the CSVs importable); `docs/HANDOFF.md` has the design decisions, the full CPS
-CSV format notes, what's been verified, and a prioritized list of improvements.
+`docs/DEVELOPMENT.md` has the build commands, how the code is wired and the rules that keep the CSVs importable;
+`docs/HANDOFF.md` has the design decisions, the full CPS CSV format notes, what has been verified, and a prioritized
+list of improvements. `docs/MAC.md` covers the Mac version.
 
 ## Layout
 
