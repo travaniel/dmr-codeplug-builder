@@ -335,6 +335,31 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void AprsFromTheProjectAndFactoryValues()
+        {
+            Assert.Equal("W6OZZ", Aprs.CallsignFrom("Austin W6OZZ"), "last word");
+            Assert.Equal("KC5EZZ", Aprs.CallsignFrom("kc5ezz Bob"), "callsign first");
+            Assert.Equal("", Aprs.CallsignFrom("Austin Thompson"), "no callsign");
+            var p = new Project { RadioIdName = "Austin W6OZZ" };
+            var plan = Aprs.Suggest(p);
+            Assert.Equal("W6OZZ-7 144.39 310999 WIDE1-1,WIDE2-1 APBT62", plan.Callsign + "-" + plan.Ssid + " " + plan.FrequencyMHz.ToString(CultureInfo.InvariantCulture).TrimEnd('0') +
+                                                                          " " + plan.DigitalTalkgroup + " " + plan.Path + " " + plan.Destination, "US / unknown");
+            var r = Repeater.NewDigital("DL0ABC");
+            r.AreaCode = "DE-BY";
+            p.Repeaters.Add(r);
+            plan = Aprs.Suggest(p);
+            Assert.True(plan.FrequencyMHz == 144.800m && plan.DigitalTalkgroup == 0 && plan.Notes.Count == 1, "Germany: " + string.Join("; ", plan.Notes));
+
+            var img = SettingsImage();
+            var source = RadioSettings.Find("AprsSource");
+            RadioSettings.WriteText(img, source, "BG6LKK");
+            Assert.True(Aprs.ReadNotes(img).Single().Contains("factory callsign BG6LKK"), "factory APRS noticed");
+            RadioSettings.WriteText(img, source, "W6OZZ");
+            Assert.Equal(0, Aprs.ReadNotes(img).Count, "own callsign: nothing to say");
+            Assert.Equal(0, Aprs.ReadNotes(new MemoryImage()).Count, "not read: nothing to say");
+        }
+
+        [Test]
         static void RecommendsTalkerAliasUntilDeclined()
         {
             var img = SettingsImage();

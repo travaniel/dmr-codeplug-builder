@@ -87,6 +87,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `Generator.cs` | `CodeplugGenerator.Generate(project, format)` → `GeneratedCodeplug` (tables, channel/zone lists, notes). Channel numbers: stored ones kept, new ones lowest free, rows in number order; `KeepChannelNumbers` stores them after a Generate. Order: talkgroups → channel names → RX group lists → zones (split at 250) → scan lists → channel rows → VFO rows → radio ID. `WriteTo(folder, lstName)` |
 | `CpsImporter.cs` | Export All folder → `Project`: groups digital channels by frequency pair + color code + zone into repeaters, picks the hotspot, keeps channel names |
 | `Validation.cs` | `Validator.Validate(project, format)` → errors (block Generate) and warnings, including the safety warnings (`Validator.SafetyWarnings`) |
+| `Aprs.cs` | APRS suggestion from the project (callsign, SSID, region frequency, gateway) and the factory-BG6LKK note on radio reads; nothing written yet |
 | `CallerDatabase.cs` | RadioID user.csv → callers by scope (world, countries, US states), ID order, ASCII; `ToTable` fills a CPS template row (no template yet, so nothing is generated) |
 | `Bands.cs` | `AmateurBands`: 2 m / 70 cm transmit limits per country (from the repeaters' `AreaCode`; unknown = 144-148 / 420-450), the satellite sub-bands, frequencies a hotspot or DMR simplex keeps off (APRS, calling, ISS), US Part 97.201(b) hotspot segments |
 | `Naming.cs`, `Tones.cs` | 16-character names, uniqueness, auto channel names; CTCSS/DCS normalization |

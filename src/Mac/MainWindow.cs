@@ -14,6 +14,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CodeplugBuilder.App;
 using CodeplugBuilder.Core;
+using CodeplugBuilder.Core.Radio;
 
 namespace CodeplugBuilder.Mac
 {
@@ -472,6 +473,7 @@ namespace CodeplugBuilder.Mac
             catch (Exception ex) { await Dialogs.Error(this, "Couldn't import that " + what + ":\n\n" + ex.Message); return; }
             var notes = new List<string>(result.Notes);
             if (fromRadio) notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
+            if (fromRadio) try { notes.AddRange(Aprs.ReadNotes(MemoryImage.Load(Path.Combine(folder, "radio.img")))); } catch { }
             if (!fromRadio)
                 try
                 {

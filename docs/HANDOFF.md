@@ -517,7 +517,7 @@ private, 1 group, 2 all), 1 name, 0x23 ID BCD, 0x27 alert.
 
 ## 5. Verification done
 
-Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 90, all passing, run with the export folder as argument):
+Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 93 (one needs a downloaded user.csv), all passing, run with the export folder as argument):
 
 - Every exported CSV parses and re-serializes byte-for-byte (except RoamingZone/APRS, which have stray
   trailing commas the writer doesn't reproduce; they are never written).
@@ -654,6 +654,14 @@ before it's called done.
    confirmation. Also a "144.390 APRS" receive channel in a utility zone (the PRO receives and displays APRS). Check in
    the CPS UI what `APRS Report Channel` (Channel.CSV) and APRS.CSV `channel1-8` mean before writing them.
    When a read shows the factory BG6LKK values, say so.
+   *Started 2026-10-08 (no output yet):* `Core/Aprs.cs`: `Suggest(project)` = callsign from the Radio ID name, SSID 7, `/[`,
+   WIDE1-1,WIDE2-1, frequency by country (144.390 North America and unknown, 144.800 Europe, 145.175 Australia), APBT62, digital
+   gateway 310999 for US/unknown only. `ReadNotes(image)` says so when a radio read still has the factory callsign BG6LKK
+   (shown after *Read codeplug from radio*, Windows and Mac). **The radio's APRS addresses check out:** the user's radio image
+   (written.img, 2026-10-06) decodes to BG6LKK, SSID 8, APBT62 (SSID 1), WIDE1-1, `/&`, 144.640 MHz, Low, beacon off, manual 40 s:
+   the same non-default values as the CPS's APRS.CSV of that radio, so `RadioSettings` 0x2501000 fields read right (still marked
+   unchecked; a write would prove them). Still to do: the APRS.CSV template row (scrubbed), the channel1-8 / slot / Aprs Tg /
+   Call Type and APRS Report Channel meanings from the CPS, a project field and UI, and the Write to radio offer.
 3. **Polite transmit + talker alias. Built 2026-10-08; to check in the CPS and on the radio (below).** `GenerationOptions` TX permit policy: repeater DMR channels `Same Color Code`,
    hotspot and DMR simplex `Always`, analog `Off`; on for new projects, off for imported ones. Guides: polite (color code)
    admit on repeaters, Always on hotspots (a hotspot on Channel Free stalls). Confirm on the air that `Same Color Code`
