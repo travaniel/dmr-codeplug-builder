@@ -251,7 +251,7 @@ namespace CodeplugBuilder.App
             lstFound.EndUpdate();
         }
 
-        /// <summary>The project's talkgroup with this ID, creating it (named from BrandMeister, cut to 16) if needed.</summary>
+        /// <summary>The project's talkgroup with this ID, creating it (named from BrandMeister, shortened to 16) if needed.</summary>
         Talkgroup Ensure(int id, string fallbackName)
         {
             var tg = project.FindTalkgroup(id);

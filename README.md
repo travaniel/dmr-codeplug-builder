@@ -26,14 +26,15 @@ zone go on every repeater in it, including ones added later. *Repeaters > Add fr
 for an existing project (*Find online...* is the older list by state), the Zones tab has the same
 per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches every BrandMeister talkgroup.
 
-1. Run `CodeplugBuilder.exe`. The first time, it opens `My 6X2 Codeplug.cpb` from the same folder,
-   which was made from your current codeplug.
+1. Run `CodeplugBuilder.exe`. It reopens the project you used last (or the one `.cpb` file next to the
+   program); otherwise the start page offers the wizard, an import from the CPS, or opening a project.
 2. **Repeaters tab.** *Add DMR repeater* or *Add analog*. Type the receive frequency (the repeater
    output); the transmit frequency follows the usual band offset, which you can change.
    - **Zone:** pick an existing zone or type a new name. Every repeater with the same zone name lands
      in that zone automatically, in list order.
    - **Talkgroups:** pick talkgroups on the left and click *Add on slot 1* or *Add on slot 2*. Each one
-     becomes a channel named *prefix + talkgroup* (for example `W5FC Texas`), cut to 16 characters.
+     becomes a channel named *prefix + talkgroup* (for example `W5FC Texas`), shortened to 16 characters
+     when needed (common abbreviations first, such as `TX` for Texas, and numbers at the end are never cut).
      Type in the *Channel name* column to use your own name; clear it to go back to automatic.
    - Untick a repeater in the list to keep it in the project but leave it out of the codeplug.
 3. **Hotspot tab.** Tick *Include my hotspot*, set its frequency (Offset *Simplex* for a simplex
@@ -80,7 +81,7 @@ hotspot; analog channels, zones and channel names are kept.
   use **Settings > Load from CPS export...**.
 - **Names link everything.** This CPS's Zone and receive group list files refer to channels and
   talkgroups by name only, so every channel name is made unique (a number is added if two would clash)
-  and kept to 16 characters, without `|` or `"`.
+  and kept to 16 plain ASCII characters, without `|` or `"`.
 - The VFO A/B rows (channel numbers 4001 and 4002) are always written, pointed at contacts that exist.
 - One receive group list per DMR repeater (its group-call talkgroups), so its channels play every
   talkgroup the repeater carries on that slot. Turn this off in Settings to hear only the channel's
@@ -131,12 +132,14 @@ list of improvements. `docs/MAC.md` covers the Mac version.
 
 | Folder | What's there |
 | --- | --- |
-| `src/Core` | The engine, no UI: models, CSV reader/writer, CPS format, generator, importer, validation, online data parsing, the map atlas and automatic zones, built-in CPS templates and `Geo/atlas.gz` |
-| `src/App` | The Windows Forms GUI (start page, wizard, map, tabs) |
+| `src/Core` | The engine, no UI: models, CSV reader/writer, CPS format, generator, importer, validation, online data parsing, the map atlas and automatic zones, direct radio access (`Radio/`), built-in CPS templates and `Geo/atlas.gz` + `Geo/roads.gz` |
+| `src/App` | The Windows Forms GUI (start page, wizard, map, tabs, radio read/write) |
 | `src/Mac` | The Mac version: an Avalonia GUI over the same engine (also runs on Windows and Linux) |
 | `tests` | Engine tests (a console runner). The key one imports a real CPS export and regenerates it, checking Channel, Zone, TalkGroups and RadioIDList come back identical |
-| `tools/GeoBuild` | Builds `src/Core/Geo/atlas.gz` from the public boundary and place files (zips in `tools/geodata`, not in the repo; see HANDOFF 4c) |
-| `docs` | `HANDOFF.md`: background, format reference, verification status, roadmap |
+| `tools/GeoBuild` | Builds `src/Core/Geo/atlas.gz` and `roads.gz` from the public boundary, road and place files (zips in `tools/geodata`, not in the repo; see HANDOFF 4c) |
+| `tools/RepeaterList` | Writes one CSV of DMR repeaters per US state from RadioID.net's map and BrandMeister's device list (a data check, not part of the app) |
+| `tools/package-mac.ps1` | Packages the Mac version as `.app` bundles from Windows |
+| `docs` | `DEVELOPMENT.md` (build, rules, architecture), `HANDOFF.md` (background, format reference, verification status, roadmap), `MAC.md` and `MAC-TESTING.md` (the Mac version), `README.txt` (goes in the release zip) |
 
 Projects are saved as readable JSON (`.cpb`). The built-in map uses US Census and Natural Earth data
 (public domain) and GeoNames place names (CC BY 4.0).

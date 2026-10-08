@@ -499,9 +499,9 @@ namespace CodeplugBuilder.Core
         }
 
         /// <summary>
-        /// Adds the picked repeaters to the project as DMR repeaters (one channel per talkgroup), adding any
-        /// talkgroups the project doesn't have yet. Repeaters already in the project (same output frequency and
-        /// color code) are skipped.
+        /// Adds the picked repeaters to the project: DMR ones with one channel per talkgroup (adding any talkgroups the
+        /// project doesn't have yet), analog ones from CHIRP files as one channel each. Repeaters already in the project
+        /// (<see cref="FindExisting"/>) are skipped.
         /// </summary>
         public static OnlineImportResult AddRepeaters(Project p, IEnumerable<OnlineRepeater> picked, OnlineImportOptions o, IDictionary<int, string> bmNames)
         {
@@ -515,7 +515,7 @@ namespace CodeplugBuilder.Core
             if (o.MoreNames != null) foreach (var kv in o.MoreNames) moreNames[kv.Key] = kv.Value;
             var analogPicked = picked.Where(x => x.Analog != null).Select(x => x.Analog).ToList();
             var analogNames = new UniqueNamer(16, "Repeater");
-            foreach (var x in p.AllRepeaters()) analogNames.Reserve(Naming.Clean(x.Name, 16));
+            foreach (var x in p.AllRepeaters()) analogNames.Reserve(Naming.Fit(x.Name, 16)); // as the generator will name them
             foreach (var r in picked)
             {
                 if (!r.InRadioBand) { skipped.Add(r.Callsign + " (outside the radio's bands)"); continue; }
@@ -548,15 +548,15 @@ namespace CodeplugBuilder.Core
                                                                  x.Name == Naming.Clean(r.Callsign + " " + x.City, 0)))
                         other.Name = Naming.Clean(other.Name + " " + other.RxMHz.ToString("0.000", CultureInfo.InvariantCulture), 0);
                 rep.Zone = o.ZonePerCity
-                    ? FirstNonEmpty(Naming.Clean(r.City, 16), Naming.Clean(r.State, 16), "DMR")
-                    : FirstNonEmpty(Naming.Clean(o.Zone, 16), "DMR");
+                    ? FirstNonEmpty(Naming.Fit(r.City, 16), Naming.Fit(r.State, 16), "DMR")
+                    : FirstNonEmpty(Naming.Fit(o.Zone, 16), "DMR");
                 rep.RxMHz = r.RxMHz;
                 rep.TxMHz = r.TxMHz;
                 rep.ColorCode = r.ColorCode;
                 if (Powers.Values.Contains(o.Power)) rep.Power = o.Power;
                 rep.Notes = Notes(r);
                 SetLocation(rep, r);
-                if (o.ZoneFor != null) rep.Zone = FirstNonEmpty(Naming.Clean(o.ZoneFor(rep), 16), rep.Zone);
+                if (o.ZoneFor != null) rep.Zone = FirstNonEmpty(Naming.Fit(o.ZoneFor(rep), 16), rep.Zone);
                 rep.Zone = ZonePlanner.Canonical(spelling, rep.Zone);
 
                 if (r.Talkgroups.Count > 0)
@@ -805,7 +805,7 @@ namespace CodeplugBuilder.Core
             new KeyValuePair<string, decimal>("WX7", 162.525m),
         };
 
-        /// <summary>Adds the NOAA weather channels the project doesn't already have (same frequency), lowest frequency first.</summary>
+        /// <summary>Adds the NOAA weather channels the project doesn't already have (same frequency), WX1 first.</summary>
         public static List<Repeater> AddNoaaWeather(Project p, string zone = "Weather")
         {
             var added = new List<Repeater>();
@@ -832,11 +832,6 @@ namespace CodeplugBuilder.Core
         /// </summary>
         public static bool SortNoaaWeather(Project p)
         {
-            int Wx(Repeater r)
-            {
-                var m = Regex.Match(r.Notes ?? "", @"^NOAA Weather Radio WX(\d)\b");
-                return !r.IsDigital && m.Success ? m.Groups[1].Value[0] - '0' : 0;
-            }
             var slots = new List<int>();
             for (int i = 0; i < p.Repeaters.Count; i++) if (Wx(p.Repeaters[i]) > 0) slots.Add(i);
             if (slots.Count < 2) return false;
@@ -848,6 +843,16 @@ namespace CodeplugBuilder.Core
             if (numbers.Count == sorted.Count)
                 for (int k = 0; k < sorted.Count; k++) sorted[k].ChannelNumber = numbers[k];
             return true;
+        }
+
+        /// <summary>True for a channel <see cref="AddNoaaWeather"/> made (it keeps its own zone when repeaters are re-zoned).</summary>
+        public static bool IsNoaaWeather(Repeater r) { return Wx(r) > 0; }
+
+        /// <summary>1-7 for a weather channel from <see cref="AddNoaaWeather"/>, else 0.</summary>
+        static int Wx(Repeater r)
+        {
+            var m = Regex.Match(r.Notes ?? "", @"^NOAA Weather Radio WX(\d)\b");
+            return !r.IsDigital && m.Success ? m.Groups[1].Value[0] - '0' : 0;
         }
     }
 }

@@ -41,7 +41,7 @@ namespace CodeplugBuilder.App
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.Controls.Add(Ui.Hint("Every talkgroup on the BrandMeister network. Search by name or number, tick the ones you want, and they're added to your talkgroup list " +
-                                      "(names cut to the radio's 16 characters).", Ui.S(660)), 0, 0);
+                                      "(names shortened to the radio's 16 characters).", Ui.S(660)), 0, 0);
 
             txtSearch = new TextBox { Width = Ui.S(260), Anchor = AnchorStyles.Left, Margin = new Padding(3, 3, 12, 3) };
             Ui.SetCue(txtSearch, "e.g. Texas, 3148, SOTA");

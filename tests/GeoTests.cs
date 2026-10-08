@@ -198,6 +198,8 @@ namespace CodeplugBuilder.Tests
             Assert.Equal("Texas", ZonePlanner.ZoneName(r, ZoneScheme.State), "state");
             Assert.Equal("United States", ZonePlanner.ZoneName(r, ZoneScheme.Country), "country");
             Assert.Equal("70cm DMR", ZonePlanner.ZoneName(r, ZoneScheme.Band), "band");
+            var fm = Repeater.NewAnalog("K0TSTA Brownwood"); fm.RxMHz = 146.94m;
+            Assert.Equal("2m FM", ZonePlanner.ZoneName(fm, ZoneScheme.Band), "band, analog");
             Assert.Equal("Home", ZonePlanner.ZoneName(r, ZoneScheme.Single, "Home"), "single");
             Assert.Equal("San Bernardino", ZonePlanner.CountyZone("San Bernardino County"), "long county drops the suffix");
             Assert.Equal("Richmond", ZonePlanner.CountyZone("Richmond city"), "independent city");

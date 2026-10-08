@@ -4,7 +4,8 @@
     .NET 8 over the same src/Core engine as the Windows app. The Windows app (src/App, WinForms) is unchanged and keeps
     its zero-NuGet rule; this project uses the Avalonia and System.IO.Ports packages.
     Build:   dotnet build src\Mac\CodeplugBuilder.Mac.csproj -c Release
-    Package: bash tools/package-mac.sh   (publishes osx-arm64 and osx-x64 .app bundles, works from Windows too)
+    Package: powershell -File tools\package-mac.ps1   (publishes osx-arm64 and osx-x64 .app bundles from Windows;
+             the Mac CI workflow, .github/workflows/mac.yml, does the same on a Mac and signs them ad hoc)
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

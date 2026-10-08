@@ -71,7 +71,7 @@ namespace CodeplugBuilder.App
 
             bool usOnly = Picked.Count > 0 && Picked.All(r => r.Location?.Country?.Code == "US");
             Scheme = usOnly ? ZoneScheme.County : Picked.Count <= 12 ? ZoneScheme.Single : ZoneScheme.State;
-            SingleZone = Naming.Clean(Naming.Fold(RegionDownload.Describe(Region)), 16);
+            SingleZone = Naming.Fit(RegionDownload.Describe(Region), 16); // shortened, not cut: "Texas and Oklahoma" → "Texas and OK"
             if (SingleZone.Length == 0 || Region.Count > 2) SingleZone = "DMR";
 
             var p = new Project { RadioId = RadioId, RadioIdName = RadioIdName };

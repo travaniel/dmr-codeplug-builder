@@ -144,7 +144,7 @@ namespace CodeplugBuilder.App
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
 
-        /// <summary>Parses "146.94", "146,940" or "146.940.0"-free input. Returns null when it isn't a number.</summary>
+        /// <summary>Parses a frequency in MHz ("146.94", or "146,94" with a decimal comma). Returns null when it isn't a number.</summary>
         public static decimal? ParseMHz(string text)
         {
             string s = (text ?? "").Trim().Replace(',', '.');

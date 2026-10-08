@@ -361,7 +361,6 @@ namespace CodeplugBuilder.Core
             return countryByName.TryGetValue(Key(name), out var c) ? c : null;
         }
 
-        /// <summary>A state/province of <paramref name="country"/> by name, alias or code. "A / B" tries each part.</summary>
         /// <summary>A US county in <paramref name="state"/> by name: "Williamson County", "Williamson", "St. Mary Parish".</summary>
         public GeoArea FindCounty(GeoArea state, string name)
         {
@@ -372,6 +371,7 @@ namespace CodeplugBuilder.Core
             return null;
         }
 
+        /// <summary>A state/province of <paramref name="country"/> by name, alias or code. "A / B" tries each part.</summary>
         public GeoArea FindState(GeoArea country, string name)
         {
             if (country == null) return null;

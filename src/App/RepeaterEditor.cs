@@ -103,7 +103,7 @@ namespace CodeplugBuilder.App
             f.RowCount = r;
             for (int i = 0; i < r; i++) f.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-            tips.SetToolTip(txtPrefix, "Channel names are made from this prefix plus the talkgroup name, e.g. \"W5FC Texas\".\nLeave it blank to name channels after the talkgroup only.\nNames are cut to 16 characters; you can also type a custom name per talkgroup below.");
+            tips.SetToolTip(txtPrefix, "Channel names are made from this prefix plus the talkgroup name, e.g. \"W5FC Texas\".\nLeave it blank to name channels after the talkgroup only.\nLonger names are shortened to 16 characters; you can also type a custom name per talkgroup below.");
             tips.SetToolTip(cboZone, "Pick an existing zone or type a new name. Every repeater with the same zone name goes into that zone.");
             tips.SetToolTip(txtRx, "The frequency your radio listens on: the repeater's output.");
             tips.SetToolTip(txtTx, "The frequency your radio transmits on: the repeater's input.");
@@ -338,8 +338,9 @@ namespace CodeplugBuilder.App
             if (rep == null) return;
             if (!rep.IsDigital)
             {
-                string n = Naming.Clean(rep.Name, MaxName);
-                lblExample.Text = "Channel name: \"" + n + "\"" + (Naming.Clean(rep.Name, 0).Length > MaxName ? "  (cut to " + MaxName + " characters)" : "");
+                // The same shortening the generator uses (Naming.Fit), so this is the name the radio shows.
+                string n = Naming.Fit(rep.Name, MaxName);
+                lblExample.Text = "Channel name: \"" + n + "\"" + (Naming.Clean(rep.Name, 0).Length > MaxName ? "  (shortened to " + MaxName + " characters)" : "");
                 return;
             }
             var names = rep.Talkgroups
