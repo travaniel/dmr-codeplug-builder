@@ -24,13 +24,13 @@ jobs:
       - name: Run the engine tests
         run: dotnet run --project tests -c Release
 
-      # The app is called W6OZZ CPS; the folder inside the zip keeps the program's original name, like its settings
-      # and backup folders, so an upgrade can be extracted over the old one.
+      # The zip holds one folder, "W6OZZ CPS". (The settings and backup folders keep the old name, DMR Codeplug Builder,
+      # and the last project is remembered there, so a copy extracted to the new folder name still finds it.)
       - name: Make the zip
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          $dir = "dist/DMR Codeplug Builder"
+          $dir = "dist/W6OZZ CPS"
           New-Item -ItemType Directory $dir | Out-Null
           Copy-Item src/App/bin/Release/net48/CodeplugBuilder.exe, src/App/bin/Release/net48/CodeplugBuilder.exe.config, docs/README.txt $dir
           Compress-Archive -Path $dir -DestinationPath "dist/W6OZZ-CPS-windows-$version.zip"
