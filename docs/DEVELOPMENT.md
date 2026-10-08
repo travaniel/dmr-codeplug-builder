@@ -86,7 +86,8 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `CpsFormat.cs` | One CPS version's layout: the six template tables (built-in resources or an Export All folder), template rows, frequency decimals, `.LST` writer with the CPS's section numbers |
 | `Generator.cs` | `CodeplugGenerator.Generate(project, format)` → `GeneratedCodeplug` (tables, channel/zone lists, notes). Channel numbers: stored ones kept, new ones lowest free, rows in number order; `KeepChannelNumbers` stores them after a Generate. Order: talkgroups → channel names → RX group lists → zones (split at 250) → scan lists → channel rows → VFO rows → radio ID. `WriteTo(folder, lstName)` |
 | `CpsImporter.cs` | Export All folder → `Project`: groups digital channels by frequency pair + color code + zone into repeaters, picks the hotspot, keeps channel names |
-| `Validation.cs` | `Validator.Validate(project, format)` → errors (block Generate) and warnings |
+| `Validation.cs` | `Validator.Validate(project, format)` → errors (block Generate) and warnings, including the safety warnings (`Validator.SafetyWarnings`) |
+| `Bands.cs` | `AmateurBands`: 2 m / 70 cm transmit limits per country (from the repeaters' `AreaCode`; unknown = 144-148 / 420-450), the satellite sub-bands, frequencies a hotspot or DMR simplex keeps off (APRS, calling, ISS), US Part 97.201(b) hotspot segments |
 | `Naming.cs`, `Tones.cs` | 16-character names, uniqueness, auto channel names; CTCSS/DCS normalization |
 | `ProjectStore.cs`, `TalkgroupCsv.cs` | `.cpb` JSON save/load (atomic); talkgroup CSV import |
 | `Json.cs` | Minimal JSON reader (objects → `Dictionary<string, object>`, numbers → `decimal`) for the online APIs |
@@ -154,6 +155,10 @@ programmatic changes don't fire edits.
 
 ## Status
 
+- **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
+  amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
+  and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the
+  other Part 97.201(b) segments. Output unchanged. 83 tests.
 - **1.3.1 (2026-10-07), review pass:** wizard step 4 re-zones CHIRP (analog) repeaters too, not only DMR ones (weather channels keep
   their zone; `Presets.IsNoaaWeather`), and *By band* names analog zones "2m FM" / "70cm FM". DMR and analog repeaters added
   with one fixed zone name get the same (shortened, not cut) zone. Settings caps talkgroups per RX list at the radio's 64, and

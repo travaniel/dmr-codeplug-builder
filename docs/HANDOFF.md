@@ -499,7 +499,7 @@ private, 1 group, 2 all), 1 name, 0x23 ID BCD, 0x27 alert.
 
 ## 5. Verification done
 
-Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 79, all passing, run with the export folder as argument):
+Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 83, all passing, run with the export folder as argument):
 
 - Every exported CSV parses and re-serializes byte-for-byte (except RoamingZone/APRS, which have stray
   trailing commas the writer doesn't reproduce; they are never written).
@@ -639,10 +639,18 @@ before it's called done.
    BrandMeister repeaters, `/v2/device/{id}/talkgroup` gives the static talkgroups with slots; prefer them over the
    owner-typed RadioID list (keep RadioID's names), mark which is which; ≤ 6 requests at a time, cache a day. Slot "0"
    (seen on a simplex device): treat as unknown.
-5. **Safety checks (Validator warnings).** Transmit outside the amateur bands unless RX-only (US 144-148, 420-450 MHz;
+5. **Safety checks (Validator warnings). Done 2026-10-08.** Transmit outside the amateur bands unless RX-only (US 144-148, 420-450 MHz;
    region from the project) - the user's "Tall Oaks Ranch" 154.570 (MURS ch 4) is one; hotspot or DMR simplex in the
    satellite sub-bands 145.8-146.0 / 435-438 MHz (Part 97.201(b); AMSAT traced hotspot interference); hotspot on
    144.390, 145.825, 146.520 or 446.000.
+   *As built* (`src/Core/Bands.cs`, `Validator.SafetyWarnings`): the country is the one most project repeaters are in (`AreaCode`);
+   with no locations (hand-typed or CPS-imported projects) the bands are the widest anywhere, 144-148 / 420-450, so a warning
+   always means "not amateur anywhere". Table: US and territories 144-148 / 420-450, Canada 144-148 / 430-450, Australia
+   144-148 / 420-450, New Zealand 144-148 / 430-440, Japan and CEPT Europe 144-146 / 430-440. Hotspot (both its frequencies)
+   and DMR simplex (RX = TX): satellite sub-bands everywhere; within 12.5 kHz of APRS 144.390, ISS 145.825, calling 146.520 /
+   446.000 (North America and unknown), 144.800 / 145.500 / 433.500 (Europe), 145.175 (Australia); hotspot only, US and
+   unknown: the rest of 97.201(b) (144.0-144.5, 431-433 MHz; checked against the CFR text 2026-10-08). Analog simplex in the
+   satellite sub-bands is not flagged (FM satellite uplinks). The user's codeplug gets exactly one warning (154.570).
 6. **Simplex preset** (like `Presets.AddNoaaWeather`, zone "Simplex"): 146.520 and 446.000 (national calling, analog
    wide); DMR simplex 441.000, 446.500, 446.075, 145.790, 145.510, CC1 TS1 talkgroup 99 ("Simplex 99"), TX permit
    Always. The DMR list is widely copied but its authority is unclear (DCI/DMR-MARC): keep it editable and say so.

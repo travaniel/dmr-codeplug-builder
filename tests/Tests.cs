@@ -877,6 +877,109 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void WarnsAboutTransmitOutsideTheAmateurBands()
+        {
+            var p = Fixtures.Sample();
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "sample: " + string.Join("\n", Validator.SafetyWarnings(p)));
+            var murs = Repeater.NewAnalog("Tall Oaks Ranch");
+            murs.Zone = "Local";
+            murs.RxMHz = murs.TxMHz = 154.570m;
+            p.Repeaters.Add(murs);
+            p.SyncZones();
+            var w = Validator.SafetyWarnings(p);
+            Assert.Equal(1, w.Count, "one warning: " + string.Join("\n", w));
+            Assert.True(w[0].StartsWith("\"Tall Oaks Ranch\" transmits on 154.570 MHz, outside the amateur bands (144-148, 420-450 MHz)."), w[0]);
+            Assert.True(Validator.Validate(p).Any(i => i.Severity == Severity.Warning && i.Message == w[0]), "part of Validate");
+            murs.RxOnly = true;
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "receive only is fine");
+            murs.Enabled = false;
+            murs.RxOnly = false;
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "switched-off repeaters aren't checked");
+        }
+
+        [Test]
+        static void AmateurBandsFollowTheProjectsCountry()
+        {
+            Assert.Equal("US", AmateurBands.CountryCode("US-48451"), "county code");
+            Assert.Equal("DE", AmateurBands.CountryCode("DE"), "country code");
+            Assert.Equal("", AmateurBands.CountryCode("-99"), "junk");
+            var p = Fixtures.Sample();
+            Assert.Equal("", AmateurBands.CountryOf(p), "no locations");
+            // In Germany 2 m ends at 146 and 70 cm at 440 MHz: the 146.94/146.34 repeater and both 444/449 repeaters are out.
+            foreach (var r in p.Repeaters) r.AreaCode = "DE-BY";
+            Assert.Equal("DE", AmateurBands.CountryOf(p), "from the repeaters");
+            var w = Validator.SafetyWarnings(p);
+            Assert.Equal(3, w.Count, string.Join("\n", w));
+            Assert.True(w.All(m => m.Contains("outside the European amateur bands (144-146, 430-440 MHz)")), string.Join("\n", w));
+            p.Repeaters[0].AreaCode = p.Repeaters[1].AreaCode = "US-48451";
+            p.Repeaters[2].AreaCode = "US-TX";
+            Assert.Equal("US", AmateurBands.CountryOf(p), "most repeaters");
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "US: " + string.Join("\n", Validator.SafetyWarnings(p)));
+            Assert.True(AmateurBands.For("US").CanTransmit(420.5m) && !AmateurBands.For("CA").CanTransmit(420.5m), "70 cm starts at 420 in the US, 430 in Canada");
+        }
+
+        [Test]
+        static void WarnsAboutHotspotsAndDmrSimplexOnSatelliteAndCallingFrequencies()
+        {
+            var p = Fixtures.Sample();
+            string One(decimal rx, decimal tx)
+            {
+                p.Hotspot.RxMHz = rx; p.Hotspot.TxMHz = tx;
+                var w = Validator.SafetyWarnings(p).Where(m => m.StartsWith("Hotspot ")).ToList();
+                Assert.True(w.Count <= 1, "at most one: " + string.Join("\n", w));
+                return w.FirstOrDefault() ?? "";
+            }
+            Assert.Equal("", One(433.550m, 433.550m), "the user's hotspot");
+            Assert.Equal("", One(438.800m, 438.800m), "the usual Pi-Star frequency");
+            Assert.True(One(435.000m, 435.000m).Contains("in the 435-438 MHz satellite sub-band"), One(435.000m, 435.000m));
+            Assert.True(One(145.900m, 145.900m).Contains("145.8-146 MHz satellite sub-band"), "2 m");
+            Assert.True(One(438.800m, 436.000m).Contains("436.000"), "duplex hotspot: the radio's transmit frequency too");
+            Assert.True(One(436.000m, 438.800m).Contains("436.000"), "duplex hotspot: the hotspot's transmit frequency");
+            Assert.True(One(146.520m, 146.520m).Contains("the national 2 m FM calling frequency (146.520)"), One(146.520m, 146.520m));
+            Assert.True(One(446.0125m, 446.0125m).Contains("next to the national 70 cm FM calling frequency"), One(446.0125m, 446.0125m));
+            Assert.Equal("", One(446.025m, 446.025m), "two channels away");
+            Assert.True(One(144.390m, 144.390m).Contains("the APRS frequency"), "APRS");
+            Assert.True(One(145.825m, 145.825m).Contains("the ISS APRS digipeater"), "ISS: the specific reason, not the satellite one");
+            Assert.True(One(432.100m, 432.100m).Contains("Part 97.201(b)"), "US: 431-433 is closed to auxiliary stations");
+            Assert.True(One(144.200m, 144.200m).Contains("Part 97.201(b)"), "US: so is 144.0-144.5");
+
+            // Canada: no 97.201(b), same calling frequencies. Europe: its own.
+            foreach (var r in p.Repeaters) r.AreaCode = "CA-ON";
+            Assert.Equal("", One(432.100m, 432.100m), "Canada");
+            Assert.True(One(446.000m, 446.000m).Contains("calling frequency"), "Canada calling");
+            foreach (var r in p.Repeaters) r.AreaCode = "GB";
+            Assert.True(One(446.000m, 446.000m).Contains("outside the European amateur bands"), "446 is outside 70 cm in Europe, not a calling frequency");
+            Assert.True(One(433.500m, 433.500m).Contains("the 70 cm FM calling frequency"), "Europe 433.500");
+            Assert.True(One(144.800m, 144.800m).Contains("the APRS frequency"), "Europe APRS");
+
+            // A switched-off hotspot isn't checked.
+            p.HotspotEnabled = false;
+            Assert.Equal("", One(435.000m, 435.000m), "hotspot off");
+
+            // DMR simplex anywhere in the project; analog simplex may use the satellite sub-band (FM satellite uplinks).
+            foreach (var r in p.Repeaters) r.AreaCode = null;
+            var dmr = p.Repeaters[1];
+            dmr.RxMHz = dmr.TxMHz = 145.900m;
+            Assert.True(Validator.SafetyWarnings(p).Single().StartsWith("\"K2XYZ\" is on 145.900 MHz, in the 145.8-146 MHz satellite sub-band"), "DMR simplex");
+            dmr.TxMHz = 145.300m; // a (strange) repeater pair: not simplex
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "not simplex");
+            dmr.RxMHz = dmr.TxMHz = 432.100m;
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "97.201(b) is about hotspots only");
+            var fm = p.Repeaters[2];
+            fm.RxMHz = fm.TxMHz = 145.900m;
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, "analog simplex in the satellite sub-band");
+        }
+
+        [Test]
+        static void UsersCodeplugGetsOneSafetyWarning()
+        {
+            var p = CpsImporter.Import(Fixtures.RequireExport()).Project;
+            var w = Validator.SafetyWarnings(p);
+            Assert.Equal(1, w.Count, string.Join("\n", w));
+            Assert.True(w[0].StartsWith("\"Tall Oaks Ranch\" transmits on 154.570 MHz"), w[0]);
+        }
+
+        [Test]
         static void MoreThan250RepeatersKeepsRxGroupListsWithinTheRadiosLimit()
         {
             var p = Fixtures.Sample(extraRepeaters: 300);
