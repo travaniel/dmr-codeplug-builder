@@ -95,6 +95,9 @@ namespace CodeplugBuilder.Core
                 }
                 if (string.IsNullOrWhiteSpace(r.Zone))
                     Warn(label + " isn't in a zone, so you can only reach its channels in channel mode.");
+                if (!string.IsNullOrWhiteSpace(r.OffAirSince))
+                    Warn(label + " may be off the air: BrandMeister last heard it on " + r.OffAirSince.Trim() + ". Untick it, or if you know it works, " +
+                         "untick \"Off the air?\" in the repeater editor.");
             }
             // (A hotspot that's switched on without talkgroups is reported in the loop above.)
 

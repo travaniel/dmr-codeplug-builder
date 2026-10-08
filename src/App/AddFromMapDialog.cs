@@ -161,7 +161,9 @@ namespace CodeplugBuilder.App
                 Scheme = scheme,
                 MoreNames = download.TalkgroupNames,
             };
-            Result = OnlineImporter.AddRepeaters(session.Project, chooser.Picked(), o, download.BrandMeisterNames);
+            var picked = chooser.Picked();
+            Online.PrepareForAdding(this, picked); // BrandMeister's own talkgroups for its repeaters
+            Result = OnlineImporter.AddRepeaters(session.Project, picked, o, download.BrandMeisterNames);
             DialogResult = DialogResult.OK;
         }
 

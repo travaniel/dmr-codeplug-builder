@@ -164,7 +164,10 @@ programmatic changes don't fire edits.
   radio* offers *Send talker alias* once (`RecommendedSettings`; a No is remembered). Still to check in the CPS and on the
   radio: HANDOFF 7, "To check". **Simplex preset** (item 6): `Presets.AddSimplex` (FM calling 146.520/446.000, five DMR simplex
   frequencies on TG 99, zone "Simplex"), *Add simplex* on the Repeaters tab and a wizard checkbox (US/Canada), Windows and Mac;
-  simplex-only zones take no zone talkgroups. 89 tests.
+  simplex-only zones take no zone talkgroups. **Repeater health** (item 4): BrandMeister-only listings not heard for over a year
+  are grey and skipped by area clicks (checked in the background after the download, rate-limited), and picked BrandMeister
+  repeaters get BrandMeister's static talkgroups when added. The `--ui-walkthrough` footer can lag (the harness has no WinForms
+  context after the region step; the real app does). 90 tests.
 - **1.3.1 (2026-10-07), review pass:** wizard step 4 re-zones CHIRP (analog) repeaters too, not only DMR ones (weather channels keep
   their zone; `Presets.IsNoaaWeather`), and *By band* names analog zones "2m FM" / "70cm FM". DMR and analog repeaters added
   with one fixed zone name get the same (shortened, not cut) zone. Settings caps talkgroups per RX list at the radio's 64, and

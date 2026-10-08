@@ -447,6 +447,7 @@ namespace CodeplugBuilder.Mac
             if (State.HasZoneWork && State.WouldRebuild(picked) &&
                 !await Dialogs.Ask(Owner, "The repeaters (or your radio details) changed, so the zones and the talkgroups you picked for them start over.\n\nGo on?", "Go on"))
                 return false;
+            await AreaChooserView.PrepareForAdding(Owner, picked); // BrandMeister's own talkgroups for its repeaters
             State.Picked = picked;
             State.Build();
             return true;

@@ -50,6 +50,25 @@ namespace CodeplugBuilder.Core
 
         public bool IsBrandMeister => Network.IndexOf("BrandMeister", StringComparison.OrdinalIgnoreCase) >= 0;
 
+        /// <summary>On BrandMeister and no other network (the only listings whose health and static talkgroups BrandMeister knows fully).</summary>
+        public bool OnlyBrandMeister => Network == "BrandMeister";
+
+        /// <summary>The device ID on BrandMeister, for listings from BrandMeister's own device list (0 otherwise; see <see cref="BrandMeisterDeviceId"/>).</summary>
+        public int BrandMeisterId { get; set; }
+
+        /// <summary>
+        /// The ID to ask BrandMeister about: its own device ID, or for a RadioID.net listing on BrandMeister only, the
+        /// listing's DMR ID when it looks like a BrandMeister repeater ID (<see cref="BrandMeister.IsRepeaterId"/>). 0 = none.
+        /// </summary>
+        public int BrandMeisterDeviceId => BrandMeisterId > 0 ? BrandMeisterId : OnlyBrandMeister && BrandMeister.IsRepeaterId(DmrId) ? DmrId : 0;
+
+        /// <summary>When BrandMeister last heard it, set only when that was over a year ago (<see cref="RepeaterHealth"/>); null = on the air or unknown.</summary>
+        public DateTime? OffAirSince { get; set; }
+        public bool IsOffAir => OffAirSince.HasValue;
+
+        /// <summary>Where <see cref="Talkgroups"/> came from: null = the owner's RadioID.net listing, else e.g. "BrandMeister".</summary>
+        public string TalkgroupSource { get; set; }
+
         /// <summary>Both frequencies are inside the DMR-6X2's bands (136-174 and 400-480 MHz).</summary>
         public bool InRadioBand => Validator.InRadioBand(RxMHz) && Validator.InRadioBand(TxMHz);
 
@@ -269,39 +288,92 @@ namespace CodeplugBuilder.Core
         /// <summary>
         /// The repeaters (6-digit IDs, with coordinates) in a device list, placed on the map from their own coordinates.
         /// Network is BrandMeister; there are no published talkgroups. <see cref="OnlineRepeater.DmrId"/> stays 0 because
-        /// it holds RadioID's number; the BrandMeister ID goes in Details.
+        /// it holds RadioID's number; the BrandMeister ID goes in <see cref="OnlineRepeater.BrandMeisterId"/> and Details.
         /// </summary>
         public static List<OnlineRepeater> ParseRepeaters(string json, GeoAtlas atlas)
         {
-            var list = new List<OnlineRepeater>();
+            return ParseDevices(json, atlas).Repeaters;
+        }
+
+        /// <summary>
+        /// The device list (<see cref="DeviceUrl"/>). Checked 2026-10-08: it only holds devices heard in the last day or so
+        /// (every last_seen within 24 hours), so a repeater missing from it is off BrandMeister right now, and how long for
+        /// takes <see cref="DeviceInfoUrl"/>.
+        /// </summary>
+        public static BrandMeisterDevices ParseDevices(string json, GeoAtlas atlas)
+        {
+            var result = new BrandMeisterDevices();
             foreach (var d in Json.Arr(Json.Parse(json)))
             {
                 int id = Json.Int(Json.Get(d, "id"));
+                if (id <= 0) continue;
+                result.Ids.Add(id);
                 if (id < 100000 || id > 999999) continue;
-                if (!double.TryParse(Json.Str(Json.Get(d, "lat")), NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) ||
-                    !double.TryParse(Json.Str(Json.Get(d, "lng")), NumberStyles.Float, CultureInfo.InvariantCulture, out double lon)) continue;
                 if (!decimal.TryParse(Json.Str(Json.Get(d, "tx")), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal output) ||
                     !decimal.TryParse(Json.Str(Json.Get(d, "rx")), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal input) ||
                     output <= 0 || input <= 0 || output >= 10000 || input >= 10000) continue;
-                var loc = atlas?.LocateAt(lat, lon, null);
-                if (loc == null) continue;
                 string full = Json.Str(Json.Get(d, "callsign")).Trim();
                 string call = full.Split(' ', '-')[0].ToUpperInvariant();
                 if (call.Length == 0) continue;
-                list.Add(new OnlineRepeater
+                var r = new OnlineRepeater
                 {
                     Callsign = call,
                     City = Json.Str(Json.Get(d, "city")).Trim(),
-                    State = loc.State != null ? loc.State.Name : "",
-                    Country = loc.Country != null ? loc.Country.Name : "",
                     Network = "BrandMeister",
                     Status = Json.Int(Json.Get(d, "status")) == 3 ? "on-air" : "",
                     Details = "BrandMeister ID " + id.ToString(CultureInfo.InvariantCulture) + (full != call ? " (" + full + ")" : ""),
+                    BrandMeisterId = id,
                     RxMHz = Math.Round(output, 5),
                     TxMHz = Math.Round(input, 5),
                     ColorCode = Math.Max(0, Math.Min(15, Json.Int(Json.Get(d, "colorcode"), 1))),
+                };
+                result.Live.Add(r);
+                if (!double.TryParse(Json.Str(Json.Get(d, "lat")), NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) ||
+                    !double.TryParse(Json.Str(Json.Get(d, "lng")), NumberStyles.Float, CultureInfo.InvariantCulture, out double lon)) continue;
+                var loc = atlas?.LocateAt(lat, lon, null);
+                if (loc == null) continue;
+                result.Repeaters.Add(new OnlineRepeater
+                {
+                    Callsign = r.Callsign, City = r.City, Network = r.Network, Status = r.Status, Details = r.Details, BrandMeisterId = id,
+                    RxMHz = r.RxMHz, TxMHz = r.TxMHz, ColorCode = r.ColorCode,
+                    State = loc.State != null ? loc.State.Name : "",
+                    Country = loc.Country != null ? loc.Country.Name : "",
                     Location = loc,
                 });
+            }
+            return result;
+        }
+
+        /// <summary>One device, including ones not heard for years: {"id", "callsign", ..., "last_seen":"2022-07-19 17:57:55"}; 404 for unknown IDs.</summary>
+        public static string DeviceInfoUrl(int id) { return DeviceUrl + "/" + id.ToString(CultureInfo.InvariantCulture); }
+
+        /// <summary>
+        /// A device's static talkgroups: [{"talkgroup":"3148","slot":"1","repeaterid":"311178"}, ...], [] when it has none.
+        /// Checked 2026-10-08: without the trailing slash it sometimes answers 500 for a while.
+        /// </summary>
+        public static string StaticTalkgroupUrl(int id) { return DeviceUrl + "/" + id.ToString(CultureInfo.InvariantCulture) + "/talkgroup/"; }
+
+        /// <summary>A 6-digit ID that starts with a mobile country code (200-799), as BrandMeister repeater IDs do. RadioID's old DMR-MARC IDs (114802...) don't.</summary>
+        public static bool IsRepeaterId(int id) { return id >= 200000 && id <= 799999; }
+
+        /// <summary>"last_seen" of a <see cref="DeviceInfoUrl"/> answer (BrandMeister's clock, UTC), or null.</summary>
+        public static DateTime? ParseLastSeen(string json)
+        {
+            string s = Json.Str(Json.Get(Json.Parse(json), "last_seen")).Trim();
+            return DateTime.TryParseExact(s, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : (DateTime?)null;
+        }
+
+        /// <summary>A <see cref="StaticTalkgroupUrl"/> answer. Slot 0 (seen on a simplex device) means unknown and is kept as 0.</summary>
+        public static List<OnlineTalkgroup> ParseStaticTalkgroups(string json)
+        {
+            var list = new List<OnlineTalkgroup>();
+            foreach (var t in Json.Arr(Json.Parse(json)))
+            {
+                int id = Json.Int(Json.Get(t, "talkgroup"));
+                if (id <= 0 || id > Validator.MaxTalkgroupId) continue;
+                int slot = Json.Int(Json.Get(t, "slot"));
+                if (slot != 1 && slot != 2) slot = 0;
+                if (!list.Any(x => x.Id == id && x.Slot == slot)) list.Add(new OnlineTalkgroup { Id = id, Slot = slot, Description = "" });
             }
             return list;
         }
@@ -555,6 +627,7 @@ namespace CodeplugBuilder.Core
                 rep.ColorCode = r.ColorCode;
                 if (Powers.Values.Contains(o.Power)) rep.Power = o.Power;
                 rep.Notes = Notes(r);
+                if (r.OffAirSince.HasValue) rep.OffAirSince = RepeaterHealth.DateText(r.OffAirSince.Value);
                 SetLocation(rep, r);
                 if (o.ZoneFor != null) rep.Zone = FirstNonEmpty(Naming.Fit(o.ZoneFor(rep), 16), rep.Zone);
                 rep.Zone = ZonePlanner.Canonical(spelling, rep.Zone);
@@ -600,6 +673,9 @@ namespace CodeplugBuilder.Core
         {
             var parts = new List<string> { RadioId.Site + (r.DmrId > 0 ? " repeater ID " + r.DmrId.ToString(CultureInfo.InvariantCulture) : "") };
             if (r.Network.Length > 0) parts.Add(r.Network);
+            if (r.TalkgroupSource == RepeaterHealth.BrandMeisterSource) parts.Add("talkgroups: BrandMeister's static ones");
+            else if (r.Talkgroups.Count > 0) parts.Add("talkgroups: as listed on " + RadioId.Site);
+            if (r.OffAirSince.HasValue) parts.Add("BrandMeister last heard it " + RepeaterHealth.DateText(r.OffAirSince.Value));
             if (r.Trustee.Length > 0) parts.Add("trustee " + r.Trustee);
             if (r.Details.Length > 0) parts.Add(r.Details.Length > 200 ? r.Details.Substring(0, 200) + "..." : r.Details);
             return string.Join(" | ", parts);

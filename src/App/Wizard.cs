@@ -58,6 +58,7 @@ namespace CodeplugBuilder.App
         internal WizardStep Current => steps[index];
         internal bool NextEnabled => btnNext.Enabled;
         internal string BlockerText => lblBlocker.Text;
+        internal string DownloadText => lblDownload.Text;
         internal void PressNext() { Next(); }
 
         public NewCodeplugWizard()
@@ -489,6 +490,7 @@ namespace CodeplugBuilder.App
             if (State.HasZoneWork && State.WouldRebuild(picked) &&
                 !Ui.Confirm(FindForm(), "The repeaters (or your radio details) changed, so the zones and the talkgroups you picked for them start over.\n\nGo on?"))
                 return false;
+            Online.PrepareForAdding(FindForm(), picked); // BrandMeister's own talkgroups for its repeaters
             State.Picked = picked;
             State.Build();
             return true;

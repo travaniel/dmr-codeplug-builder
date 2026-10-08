@@ -78,6 +78,11 @@ namespace CodeplugBuilder.App
                     Pump(500);
                     log.Add("download: " + wiz.State.Download.Repeaters.Count + " repeaters in " + sw.ElapsedMilliseconds + " ms; errors: " + string.Join("; ", wiz.State.Download.Errors) +
                             "; BrandMeister names: " + wiz.State.Download.BrandMeisterNames.Count);
+                    var hw = System.Diagnostics.Stopwatch.StartNew();
+                    WaitFor(() => wiz.State.Download.HealthChecked, 300000); // the BrandMeister on-the-air check, in the background
+                    log.Add("BrandMeister check: " + hw.ElapsedMilliseconds + " ms after the download; status: " + wiz.State.Download.Status + "; footer: " + wiz.DownloadText);
+                    var offAir = wiz.State.Download.Repeaters.Where(r => r.IsOffAir).ToList();
+                    log.Add("off the air (BrandMeister, over a year): " + offAir.Count + (offAir.Count > 0 ? ": " + string.Join(", ", offAir.Take(20).Select(r => r.Callsign + " " + r.City + " " + RepeaterHealth.DateText(r.OffAirSince.Value))) : ""));
                     log.Add("step 3 Next before picking: " + wiz.NextEnabled + " (" + wiz.BlockerText + ")");
                     Shot("areas-map");
                     if (regionCodes != null)
@@ -116,6 +121,8 @@ namespace CodeplugBuilder.App
                     Shot("zones");
                     var p = wiz.State.Project;
                     log.Add("zones: " + string.Join(", ", p.Zones.Select(z => z.Name + " (" + p.ZoneChannelCount(z.Name) + ")")) + "; scheme " + wiz.State.Scheme);
+                    log.Add("talkgroups from BrandMeister: " + string.Join(", ", wiz.State.Picked.Where(r => r.TalkgroupSource != null).Select(r => r.Callsign + " " + string.Join("/", r.Talkgroups.Select(t => t.Id + ":" + t.Slot)))) +
+                            "; from RadioID.net: " + wiz.State.Picked.Count(r => r.TalkgroupSource == null && r.Talkgroups.Count > 0) + "; none listed: " + wiz.State.Picked.Count(r => r.Talkgroups.Count == 0));
                     wiz.PressNext();
 
                     var tgs = (ZoneTalkgroupsStep)wiz.Current;

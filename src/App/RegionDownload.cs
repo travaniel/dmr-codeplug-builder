@@ -91,12 +91,13 @@ namespace CodeplugBuilder.App
 
         void Run(CancellationToken token)
         {
+            Task<BrandMeisterDevices> bmDevices = null;
             try
             {
                 Atlas = GeoAtlas.BuiltIn();
                 var bm = Online.BrandMeisterNamesAsync(); // in parallel with the repeaters
                 var positions = Online.RepeaterPositionsAsync(); // the DMR-MARC map: exact places
-                var bmRepeaters = Online.BrandMeisterRepeatersAsync(Atlas); // repeaters RadioID.net doesn't list
+                bmDevices = Online.BrandMeisterDevicesAsync(Atlas); // repeaters RadioID.net doesn't list, and who is on the air
                 var queries = Queries(Areas);
                 int n = 0;
                 foreach (var q in queries)
@@ -131,7 +132,7 @@ namespace CodeplugBuilder.App
                 try
                 {
                     // Only the areas that were asked for, and only repeaters RadioID.net doesn't already list.
-                    var extra = bmRepeaters.Result.Where(r => r.Location != null && queries.Any(q =>
+                    var extra = bmDevices.Result.Repeaters.Where(r => r.Location != null && queries.Any(q =>
                         q.Key == "state" ? r.Location.State == q.Value : r.Location.Country == q.Value)).ToList();
                     lock (repeaters)
                         foreach (var r in extra)
@@ -153,12 +154,54 @@ namespace CodeplugBuilder.App
                 if (!token.IsCancellationRequested)
                 {
                     Done = true;
-                    int count;
-                    lock (repeaters) count = repeaters.Count;
-                    Report(Errors.Count > 0 && count == 0 ? "The download didn't work." : "Downloaded " + count + " repeaters.");
+                    Report(Summary());
                 }
             }
+            // The user can pick now; which BrandMeister repeaters are off the air follows in the background.
+            Action apply = null;
+            try { if (!token.IsCancellationRequested && bmDevices != null) apply = CheckHealth(token); }
+            catch { }
+            // One callback for the results, the status and the event, so nothing depends on the order of posts.
+            if (!token.IsCancellationRequested)
+                ui.Post(_ => { apply?.Invoke(); Status = Summary(); HealthChecked = true; Changed?.Invoke(this, EventArgs.Empty); }, null);
         }
+
+        string Summary()
+        {
+            int count, off;
+            lock (repeaters) { count = repeaters.Count; off = repeaters.Count(r => r.IsOffAir); }
+            if (Errors.Count > 0 && count == 0) return "The download didn't work.";
+            return "Downloaded " + count + " repeaters" + (off > 0 ? " (" + off + " look off the air)." : ".");
+        }
+
+        /// <summary>At most this many repeaters are looked up on BrandMeister per download (answers are cached a week).</summary>
+        const int MaxHealthChecks = 400;
+
+        /// <summary>
+        /// Marks BrandMeister-only listings that BrandMeister hasn't heard for over a year (<see cref="RepeaterHealth"/>):
+        /// only the ones missing from today's device list are looked up, one request each, within BrandMeister's rate limit
+        /// at background priority (picked repeaters get checked first when they're added, <see cref="Online.PrepareForAdding"/>).
+        /// The results go onto the listings on the UI thread, which then hears <see cref="Changed"/>.
+        /// </summary>
+        /// <returns>What to do with the answers on the UI thread (null when there was nothing to check).</returns>
+        Action CheckHealth(CancellationToken token)
+        {
+            List<OnlineRepeater> found;
+            lock (repeaters) found = repeaters.ToList();
+            var ask = Online.HealthUnknown(found).Take(MaxHealthChecks).ToList();
+            if (ask.Count == 0) return null;
+            Report("Checking which of " + ask.Count + " BrandMeister repeaters are still on the air...");
+            var seen = Online.LastSeen(ask.Select(r => r.BrandMeisterDeviceId), false, null, token);
+            var now = DateTime.UtcNow;
+            return () =>
+            {
+                foreach (var r in ask)
+                    if (seen.TryGetValue(r.BrandMeisterDeviceId, out var last)) { RepeaterHealth.Apply(r, last, now); Online.MarkChecked(r); }
+            };
+        }
+
+        /// <summary>True once the background BrandMeister check (<see cref="CheckHealth"/>) has finished, or had nothing to do.</summary>
+        public bool HealthChecked { get; private set; }
 
         /// <summary>Reports straight away, in order (Progress&lt;T&gt; on a worker thread can deliver after the final "Downloaded" status).</summary>
         sealed class StatusProgress : IProgress<string>

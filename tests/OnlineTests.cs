@@ -281,6 +281,63 @@ namespace CodeplugBuilder.Tests
             Assert.True(p.FindZone("Washington Co") == null, "shared zone gone");
         }
 
+        [Test]
+        static void BrandMeisterTellsWhichRepeatersAreOffTheAir()
+        {
+            // Device list (shape of api.brandmeister.network/v2/device, 2026-10-08): KC5EZZ live, K5ZZZ live under a new ID
+            // (no position), a hotspot.
+            const string devices = @"[
+ {""id"":311562,""callsign"":""KC5EZZ"",""tx"":""441.7500"",""rx"":""446.7500"",""colorcode"":1,""status"":3,""lat"":31.46,""lng"":-100.44,""city"":""San Angelo"",""last_seen"":""2026-10-08 06:10:39""},
+ {""id"":312466,""callsign"":""K5ZZZ-R"",""tx"":""444.2000"",""rx"":""449.2000"",""colorcode"":1,""status"":3,""city"":"""",""last_seen"":""2026-10-08 06:10:39""},
+ {""id"":3226509,""callsign"":""W6OZZ"",""tx"":""433.5500"",""rx"":""433.5500"",""colorcode"":1,""status"":3,""lat"":31.7,""lng"":-98.9,""city"":""Brownwood"",""last_seen"":""2026-10-08 06:10:39""}]";
+            var live = BrandMeister.ParseDevices(devices, GeoAtlas.BuiltIn());
+            Assert.Equal(3, live.Ids.Count, "every device ID");
+            Assert.Equal(2, live.Live.Count, "repeaters (6-digit IDs)");
+            Assert.Equal(311562, live.Repeaters.Single().BrandMeisterId, "only KC5EZZ can be placed");
+
+            var listings = RadioId.ParseRepeaters(RepeatersJson).Repeaters; // KC5EZZ (BM), kg5cng (BM, old DMR-MARC ID), N5VGQ (BM and others), W1BAD
+            var dead = new OnlineRepeater { Callsign = "K5ZY", Network = "BrandMeister", DmrId = 310026, RxMHz = 444.85m, TxMHz = 449.85m, ColorCode = 1, State = "Texas" };
+            var moved = new OnlineRepeater { Callsign = "K5ZZZ", Network = "BrandMeister", DmrId = 310099, RxMHz = 444.2m, TxMHz = 449.2m };
+            var candidates = RepeaterHealth.Candidates(listings.Concat(new[] { dead, moved }), live);
+            Assert.Equal("K5ZY", string.Join(",", candidates.Select(c => c.Callsign)), "only BrandMeister-only listings missing from the list, without a live twin");
+            Assert.Equal(0, RepeaterHealth.Candidates(listings, new BrandMeisterDevices()).Count, "no device list: nothing judged");
+
+            // KA3IDN's device (BrandMeister 2026-10-08, trimmed); an unknown ID.
+            var seen = BrandMeister.ParseLastSeen(@"{""id"":314811,""callsign"":""KA3IDN"",""status"":3,""last_seen"":""2022-07-19 17:57:55"",""statusText"":""Both Slots Linked""}");
+            Assert.Equal(new DateTime(2022, 7, 19, 17, 57, 55), seen.Value, "last_seen");
+            Assert.True(BrandMeister.ParseLastSeen(@"{""message"":""No query results for model [App\\Models\\v2\\Device] 319999""}") == null, "404 answer");
+            var now = new DateTime(2026, 10, 8);
+            Assert.True(RepeaterHealth.Apply(dead, seen, now) && dead.OffAirSince == new DateTime(2022, 7, 19), "over a year: off the air");
+            Assert.True(!RepeaterHealth.Apply(moved, new DateTime(2026, 8, 19, 15, 9, 18), now), "W5NNI-like: offline for weeks only");
+            Assert.True(!RepeaterHealth.Apply(moved, null, now), "unknown");
+
+            // Static talkgroups (WB5BRY's answer shape; slot "0" as on a simplex device).
+            Assert.True(BrandMeister.StaticTalkgroupUrl(311178).EndsWith("/v2/device/311178/talkgroup/"), "trailing slash");
+            var statics = BrandMeister.ParseStaticTalkgroups(@"[{""talkgroup"":""3148"",""slot"":""1"",""repeaterid"":""311562""},
+ {""talkgroup"":""31480"",""slot"":""1"",""repeaterid"":""311562""},{""talkgroup"":""31486"",""slot"":""0"",""repeaterid"":""311562""}]");
+            Assert.Equal("3148:1,31480:1,31486:0", string.Join(",", statics.Select(t => t.Id + ":" + t.Slot)), "parsed");
+            var kc = listings.First(r => r.Callsign == "KC5EZZ"); // listed: 31486 TS1, 311562 TS1, 3148 TS2 "Texas - 10 Minute Limit"
+            Assert.True(RepeaterHealth.UseStaticTalkgroups(kc, statics), "BrandMeister's list used");
+            Assert.Equal("3148:1,31480:1,31486:1", string.Join(",", kc.Talkgroups.Select(t => t.Id + ":" + t.Slot)), "slot 0 takes the owner's slot");
+            Assert.Equal("Texas - 10 Minute Limit", kc.Talkgroups[0].Description, "owner's name kept");
+            Assert.True(!RepeaterHealth.UseStaticTalkgroups(listings.First(r => r.Callsign == "N5VGQ"), statics), "on other networks too: owner's list stays");
+            Assert.True(!RepeaterHealth.UseStaticTalkgroups(listings.First(r => r.Callsign == "KG5CNG"), new List<OnlineTalkgroup>()), "no statics: as listed");
+
+            // Into a project: where the talkgroups came from, and the off-air date with a warning.
+            var p = new Project { RadioIdName = "Test N0CALL", RadioId = 3100001 };
+            OnlineImporter.AddRepeaters(p, new[] { kc, dead }, new OnlineImportOptions { ZonePerCity = false, Zone = "Test" }, BrandMeister.ParseTalkgroups(BmJson));
+            var kcRep = p.Repeaters.First(r => r.Prefix == "KC5EZZ");
+            Assert.True(kcRep.Notes.Contains("talkgroups: BrandMeister's static ones") && kcRep.Talkgroups.Any(t => t.TalkgroupId == 31480) && kcRep.OffAirSince == null, kcRep.Notes);
+            var deadRep = p.Repeaters.First(r => r.Prefix == "K5ZY");
+            Assert.Equal("2022-07-19", deadRep.OffAirSince, "date kept");
+            Assert.True(deadRep.Notes.Contains("BrandMeister last heard it 2022-07-19"), deadRep.Notes);
+            var warnings = Validator.Validate(p).Where(i => i.Message.Contains("may be off the air")).ToList();
+            Assert.True(warnings.Count == 1 && warnings[0].Message.Contains("\"K5ZY") && warnings[0].Message.Contains("2022-07-19"), string.Join("\n", warnings));
+            Assert.Equal("2022-07-19", ProjectStore.FromJson(ProjectStore.ToJson(p)).Repeaters.First(r => r.Prefix == "K5ZY").OffAirSince, "saved");
+            deadRep.OffAirSince = null; // "Off the air?" unticked in the editor
+            Assert.True(!Validator.Validate(p).Any(i => i.Message.Contains("may be off the air")), "cleared");
+        }
+
         const string RepeatersJson = @"{""count"":3,""page"":1,""pages"":1,""per_page"":200,""results"":[
  {""callsign"":""KC5EZZ"",""city"":""San Angelo"",""color_code"":1,""country"":""United States"",""coverage"":""Peer"",""details"":"""",
   ""frequency"":""441.75000"",""identity_id"":6480,""ipsc_network"":""Brandmeister"",""last_master"":null,""locator"":311562,""manufacturer"":null,

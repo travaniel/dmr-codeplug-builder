@@ -23,7 +23,8 @@ namespace CodeplugBuilder.App
         readonly TextBox txtName, txtPrefix, txtRx, txtTx, txtNotes, txtSearch;
         readonly ComboBox cboZone, cboMode, cboPower, cboOffset, cboEnc, cboDec, cboBw;
         readonly NumericUpDown numCC;
-        readonly CheckBox chkToneSquelch, chkRxOnly, chkEnabled;
+        readonly CheckBox chkToneSquelch, chkRxOnly, chkEnabled, chkOffAir;
+        string offAirDate; // kept while the box is unticked, so ticking it again puts the date back
         readonly Label lblPrefix, lblExample, lblMode, lblPower, lblCC, lblEnc, lblDec, lblBw, lblNotes, lblAnalogNote;
         readonly GroupBox grpTalkgroups;
         readonly ListBox lstAvailable;
@@ -82,6 +83,7 @@ namespace CodeplugBuilder.App
             chkRxOnly = new CheckBox { Text = "Receive only (TX prohibit)", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
             chkEnabled = new CheckBox { Text = "Include in codeplug", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
             txtNotes = Ui.Text("Optional notes (not sent to the radio)");
+            chkOffAir = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 3, 3, 3), ForeColor = Color.FromArgb(176, 84, 0), Visible = false };
 
             int r = 0;
             Place(f, r, Ui.Label("Name"), txtName, null, null); f.SetColumnSpan(txtName, 3); r++;
@@ -100,6 +102,7 @@ namespace CodeplugBuilder.App
             f.Controls.Add(chkEnabled, 2, r); f.SetColumnSpan(chkEnabled, 2); r++;
             lblNotes = Ui.Label("Notes");
             Place(f, r, lblNotes, txtNotes, null, null); f.SetColumnSpan(txtNotes, 3); r++;
+            f.Controls.Add(chkOffAir, 1, r); f.SetColumnSpan(chkOffAir, 3); r++;
             f.RowCount = r;
             for (int i = 0; i < r; i++) f.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -241,6 +244,7 @@ namespace CodeplugBuilder.App
                     grid.Rows.Clear();
                     lstAvailable.Items.Clear();
                     lblExample.Text = "";
+                    chkOffAir.Visible = false;
                     errors.Clear();
                     return;
                 }
@@ -261,6 +265,10 @@ namespace CodeplugBuilder.App
                 chkRxOnly.Checked = r.RxOnly;
                 chkEnabled.Checked = r.Enabled;
                 txtNotes.Text = r.Notes ?? "";
+                offAirDate = r.OffAirSince;
+                chkOffAir.Visible = !hotspot && !string.IsNullOrWhiteSpace(offAirDate);
+                chkOffAir.Text = "Off the air? BrandMeister last heard it on " + offAirDate + ". Untick if you know it works.";
+                chkOffAir.Checked = chkOffAir.Visible;
                 lastSlot = r.Talkgroups.Count > 0 ? r.Talkgroups[r.Talkgroups.Count - 1].Slot : (hotspot ? 2 : 1);
                 errors.Clear();
                 RefreshAvailable();
@@ -461,6 +469,7 @@ namespace CodeplugBuilder.App
             chkRxOnly.CheckedChanged += (s, e) => { if (loading || rep == null) return; rep.RxOnly = chkRxOnly.Checked; Raise(); };
             chkEnabled.CheckedChanged += (s, e) => { if (loading || rep == null) return; rep.Enabled = chkEnabled.Checked; Raise(); };
             txtNotes.TextChanged += (s, e) => { if (loading || rep == null) return; rep.Notes = txtNotes.Text; Raise(); };
+            chkOffAir.CheckedChanged += (s, e) => { if (loading || rep == null) return; rep.OffAirSince = chkOffAir.Checked ? offAirDate : null; Raise(); };
 
             // Talkgroup assignment
             txtSearch.TextChanged += (s, e) => RefreshAvailable();

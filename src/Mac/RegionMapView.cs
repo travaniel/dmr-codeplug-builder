@@ -17,6 +17,8 @@ namespace CodeplugBuilder.Mac
         public bool Highlight;
         /// <summary>An analog (FM) repeater: drawn green until picked.</summary>
         public bool Analog;
+        /// <summary>Not heard on BrandMeister for a year: drawn light grey, under the others, until picked.</summary>
+        public bool OffAir;
         public object Tag;
     }
 
@@ -59,6 +61,7 @@ namespace CodeplugBuilder.Mac
         static readonly IBrush DotColor = new SolidColorBrush(Color.FromArgb(200, 70, 70, 70));
         static readonly IBrush DotHighlight = new SolidColorBrush(Color.FromArgb(220, 200, 40, 40));
         static readonly IBrush DotAnalog = new SolidColorBrush(Color.FromArgb(210, 20, 140, 70));
+        static readonly IBrush DotOffAir = new SolidColorBrush(Color.FromArgb(170, 175, 175, 175));
         static readonly IPen DotRing = new Pen(Brushes.White, 1);
         static readonly IPen MajorRoadPen = new Pen(new SolidColorBrush(Color.FromArgb(225, 224, 140, 40)), 2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         static readonly IPen MinorRoadPen = new Pen(new SolidColorBrush(Color.FromArgb(200, 232, 184, 120)), 1, lineJoin: PenLineJoin.Round);
@@ -545,12 +548,12 @@ namespace CodeplugBuilder.Mac
         {
             if (dots.Count == 0) return;
             double r = Math.Max(2.5, Math.Min(5, scale / 40));
-            foreach (var d in dots.OrderBy(x => x.Highlight))
+            foreach (var d in dots.OrderBy(x => x.Highlight ? 2 : x.OffAir ? 0 : 1))
             {
                 double my = MercY(d.Lat);
                 if (d.Lon < view.Left || d.Lon > view.Right || my < view.Top || my > view.Bottom) continue;
                 var p = ToScreen(d.Lon, my);
-                ctx.DrawEllipse(d.Highlight ? DotHighlight : d.Analog ? DotAnalog : DotColor, DotRing, p, r, r);
+                ctx.DrawEllipse(d.Highlight ? DotHighlight : d.OffAir ? DotOffAir : d.Analog ? DotAnalog : DotColor, DotRing, p, r, r);
             }
         }
 

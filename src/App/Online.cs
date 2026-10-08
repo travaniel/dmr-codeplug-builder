@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CodeplugBuilder.Core;
+using CodeplugBuilder.Core.Radio;
 
 namespace CodeplugBuilder.App
 {
@@ -144,41 +145,311 @@ namespace CodeplugBuilder.App
         }
 
         /// <summary>
-        /// BrandMeister's repeaters (the device list minus hotspots), placed on the map. The 9.6 MB list is downloaded at
-        /// most once a day and kept in the settings folder; the parsed repeaters are kept for the run. Empty if neither works.
+        /// BrandMeister's device list: its repeaters placed on the map, and every device ID heard in the last day (for
+        /// <see cref="RepeaterHealth"/>). The 9.6 MB list is downloaded at most once a day and kept in the settings folder;
+        /// the parsed result is kept for the run. Empty if neither works.
         /// </summary>
-        public static Task<List<OnlineRepeater>> BrandMeisterRepeatersAsync(GeoAtlas atlas)
+        public static Task<BrandMeisterDevices> BrandMeisterDevicesAsync(GeoAtlas atlas)
         {
             return Task.Run(() =>
             {
-                lock (bmRepeatersLock)
+                lock (bmDevicesLock)
                 {
-                    if (bmRepeaters != null) return bmRepeaters;
+                    if (bmDevices != null) return bmDevices;
                     string file = Path.Combine(AppSettings.Folder, "brandmeister-devices.json");
                     bool fresh = File.Exists(file) && (DateTime.Now - File.GetLastWriteTime(file)).TotalHours < 24;
                     if (fresh)
                     {
-                        try { return bmRepeaters = BrandMeister.ParseRepeaters(File.ReadAllText(file, Encoding.UTF8), atlas); } catch { }
+                        try { return bmDevices = BrandMeister.ParseDevices(File.ReadAllText(file, Encoding.UTF8), atlas); } catch { }
                     }
                     try
                     {
                         string json = Get(BrandMeister.DeviceUrl, 120000);
-                        var list = BrandMeister.ParseRepeaters(json, atlas);
-                        if (list.Count > 0)
+                        var devices = BrandMeister.ParseDevices(json, atlas);
+                        if (devices.Ids.Count > 0)
                         {
                             try { Directory.CreateDirectory(AppSettings.Folder); File.WriteAllText(file, json, new UTF8Encoding(false)); } catch { }
-                            return bmRepeaters = list;
+                            return bmDevices = devices;
                         }
                     }
                     catch { }
-                    try { if (File.Exists(file)) return bmRepeaters = BrandMeister.ParseRepeaters(File.ReadAllText(file, Encoding.UTF8), atlas); } catch { }
-                    return new List<OnlineRepeater>(); // not cached, so the next download tries again
+                    // An old copy still gives the repeaters, but not who is on the air now: no health check from it.
+                    try
+                    {
+                        if (File.Exists(file))
+                        {
+                            var old = BrandMeister.ParseDevices(File.ReadAllText(file, Encoding.UTF8), atlas);
+                            old.Ids.Clear();
+                            return bmDevices = old;
+                        }
+                    }
+                    catch { }
+                    return new BrandMeisterDevices(); // not cached, so the next download tries again
                 }
             });
         }
 
-        static readonly object bmRepeatersLock = new object();
-        static List<OnlineRepeater> bmRepeaters;
+        static readonly object bmDevicesLock = new object();
+        static BrandMeisterDevices bmDevices;
+
+        /// <summary>
+        /// When BrandMeister last heard each device (<see cref="BrandMeister.DeviceInfoUrl"/>), null for IDs it doesn't
+        /// know. 6 requests at a time within BrandMeister's rate limit (<see cref="GetBrandMeister"/>); answers are kept a
+        /// week in the settings folder (a repeater a year off the air doesn't change much in a week). IDs that couldn't be
+        /// asked are left out of the result. <paramref name="priority"/>: the user is waiting (picked repeaters).
+        /// </summary>
+        public static Dictionary<int, DateTime?> LastSeen(IEnumerable<int> ids, bool priority, IProgress<ReadProgress> progress, CancellationToken token)
+        {
+            var result = new Dictionary<int, DateTime?>();
+            var cache = DeviceCache("brandmeister-last-seen.txt", 7);
+            var fetched = new Dictionary<int, string>();
+            var todo = new List<int>();
+            foreach (int id in ids.Distinct())
+            {
+                if (cache.TryGetValue(id, out string v)) result[id] = ParseCachedDate(v);
+                else todo.Add(id);
+            }
+            if (todo.Count == 0) return result;
+            int done = 0;
+            progress?.Report(new ReadProgress { Done = 0, Total = todo.Count, What = "checking which repeaters BrandMeister still hears" });
+            try
+            {
+                Parallel.ForEach(todo, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = token }, id =>
+                {
+                    string v = null;
+                    try
+                    {
+                        var seen = BrandMeister.ParseLastSeen(GetBrandMeister(BrandMeister.DeviceInfoUrl(id), priority, token));
+                        v = seen.HasValue ? seen.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "";
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) when (ex.Message.Contains(" 404 ")) { v = ""; } // BrandMeister doesn't know the ID
+                    catch { }
+                    lock (fetched)
+                    {
+                        if (v != null) { fetched[id] = v; result[id] = ParseCachedDate(v); }
+                        done++;
+                        progress?.Report(new ReadProgress { Done = done, Total = todo.Count, What = "checking which repeaters BrandMeister still hears" });
+                    }
+                });
+            }
+            catch (OperationCanceledException) { }
+            SaveDeviceCache("brandmeister-last-seen.txt", fetched);
+            return result;
+        }
+
+        /// <summary>
+        /// The static talkgroups of each device (<see cref="BrandMeister.StaticTalkgroupUrl"/>); an empty list when it has
+        /// none. 6 requests at a time (with priority), kept a day. IDs that couldn't be asked are left out of the result.
+        /// </summary>
+        public static Dictionary<int, List<OnlineTalkgroup>> StaticTalkgroups(IEnumerable<int> ids, IProgress<ReadProgress> progress, CancellationToken token)
+        {
+            var result = new Dictionary<int, List<OnlineTalkgroup>>();
+            var cache = DeviceCache("brandmeister-static-talkgroups.txt", 1);
+            var fetched = new Dictionary<int, string>();
+            var todo = new List<int>();
+            foreach (int id in ids.Distinct())
+            {
+                if (cache.TryGetValue(id, out string v)) result[id] = ParseCachedTalkgroups(v);
+                else todo.Add(id);
+            }
+            if (todo.Count == 0) return result;
+            int done = 0;
+            progress?.Report(new ReadProgress { Done = 0, Total = todo.Count, What = "getting talkgroups from BrandMeister" });
+            try
+            {
+                Parallel.ForEach(todo, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = token }, id =>
+                {
+                    List<OnlineTalkgroup> list = null;
+                    try { list = BrandMeister.ParseStaticTalkgroups(GetBrandMeister(BrandMeister.StaticTalkgroupUrl(id), true, token)); }
+                    catch (OperationCanceledException) { throw; }
+                    catch { }
+                    lock (fetched)
+                    {
+                        if (list != null)
+                        {
+                            fetched[id] = string.Join(";", list.Select(t => t.Id.ToString(CultureInfo.InvariantCulture) + ":" + t.Slot.ToString(CultureInfo.InvariantCulture)));
+                            result[id] = list;
+                        }
+                        done++;
+                        progress?.Report(new ReadProgress { Done = done, Total = todo.Count, What = "getting talkgroups from BrandMeister" });
+                    }
+                });
+            }
+            catch (OperationCanceledException) { }
+            SaveDeviceCache("brandmeister-static-talkgroups.txt", fetched);
+            return result;
+        }
+
+        /// <summary>
+        /// Gets picked repeaters ready to go into a project: the BrandMeister-only ones not checked yet are checked
+        /// (<see cref="RepeaterHealth"/>: an off-air one keeps its pick but is marked, so the project warns), then the ones on
+        /// the air get BrandMeister's static talkgroups (<see cref="RepeaterHealth.UseStaticTalkgroups"/>); ones BrandMeister
+        /// can't answer for keep their RadioID.net list. Runs on a worker thread; returns how many got BrandMeister's talkgroups.
+        /// </summary>
+        public static int PrepareForAdding(IEnumerable<OnlineRepeater> picked, IProgress<ReadProgress> progress, CancellationToken token = default(CancellationToken))
+        {
+            var list = picked.ToList();
+            var health = HealthUnknown(list);
+            if (health.Count > 0)
+            {
+                var seen = LastSeen(health.Select(r => r.BrandMeisterDeviceId), true, progress, token);
+                var now = DateTime.UtcNow;
+                foreach (var r in health)
+                    if (seen.TryGetValue(r.BrandMeisterDeviceId, out var last)) { RepeaterHealth.Apply(r, last, now); MarkChecked(r); }
+            }
+            var ask = list.Where(StaticTalkgroupsUnknown).ToList();
+            if (ask.Count == 0) return 0;
+            var statics = StaticTalkgroups(ask.Select(r => r.BrandMeisterDeviceId), progress, token);
+            int changed = 0;
+            foreach (var r in ask)
+                if (statics.TryGetValue(r.BrandMeisterDeviceId, out var tgs))
+                {
+                    lock (staticAsked) staticAsked.Add(r.BrandMeisterDeviceId);
+                    if (RepeaterHealth.UseStaticTalkgroups(r, tgs)) changed++;
+                }
+            return changed;
+        }
+
+        /// <summary>True when <see cref="PrepareForAdding"/> has anything to ask BrandMeister (so the UI can skip its wait dialog).</summary>
+        public static bool NeedsPreparing(IEnumerable<OnlineRepeater> picked)
+        {
+            var list = picked.ToList();
+            return list.Any(StaticTalkgroupsUnknown) || HealthUnknown(list).Count > 0;
+        }
+
+        /// <summary>BrandMeister IDs whose static talkgroups were already asked for in this run (an empty answer leaves the listing as it was).</summary>
+        static readonly HashSet<int> staticAsked = new HashSet<int>();
+
+        static bool StaticTalkgroupsUnknown(OnlineRepeater r)
+        {
+            if (r.IsAnalog || r.IsOffAir || !r.OnlyBrandMeister || r.TalkgroupSource != null || r.BrandMeisterDeviceId <= 0) return false;
+            lock (staticAsked) return !staticAsked.Contains(r.BrandMeisterDeviceId);
+        }
+
+        /// <summary>Listings whose health was checked in this run (by the region download or <see cref="PrepareForAdding"/>).</summary>
+        static readonly HashSet<OnlineRepeater> healthChecked = new HashSet<OnlineRepeater>();
+
+        public static void MarkChecked(OnlineRepeater r) { lock (healthChecked) healthChecked.Add(r); }
+
+        /// <summary>Health candidates among these listings (<see cref="RepeaterHealth.Candidates"/>) not checked yet in this run.</summary>
+        public static List<OnlineRepeater> HealthUnknown(IEnumerable<OnlineRepeater> listings)
+        {
+            var live = bmDevices;
+            if (live == null) return new List<OnlineRepeater>();
+            lock (healthChecked) return RepeaterHealth.Candidates(listings, live).Where(r => !healthChecked.Contains(r)).ToList();
+        }
+
+        // BrandMeister allows 120 API requests a minute per address (x-ratelimit-limit, checked 2026-10-08) and answers 429
+        // after that. Background checks stop at BackgroundPerMinute so what the user waits for (priority) always has room.
+        const int PriorityPerMinute = 100, BackgroundPerMinute = 70;
+        static readonly Queue<DateTime> bmRequests = new Queue<DateTime>();
+
+        static void WaitForBrandMeister(bool priority, CancellationToken token)
+        {
+            int limit = priority ? PriorityPerMinute : BackgroundPerMinute;
+            while (true)
+            {
+                TimeSpan wait;
+                lock (bmRequests)
+                {
+                    var now = DateTime.UtcNow;
+                    while (bmRequests.Count > 0 && now - bmRequests.Peek() >= TimeSpan.FromMinutes(1)) bmRequests.Dequeue();
+                    if (bmRequests.Count < limit) { bmRequests.Enqueue(now); return; }
+                    // The oldest request in the window that has to drop out before there's room again.
+                    wait = bmRequests.ElementAt(bmRequests.Count - limit) + TimeSpan.FromMinutes(1) - now + TimeSpan.FromMilliseconds(50);
+                }
+                if (token.WaitHandle.WaitOne(wait < TimeSpan.Zero ? TimeSpan.Zero : wait)) token.ThrowIfCancellationRequested();
+            }
+        }
+
+        /// <summary>
+        /// A BrandMeister API request within the rate limit. A 500 (it happens now and then) is tried again after a second, a
+        /// 429 after a minute; a 404 is passed on.
+        /// </summary>
+        static string GetBrandMeister(string url, bool priority, CancellationToken token)
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                WaitForBrandMeister(priority, token);
+                try { return Get(url, 15000); }
+                catch (Exception ex) when (attempt < 3 && !ex.Message.Contains(" 404 "))
+                {
+                    bool limited = ex.Message.Contains(" 429 ");
+                    if (token.WaitHandle.WaitOne(limited ? TimeSpan.FromSeconds(61) : TimeSpan.FromSeconds(1))) token.ThrowIfCancellationRequested();
+                }
+            }
+        }
+
+        static readonly object deviceCacheLock = new object();
+
+        /// <summary>"id,checked yyyy-MM-dd,value" lines in the settings folder; entries older than <paramref name="days"/> are dropped.</summary>
+        static Dictionary<int, string> DeviceCache(string name, int days)
+        {
+            var map = new Dictionary<int, string>();
+            lock (deviceCacheLock)
+            {
+                try
+                {
+                    string file = Path.Combine(AppSettings.Folder, name);
+                    if (!File.Exists(file)) return map;
+                    foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
+                    {
+                        var f = line.Split(new[] { ',' }, 3);
+                        if (f.Length == 3 && int.TryParse(f[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) &&
+                            DateTime.TryParseExact(f[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) &&
+                            (DateTime.Now.Date - at).TotalDays < days)
+                            map[id] = f[2];
+                    }
+                }
+                catch { }
+            }
+            return map;
+        }
+
+        /// <summary>Stores what was just asked (<paramref name="fetched"/>) as checked today; other entries keep their date, and ones over 60 days old go.</summary>
+        static void SaveDeviceCache(string name, Dictionary<int, string> fetched)
+        {
+            if (fetched.Count == 0) return;
+            string today = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            lock (deviceCacheLock)
+            {
+                try
+                {
+                    string file = Path.Combine(AppSettings.Folder, name);
+                    var lines = new Dictionary<int, string>();
+                    if (File.Exists(file))
+                        foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
+                        {
+                            var f = line.Split(new[] { ',' }, 3);
+                            if (f.Length == 3 && int.TryParse(f[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) &&
+                                DateTime.TryParseExact(f[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) &&
+                                (DateTime.Now.Date - at).TotalDays < 60)
+                                lines[id] = line;
+                        }
+                    foreach (var kv in fetched) lines[kv.Key] = kv.Key.ToString(CultureInfo.InvariantCulture) + "," + today + "," + kv.Value;
+                    Directory.CreateDirectory(AppSettings.Folder);
+                    File.WriteAllLines(file, lines.OrderBy(kv => kv.Key).Select(kv => kv.Value), new UTF8Encoding(false));
+                }
+                catch { }
+            }
+        }
+
+        static DateTime? ParseCachedDate(string v)
+        {
+            return DateTime.TryParseExact(v ?? "", "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : (DateTime?)null;
+        }
+
+        static List<OnlineTalkgroup> ParseCachedTalkgroups(string v)
+        {
+            var list = new List<OnlineTalkgroup>();
+            foreach (string part in (v ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var f = part.Split(':');
+                if (f.Length == 2 && int.TryParse(f[0], out int id) && int.TryParse(f[1], out int slot)) list.Add(new OnlineTalkgroup { Id = id, Slot = slot, Description = "" });
+            }
+            return list;
+        }
 
         static readonly object positionsLock = new object();
         static Dictionary<int, double[]> positions;

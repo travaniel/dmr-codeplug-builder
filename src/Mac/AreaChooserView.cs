@@ -55,7 +55,7 @@ namespace CodeplugBuilder.Mac
             public string Output => R.RxMHz.ToString("0.0000", CultureInfo.InvariantCulture);
             public string CC => R.IsAnalog ? "" : R.ColorCode.ToString(CultureInfo.InvariantCulture);
             public string Network => R.IsAnalog ? "FM (analog)" : R.Network;
-            public string Listed => R.IsAnalog ? "" : R.Talkgroups.Count == 0 ? "none" : R.Talkgroups.Count.ToString(CultureInfo.InvariantCulture);
+            public string Listed => R.IsAnalog ? "" : R.Talkgroups.Count == 0 ? "none" : R.Talkgroups.Count.ToString(CultureInfo.InvariantCulture) + (R.TalkgroupSource != null ? " (" + R.TalkgroupSource + ")" : "");
             public string State => owner.Status(R);
         }
 
@@ -77,7 +77,7 @@ namespace CodeplugBuilder.Mac
             list.Columns.Add(UiKit.Col("CC", "CC", true, 40));
             list.Columns.Add(UiKit.Col("Network", "Network", true, 120));
             list.Columns.Add(UiKit.Col("Talkgroups listed", "Listed", true, 120));
-            list.Columns.Add(UiKit.Col("", "State", true, 110));
+            list.Columns.Add(UiKit.Col("", "State", true, 180));
             var listPage = new DockPanel { Margin = new Thickness(4) };
             DockPanel.SetDock(filterRow, Dock.Top);
             listPage.Children.Add(filterRow);
@@ -177,14 +177,14 @@ namespace CodeplugBuilder.Mac
         public bool IsPicked(OnlineRepeater r)
         {
             if (InProject(r) || manualOff.Contains(r)) return false;
-            return manualOn.Contains(r) || InPickedArea(r);
+            return manualOn.Contains(r) || (InPickedArea(r) && !r.IsOffAir); // off-air repeaters only when ticked one by one
         }
 
         void SetPicked(OnlineRepeater r, bool on)
         {
             manualOn.Remove(r);
             manualOff.Remove(r);
-            bool byArea = InPickedArea(r);
+            bool byArea = InPickedArea(r) && !r.IsOffAir;
             if (on && !byArea) manualOn.Add(r);
             if (!on && byArea) manualOff.Add(r);
         }
@@ -248,7 +248,7 @@ namespace CodeplugBuilder.Mac
         {
             // RepeaterBook (analog) rows are listed on the List tab only, never drawn on the map.
             Picker.Map.Dots = all.Where(r => !r.IsAnalog && r.Location?.Lat != null)
-                                 .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, Tag = r })
+                                 .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, OffAir = r.IsOffAir, Tag = r })
                                  .ToList();
         }
 
@@ -258,10 +258,12 @@ namespace CodeplugBuilder.Mac
             int listed = picked.Sum(r => r.Talkgroups.Count);
             int already = all.Count(InProject);
             int unplaced = all.Count(r => r.Location == null || r.Location.Lat == null);
+            int offAir = all.Count(r => r.IsOffAir && !IsPicked(r) && !InProject(r));
+            string offAirText = offAir == 0 ? "" : "   " + offAir + " look off the air (grey) and aren't taken by clicks.";
             if (picked.Count == 0 && all.Count > 0)
             {
                 lblSummary.Text = "Nothing picked yet: click a state or county on the map to take its repeaters (" + all.Count + " to choose from), or tick single ones on the List tab." +
-                                  (unplaced > 0 ? " " + unplaced + " couldn't be placed exactly." : "");
+                                  (unplaced > 0 ? " " + unplaced + " couldn't be placed exactly." : "") + offAirText;
                 lblSummary.Foreground = Brushes.DarkOrange;
                 return;
             }
@@ -269,13 +271,29 @@ namespace CodeplugBuilder.Mac
             lblSummary.Text = picked.Count + " of " + all.Count + " repeater" + (all.Count == 1 ? "" : "s") + " picked" +
                               (picked.Count > 0 ? " (" + listed + " talkgroup channels they list themselves)" : "") +
                               (already > 0 ? ", " + already + " already in your project" : "") +
-                              (unplaced > 0 ? ".   " + unplaced + " couldn't be placed exactly; find them on the List tab." : ".");
+                              (unplaced > 0 ? ".   " + unplaced + " couldn't be placed exactly; find them on the List tab." : ".") + offAirText;
+        }
+
+        /// <summary>
+        /// Checks the picked BrandMeister-only repeaters and gives them BrandMeister's static talkgroups (<see cref="Online.PrepareForAdding"/>),
+        /// with a wait window while anything has to be asked. On any failure they keep RadioID.net's lists. (Windows: Online.FetchStaticTalkgroups.)
+        /// </summary>
+        public static async Task PrepareForAdding(Window owner, List<OnlineRepeater> picked)
+        {
+            if (!Online.NeedsPreparing(picked)) return;
+            try
+            {
+                await Dialogs.Progress(owner, "BrandMeister", pr => Online.PrepareForAdding(picked, pr),
+                    "Asking BrandMeister about the picked repeaters: still on the air, and which talkgroups they carry...");
+            }
+            catch { }
         }
 
         string Status(OnlineRepeater r)
         {
             if (InProject(r)) return "in your project";
-            return IsPicked(r) ? "picked" : "";
+            string off = r.IsOffAir ? "off the air since " + r.OffAirSince.Value.Year.ToString(CultureInfo.InvariantCulture) : "";
+            return IsPicked(r) ? (off.Length > 0 ? "picked (" + off + ")" : "picked") : off;
         }
 
         static string Where(OnlineRepeater r)

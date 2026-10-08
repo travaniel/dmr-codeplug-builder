@@ -59,7 +59,7 @@ namespace CodeplugBuilder.App
             list.Columns.Add("CC", Ui.S(36), HorizontalAlignment.Right);
             list.Columns.Add("Network", Ui.S(110));
             list.Columns.Add("Talkgroups listed", Ui.S(110), HorizontalAlignment.Right);
-            list.Columns.Add("", Ui.S(110));
+            list.Columns.Add("", Ui.S(180));
             var listPage = new TabPage("List") { UseVisualStyleBackColor = true, Padding = new Padding(Ui.S(4)) };
             listPage.Controls.Add(list);
             listPage.Controls.Add(filterRow);
@@ -174,14 +174,14 @@ namespace CodeplugBuilder.App
         public bool IsPicked(OnlineRepeater r)
         {
             if (InProject(r) || manualOff.Contains(r)) return false;
-            return manualOn.Contains(r) || InPickedArea(r);
+            return manualOn.Contains(r) || (InPickedArea(r) && !r.IsOffAir); // off-air repeaters only when ticked one by one
         }
 
         void SetPicked(OnlineRepeater r, bool on)
         {
             manualOn.Remove(r);
             manualOff.Remove(r);
-            bool byArea = InPickedArea(r);
+            bool byArea = InPickedArea(r) && !r.IsOffAir;
             if (on && !byArea) manualOn.Add(r);
             if (!on && byArea) manualOff.Add(r);
         }
@@ -236,7 +236,7 @@ namespace CodeplugBuilder.App
         {
             // RepeaterBook (analog) rows are listed on the List tab only, never drawn on the map.
             Picker.Map.Dots = all.Where(r => !r.IsAnalog && r.Location?.Lat != null)
-                                 .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, Tag = r })
+                                 .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, OffAir = r.IsOffAir, Tag = r })
                                  .ToList();
         }
 
@@ -246,11 +246,13 @@ namespace CodeplugBuilder.App
             int listed = picked.Sum(r => r.Talkgroups.Count);
             int already = all.Count(InProject);
             int unplaced = all.Count(r => r.Location == null || r.Location.Lat == null);
+            int offAir = all.Count(r => r.IsOffAir && !IsPicked(r) && !InProject(r));
+            string offAirText = offAir == 0 ? "" : "   " + offAir + " look off the air (grey) and aren't taken by clicks.";
             if (picked.Count == 0 && all.Count > 0)
             {
                 int notPlaced = all.Count(r => r.Location == null || r.Location.Lat == null);
                 lblSummary.Text = "Nothing picked yet: click a state or county on the map to take its repeaters (" + all.Count + " to choose from), or tick single ones on the List tab." +
-                                  (notPlaced > 0 ? " " + notPlaced + " couldn't be placed exactly." : "");
+                                  (notPlaced > 0 ? " " + notPlaced + " couldn't be placed exactly." : "") + offAirText;
                 lblSummary.ForeColor = Color.FromArgb(176, 84, 0);
                 return;
             }
@@ -258,13 +260,14 @@ namespace CodeplugBuilder.App
             lblSummary.Text = picked.Count + " of " + all.Count + " repeater" + (all.Count == 1 ? "" : "s") + " picked" +
                               (picked.Count > 0 ? " (" + listed + " talkgroup channels they list themselves)" : "") +
                               (already > 0 ? ", " + already + " already in your project" : "") +
-                              (unplaced > 0 ? ".   " + unplaced + " couldn't be placed exactly; find them on the List tab." : ".");
+                              (unplaced > 0 ? ".   " + unplaced + " couldn't be placed exactly; find them on the List tab." : ".") + offAirText;
         }
 
         string Status(OnlineRepeater r)
         {
             if (InProject(r)) return "in your project";
-            return IsPicked(r) ? "picked" : "";
+            string off = r.IsOffAir ? "off the air since " + r.OffAirSince.Value.Year.ToString(CultureInfo.InvariantCulture) : "";
+            return IsPicked(r) ? (off.Length > 0 ? "picked (" + off + ")" : "picked") : off;
         }
 
         static string Where(OnlineRepeater r)
@@ -297,16 +300,16 @@ namespace CodeplugBuilder.App
                 list.Items.Clear();
                 foreach (var r in Filtered())
                 {
-                    var item = new ListViewItem(r.Callsign) { Tag = r, Checked = IsPicked(r), ToolTipText = r.Details };
+                    var item = new ListViewItem(r.Callsign) { Tag = r, Checked = IsPicked(r), ToolTipText = r.Details + (r.IsOffAir ? " / BrandMeister last heard it " + RepeaterHealth.DateText(r.OffAirSince.Value) : "") };
                     item.SubItems.Add(r.City);
                     item.SubItems.Add(Where(r));
                     item.SubItems.Add(r.RxMHz.ToString("0.0000", CultureInfo.InvariantCulture));
                     item.SubItems.Add(r.IsAnalog ? "" : r.ColorCode.ToString(CultureInfo.InvariantCulture));
                     item.SubItems.Add(r.IsAnalog ? "FM (analog)" : r.Network);
-                    item.SubItems.Add(r.IsAnalog ? "" : r.Talkgroups.Count == 0 ? "none" : r.Talkgroups.Count.ToString(CultureInfo.InvariantCulture));
+                    item.SubItems.Add(r.IsAnalog ? "" : r.Talkgroups.Count == 0 ? "none" : r.Talkgroups.Count.ToString(CultureInfo.InvariantCulture) + (r.TalkgroupSource != null ? " (" + r.TalkgroupSource + ")" : ""));
                     if (r.IsAnalog && !InProject(r)) item.ForeColor = Color.FromArgb(20, 110, 55);
                     item.SubItems.Add(Status(r));
-                    if (InProject(r)) item.ForeColor = SystemColors.GrayText;
+                    if (InProject(r) || (r.IsOffAir && !IsPicked(r))) item.ForeColor = SystemColors.GrayText;
                     list.Items.Add(item);
                 }
                 list.EndUpdate();

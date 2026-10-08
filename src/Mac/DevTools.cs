@@ -155,8 +155,10 @@ namespace CodeplugBuilder.Mac
                     // 3 areas
                     var areas = (AreasStepView)w.Current;
                     await Until(() => w.Data.Download != null && w.Data.Download.Done, 120);
+                    await Until(() => w.Data.Download.HealthChecked, 300); // the BrandMeister on-the-air check, in the background
                     await Task.Delay(500);
                     log.Add("download: " + w.Data.Download?.Status + " (" + (w.Data.Download?.Repeaters.Count ?? 0) + " repeaters)");
+                    log.Add("off the air (BrandMeister, over a year): " + w.Data.Download.Repeaters.Count(r => r.IsOffAir));
                     areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == "Tom Green County"));
                     areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == "Travis County" && c.Parent.Code == "US-TX"));
                     await Shot("3-areas");

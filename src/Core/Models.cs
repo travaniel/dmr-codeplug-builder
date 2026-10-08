@@ -154,6 +154,11 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 24, EmitDefaultValue = false)] public int SourceId { get; set; }
         /// <summary>CPS channel number of an analog repeater's one channel (digital ones number each talkgroup entry). 0 = not numbered yet.</summary>
         [DataMember(Order = 25, EmitDefaultValue = false)] public int ChannelNumber { get; set; }
+        /// <summary>
+        /// "2022-07-19": BrandMeister hadn't heard this repeater for over a year when it was added (<see cref="RepeaterHealth"/>).
+        /// Null when it was on the air, on other networks or typed in. The Validator warns; the editor can clear it.
+        /// </summary>
+        [DataMember(Order = 26, EmitDefaultValue = false)] public string OffAirSince { get; set; }
 
         public Repeater() { Init(); }
 

@@ -32,7 +32,8 @@ namespace CodeplugBuilder.Mac
         readonly AutoCompleteBox cboZone, cboEnc, cboDec;
         readonly ComboBox cboMode, cboPower, cboOffset, cboBw;
         readonly NumericUpDown numCC;
-        readonly CheckBox chkToneSquelch, chkRxOnly, chkEnabled;
+        readonly CheckBox chkToneSquelch, chkRxOnly, chkEnabled, chkOffAir;
+        string offAirDate; // kept while the box is unticked, so ticking it again puts the date back
         readonly Control lblPrefix, lblExample, lblMode, lblPower, lblCC, lblEnc, lblDec, lblBw, lblNotes, lblAnalogNote;
         readonly TextBlock example, problem;
         readonly Control grpTalkgroups, fields;
@@ -100,6 +101,7 @@ namespace CodeplugBuilder.Mac
             chkRxOnly = new CheckBox { Content = "Receive only (TX prohibit)" };
             chkEnabled = new CheckBox { Content = "Include in codeplug" };
             txtNotes = new TextBox { Watermark = "Optional notes (not sent to the radio)" };
+            chkOffAir = new CheckBox { Foreground = Brushes.DarkOrange, IsVisible = false };
             lblNotes = UiKit.Label("Notes");
             problem = new TextBlock { Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap };
             ToolTip.SetTip(txtPrefix, "Channel names are made from this prefix plus the talkgroup name, e.g. \"W5FC Texas\". Leave it blank to name channels after the talkgroup only. Longer names are shortened to 16 characters; you can also type a custom name per talkgroup below.");
@@ -129,6 +131,7 @@ namespace CodeplugBuilder.Mac
             Add(lblBw, 0, r); Add(cboBw, 1, r); Add(chkToneSquelch, 2, r, 2); r++;
             Add(chkRxOnly, 1, r); Add(chkEnabled, 2, r, 2); r++;
             Add(lblNotes, 0, r); Add(txtNotes, 1, r, 3); r++;
+            Add(chkOffAir, 1, r, 3); r++;
             Add(problem, 1, r, 3);
             fields = f;
 
@@ -232,6 +235,7 @@ namespace CodeplugBuilder.Mac
                     grid.ItemsSource = rows;
                     lstAvailable.ItemsSource = new List<TgItem>();
                     example.Text = "";
+                    chkOffAir.IsVisible = false;
                     return;
                 }
                 txtName.Text = r.Name;
@@ -251,6 +255,10 @@ namespace CodeplugBuilder.Mac
                 chkRxOnly.IsChecked = r.RxOnly;
                 chkEnabled.IsChecked = r.Enabled;
                 txtNotes.Text = r.Notes ?? "";
+                offAirDate = r.OffAirSince;
+                chkOffAir.IsVisible = !hotspot && !string.IsNullOrWhiteSpace(offAirDate);
+                chkOffAir.Content = "Off the air? BrandMeister last heard it on " + offAirDate + ". Untick if you know it works.";
+                chkOffAir.IsChecked = chkOffAir.IsVisible;
                 lastSlot = r.Talkgroups.Count > 0 ? r.Talkgroups[r.Talkgroups.Count - 1].Slot : (hotspot ? 2 : 1);
                 RefreshAvailable();
                 RefreshGrid();
@@ -422,6 +430,7 @@ namespace CodeplugBuilder.Mac
             chkRxOnly.IsCheckedChanged += (s, e) => { if (loading || rep == null) return; rep.RxOnly = chkRxOnly.IsChecked == true; Raise(); };
             chkEnabled.IsCheckedChanged += (s, e) => { if (loading || rep == null) return; rep.Enabled = chkEnabled.IsChecked == true; Raise(); };
             UiKit.OnText(txtNotes, () => { if (loading || rep == null) return; rep.Notes = txtNotes.Text; Raise(); });
+            chkOffAir.IsCheckedChanged += (s, e) => { if (loading || rep == null) return; rep.OffAirSince = chkOffAir.IsChecked == true ? offAirDate : null; Raise(); };
 
             // Talkgroup assignment
             UiKit.OnText(txtSearch, RefreshAvailable);

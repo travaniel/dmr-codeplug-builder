@@ -261,6 +261,14 @@ are gone. `/v2/device/{id}` (and each entry of the device list the app already c
 `last_seen` and `status`: KA3IDN (314811) and W5SLG (313512), both picked by the Texas `--ui-walkthrough`, were last seen
 2022-07-19 with `tx` 0.0000, so RadioID still lists repeaters BrandMeister hasn't heard from in years.
 
+**BrandMeister, more (2026-10-08, item 4):** the device list (`/v2/device`, also `/v2/device/byMaster/{id}`) only holds devices
+heard in the last day or so (all 32,496 `last_seen` within 24 hours), so "not in the list" = off BrandMeister now; how long for
+needs `/v2/device/{id}` (`last_seen`; 404 for IDs it never knew, e.g. RadioID's old DMR-MARC IDs 1148xx). The API answers
+`x-ratelimit-limit: 120` per minute and then 429: the app keeps background checks under 70 a minute and the user's own
+requests under 100 (`Online.GetBrandMeister`). `/v2/device/{id}/talkgroup` answered 500 for a while, while the same URL with a
+trailing slash worked; the app uses the slash and retries a 500 once. Texas, 2026-10-08: 188 BrandMeister-only or mixed listings,
+121 looked up, 78 not heard for over a year (many stamped 2022-07-19); KA3IDN (NorCal) and KC5EZZ 444.125 (c-Bridge) are not judged.
+
 **RadioID user database (checked 2026-10-08):** `https://radioid.net/static/user.csv` (same file at
 `database.radioid.net/static/user.csv`), 17 MB, rebuilt daily, header `RADIO_ID,CALLSIGN,FIRST_NAME,LAST_NAME,CITY,STATE,COUNTRY`
 (about 300,000 rows: fits the PRO's 500,000-record caller database; the plain DMR-6X2 holds 200,000).
@@ -509,7 +517,7 @@ private, 1 group, 2 all), 1 name, 0x23 ID BCD, 0x27 alert.
 
 ## 5. Verification done
 
-Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 89, all passing, run with the export folder as argument):
+Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 90, all passing, run with the export folder as argument):
 
 - Every exported CSV parses and re-serializes byte-for-byte (except RoamingZone/APRS, which have stray
   trailing commas the writer doesn't reproduce; they are never written).
@@ -649,7 +657,7 @@ before it's called done.
    Talker alias: `Core/Radio/RecommendedSettings` offers *Send talker alias* (extended 0x00 only; 0x01/0x02 are uncertain,
    section 4) after the review step of *Write codeplug to radio* (not Restore): Yes writes it in the same write and the review
    says so; No is remembered in the app settings (`DeclinedRadioSettings`); Cancel / closing stops the write.
-4. **Repeater health and real talkgroups (BrandMeister, 4b).** Dead: for listings whose RadioID network is BrandMeister,
+4. **Repeater health and real talkgroups (BrandMeister, 4b). Done 2026-10-08** (`Core/RepeaterHealth.cs`, `Online.LastSeen/StaticTalkgroups/PrepareForAdding`, background check in `RegionDownload`; grey dots and list rows, not picked by area clicks, Validator warning + "Off the air?" box in the editor, Windows and Mac; picked repeaters are checked and get static talkgroups when added; only BrandMeister-only listings are judged). Dead: for listings whose RadioID network is BrandMeister,
    `last_seen` older than a year in the cached device list → grey on the map and list, unticked by default, a Validator
    warning for project repeaters (by `SourceId`). Don't flag repeaters on other networks. Talkgroups: for picked
    BrandMeister repeaters, `/v2/device/{id}/talkgroup` gives the static talkgroups with slots; prefer them over the

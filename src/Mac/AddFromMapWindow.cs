@@ -156,7 +156,9 @@ namespace CodeplugBuilder.Mac
                 Scheme = scheme,
                 MoreNames = download.TalkgroupNames,
             };
-            Result = OnlineImporter.AddRepeaters(session.Project, chooser.Picked(), o, download.BrandMeisterNames);
+            var picked = chooser.Picked();
+            await AreaChooserView.PrepareForAdding(this, picked); // BrandMeister's own talkgroups for its repeaters
+            Result = OnlineImporter.AddRepeaters(session.Project, picked, o, download.BrandMeisterNames);
             Close(true);
         }
 

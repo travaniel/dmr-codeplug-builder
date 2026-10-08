@@ -10,6 +10,21 @@ namespace CodeplugBuilder.App
     static partial class Online
     {
         /// <summary>
+        /// Checks the picked BrandMeister-only repeaters and gives them BrandMeister's static talkgroups (<see cref="PrepareForAdding"/>),
+        /// with a wait dialog while anything has to be asked. On any failure they keep RadioID.net's lists.
+        /// </summary>
+        public static void PrepareForAdding(IWin32Window owner, List<OnlineRepeater> picked)
+        {
+            if (!NeedsPreparing(picked)) return;
+            try
+            {
+                RadioProgressDialog.Run(owner, "BrandMeister", pr => PrepareForAdding(picked, pr),
+                    "Asking BrandMeister about the picked repeaters: still on the air, and which talkgroups they carry...");
+            }
+            catch { }
+        }
+
+        /// <summary>
         /// Asks for a callsign, looks it up on RadioID.net and fills in the project's DMR ID and Radio ID name.
         /// Returns true when the project changed.
         /// </summary>
