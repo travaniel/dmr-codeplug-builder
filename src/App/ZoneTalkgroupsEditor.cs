@@ -17,6 +17,8 @@ namespace CodeplugBuilder.App
     {
         Project project;
         string zone;
+        /// <summary>Talkgroups unticked in each zone, kept in the list (unticked) so they can be ticked again; "Remove from zone" forgets them.</summary>
+        readonly Dictionary<string, HashSet<int>> unticked = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
         Dictionary<int, string> bm = new Dictionary<int, string>();
         bool loading;
 
@@ -193,6 +195,9 @@ namespace CodeplugBuilder.App
                 foreach (var t in info.Talkgroups ?? new List<ZoneTalkgroup>()) if (!ids.Contains(t.TalkgroupId)) ids.Add(t.TalkgroupId);
                 foreach (var r in reps)
                     foreach (var e in r.Talkgroups) if (!ids.Contains(e.TalkgroupId)) ids.Add(e.TalkgroupId);
+                HashSet<int> gone;
+                if (unticked.TryGetValue(zone, out gone))
+                    foreach (int id in gone) if (!ids.Contains(id) && project.FindTalkgroup(id) != null) ids.Add(id);
                 foreach (int id in ids)
                 {
                     var tg = project.FindTalkgroup(id);
@@ -306,8 +311,16 @@ namespace CodeplugBuilder.App
                     string shown = row.Cells[colSlot.Index].Value as string;
                     int slot = shown == "1" ? 1 : shown == "2" ? 2 : SlotFor(id);
                     project.AddZoneTalkgroup(zone, id, slot);
+                    HashSet<int> gone;
+                    if (unticked.TryGetValue(zone, out gone)) gone.Remove(id);
                 }
-                else project.RemoveZoneTalkgroup(zone, id, alsoListed: false);
+                else
+                {
+                    project.RemoveZoneTalkgroup(zone, id, alsoListed: false);
+                    HashSet<int> gone;
+                    if (!unticked.TryGetValue(zone, out gone)) unticked[zone] = gone = new HashSet<int>();
+                    gone.Add(id);
+                }
             }
             else if (e.ColumnIndex == colSlot.Index)
             {
@@ -329,7 +342,12 @@ namespace CodeplugBuilder.App
             if (channels > 0 && !Ui.Confirm(FindForm(), "Remove " + (ids.Count == 1 ? "this talkgroup" : ids.Count + " talkgroups") + " from every repeater in \"" + zone + "\"?\n\n" +
                                                        channels + " channel" + (channels == 1 ? "" : "s") + " will go, including ones the repeaters list themselves."))
                 return;
-            foreach (int id in ids) project.RemoveZoneTalkgroup(zone, id);
+            foreach (int id in ids)
+            {
+                project.RemoveZoneTalkgroup(zone, id);
+                HashSet<int> gone;
+                if (unticked.TryGetValue(zone, out gone)) gone.Remove(id);
+            }
             AfterChange();
         }
 

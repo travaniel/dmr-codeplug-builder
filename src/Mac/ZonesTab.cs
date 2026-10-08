@@ -219,6 +219,8 @@ namespace CodeplugBuilder.Mac
         readonly Window owner;
         Project project;
         string zone;
+        /// <summary>Talkgroups unticked in each zone, kept in the list (unticked) so they can be ticked again; "Remove from zone" forgets them.</summary>
+        readonly Dictionary<string, HashSet<int>> unticked = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
         Dictionary<int, string> bm = new Dictionary<int, string>();
         bool loading;
         List<ZtRow> rows = new List<ZtRow>();
@@ -369,6 +371,8 @@ namespace CodeplugBuilder.Mac
                 foreach (var t in info.Talkgroups ?? new List<ZoneTalkgroup>()) if (!ids.Contains(t.TalkgroupId)) ids.Add(t.TalkgroupId);
                 foreach (var r in reps)
                     foreach (var e in r.Talkgroups) if (!ids.Contains(e.TalkgroupId)) ids.Add(e.TalkgroupId);
+                if (unticked.TryGetValue(zone, out var gone))
+                    foreach (int id in gone) if (!ids.Contains(id) && project.FindTalkgroup(id) != null) ids.Add(id);
                 foreach (int id in ids)
                 {
                     var tg = project.FindTalkgroup(id);
@@ -475,8 +479,14 @@ namespace CodeplugBuilder.Mac
             {
                 int slot = row.SlotText == "1" ? 1 : row.SlotText == "2" ? 2 : SlotFor(row.TgId);
                 project.AddZoneTalkgroup(zone, row.TgId, slot);
+                if (unticked.TryGetValue(zone, out var gone)) gone.Remove(row.TgId);
             }
-            else project.RemoveZoneTalkgroup(zone, row.TgId, alsoListed: false);
+            else
+            {
+                project.RemoveZoneTalkgroup(zone, row.TgId, alsoListed: false);
+                if (!unticked.TryGetValue(zone, out var gone)) unticked[zone] = gone = new HashSet<int>();
+                gone.Add(row.TgId);
+            }
             // Rebuild the rows after the grid is done with this edit.
             Avalonia.Threading.Dispatcher.UIThread.Post(AfterChange);
         }
@@ -490,7 +500,11 @@ namespace CodeplugBuilder.Mac
             if (channels > 0 && !await Dialogs.Ask(owner, "Remove " + (ids.Count == 1 ? "this talkgroup" : ids.Count + " talkgroups") + " from every repeater in \"" + zone + "\"?\n\n" +
                                                          channels + " channel" + (channels == 1 ? "" : "s") + " will go, including ones the repeaters list themselves.", "Remove"))
                 return;
-            foreach (int id in ids) project.RemoveZoneTalkgroup(zone, id);
+            foreach (int id in ids)
+            {
+                project.RemoveZoneTalkgroup(zone, id);
+                if (unticked.TryGetValue(zone, out var gone)) gone.Remove(id);
+            }
             AfterChange();
         }
 
