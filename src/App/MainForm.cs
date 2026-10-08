@@ -436,14 +436,15 @@ namespace CodeplugBuilder.App
         /// <summary>Makes a project from a folder of CPS CSVs: an Export All, or a read from the radio.</summary>
         void ImportFolder(string folder, string what, bool fromRadio)
         {
-            {
-                ImportResult result;
-                try { result = CpsImporter.Import(folder); }
-                catch (Exception ex) { Ui.Error(this, "Couldn't import that " + what + ":\n\n" + ex.Message); return; }
+            ImportResult result;
+            try { result = CpsImporter.Import(folder); }
+            catch (Exception ex) { Ui.Error(this, "Couldn't import that " + what + ":\n\n" + ex.Message); return; }
 
-                var notes = new List<string>(result.Notes);
-                if (fromRadio) notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
-                if (!fromRadio) try
+            var notes = new List<string>(result.Notes);
+            if (fromRadio) notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
+            else
+            {
+                try
                 {
                     var f = CpsFormat.FromFolder(folder);
                     if (!SameLayout(f, session.Format))
@@ -456,16 +457,16 @@ namespace CodeplugBuilder.App
                     }
                 }
                 catch { }
-
-                session.Replace(result.Project, null, true);
-                ShowWorkspace();
-                tabs.SelectedIndex = 0;
-                var p = result.Project;
-                string head = "Imported " + Plural(p.Talkgroups.Count, "talkgroup") + ", " + Plural(p.Repeaters.Count(r => r.IsDigital), "DMR repeater") + ", " +
-                              Plural(p.Repeaters.Count(r => !r.IsDigital), "analog channel") + (p.HotspotEnabled ? ", your hotspot" : "") +
-                              " and " + Plural(p.Zones.Count, "zone") + ". Save the project (File > Save) to keep it.";
-                using (var d = new IssuesDialog(head, new string[0], notes, false)) d.ShowDialog(this);
             }
+
+            session.Replace(result.Project, null, true);
+            ShowWorkspace();
+            tabs.SelectedIndex = 0;
+            var p = result.Project;
+            string head = "Imported " + Plural(p.Talkgroups.Count, "talkgroup") + ", " + Plural(p.Repeaters.Count(r => r.IsDigital), "DMR repeater") + ", " +
+                          Plural(p.Repeaters.Count(r => !r.IsDigital), "analog channel") + (p.HotspotEnabled ? ", your hotspot" : "") +
+                          " and " + Plural(p.Zones.Count, "zone") + ". Save the project (File > Save) to keep it.";
+            using (var d = new IssuesDialog(head, new string[0], notes, false)) d.ShowDialog(this);
         }
 
         /// <summary>Radio > Read codeplug from radio: reads, keeps the image and CSVs as a backup, opens them as a project.</summary>
@@ -804,17 +805,20 @@ namespace CodeplugBuilder.App
                 "1. Click Export > Export CSV files for the CPS and save the .LST file list. The CSV files are saved next to it.\n\n" +
                 "2. In the DMR-6X2 PRO CPS, open your current codeplug (or read it from the radio).\n\n" +
                 "3. Tool > Import > Import From File List, pick the .LST, then click Import.\n" +
-                "    This replaces the channels, zones, talk groups and receive group lists in the CPS. Other settings stay as they are.\n\n" +
+                "    This replaces the channels, zones, talk groups, receive group lists and radio ID list in the CPS, and the scan lists " +
+                "when scan lists are on (Settings tab). Other settings stay as they are.\n\n" +
                 "4. Check a few channels, save the codeplug, and write it to the radio.\n\n" +
                 "If the file list won't load, use Tool > Import and pick each CSV yourself, in this order: " +
-                "TalkGroups, ReceiveGroupCallList, Channel, ScanList (if made), Zone.",
+                "TalkGroups, ReceiveGroupCallList, RadioIDList (if made), Channel, ScanList (if made), Zone.\n\n" +
+                "Or skip the CPS: Write to radio (bottom right) sends the codeplug over the programming cable.",
                 "Loading the files into the CPS");
         }
 
         void ShowAbout()
         {
+            var version = typeof(MainForm).Assembly.GetName().Version;
             Ui.Info(this,
-                Ui.AppName + " 1.3\n\n" +
+                Ui.AppName + " " + version.Major + "." + version.Minor + (version.Build > 0 ? "." + version.Build : "") + "\n\n" +
                 "Builds CSV codeplug files for the BTECH DMR-6X2 PRO's CPS from your talkgroups, repeaters and hotspot.\n\n" +
                 "Online data: DMR repeaters and IDs from RadioID.net, talkgroup names from BrandMeister.\n\n" +
                 "Analog repeaters: from RepeaterBook CHIRP exports you import yourself. " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +

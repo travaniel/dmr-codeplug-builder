@@ -261,6 +261,7 @@ namespace CodeplugBuilder.App
             var added = Presets.AddNoaaWeather(session.Project);
             if (added.Count == 0) { Ui.Info(FindForm(), "You already have all 7 NOAA weather channels."); return; }
             session.MarkDirty();
+            cboFilter.SelectedIndex = 0; // they go in the "Weather" zone, which another zone filter would hide
             Reload(added[0]);
         }
 

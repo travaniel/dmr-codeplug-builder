@@ -41,7 +41,8 @@ namespace CodeplugBuilder.Core
                     name = Fit(r.Country);
                     break;
                 case ZoneScheme.Band:
-                    name = r.RxMHz >= 400m ? "70cm DMR" : r.RxMHz > 0 && r.RxMHz < 300m ? "2m DMR" : "";
+                    string mode = r.IsDigital ? " DMR" : " FM";
+                    name = r.RxMHz >= 400m ? "70cm" + mode : r.RxMHz > 0 && r.RxMHz < 300m ? "2m" + mode : "";
                     break;
                 case ZoneScheme.Single:
                     name = Fit(single);

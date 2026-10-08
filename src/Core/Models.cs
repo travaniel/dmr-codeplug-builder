@@ -289,6 +289,22 @@ namespace CodeplugBuilder.Core
             MaxRxGroupMembers = 64;
             MaxScanListChannels = 50;
         }
+
+        /// <summary>
+        /// Puts limits that are unset or bigger than the radio holds back to the radio's own (DMR-6X2 PRO: 16-character
+        /// names, 4000 channels, 250 zones of 250, 64 talkgroups per RX group list, 50 channels per scan list).
+        /// Version 1.3 and earlier let the Settings tab go up to 128 talkgroups per RX group list.
+        /// </summary>
+        public void KeepWithinRadioLimits()
+        {
+            int Fix(int value, int max) { return value <= 0 || value > max ? max : value; }
+            MaxNameLength = Fix(MaxNameLength, 16);
+            MaxChannels = Fix(MaxChannels, 4000);
+            MaxZones = Fix(MaxZones, 250);
+            MaxZoneChannels = Fix(MaxZoneChannels, 250);
+            MaxRxGroupMembers = Fix(MaxRxGroupMembers, 64);
+            MaxScanListChannels = Fix(MaxScanListChannels, 50);
+        }
     }
 
     [DataContract(Namespace = "")]
@@ -337,6 +353,7 @@ namespace CodeplugBuilder.Core
             if (Hotspot == null) Hotspot = Repeater.NewHotspot();
             if (Zones == null) Zones = new List<ZoneInfo>();
             if (Options == null) Options = new GenerationOptions();
+            Options.KeepWithinRadioLimits();
             Talkgroups.RemoveAll(t => t == null);
             Repeaters.RemoveAll(r => r == null);
             Zones.RemoveAll(z => z == null);

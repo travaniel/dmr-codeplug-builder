@@ -245,7 +245,7 @@ namespace CodeplugBuilder.Core
             var result = new RepeaterBookResult();
             var spelling = ZonePlanner.Spellings(p);
             var names = new UniqueNamer(16, "Repeater");
-            foreach (var r in p.AllRepeaters()) names.Reserve(Naming.Clean(r.Name, 16));
+            foreach (var r in p.AllRepeaters()) names.Reserve(Naming.Fit(r.Name, 16)); // as the generator will name them
             var skipped = new List<string>();
             foreach (var c in picked)
             {
@@ -256,7 +256,8 @@ namespace CodeplugBuilder.Core
 
                 var loc = locate?.Invoke(c) ?? GeoLocation.Unknown;
                 var r = NewRepeater(c, names.Claim(ChannelName(c, all)), loc, power);
-                r.Zone = ZonePlanner.Canonical(spelling, Naming.Fit(zoneFor(c, loc), 16).Length > 0 ? Naming.Fit(zoneFor(c, loc), 16) : Site);
+                string zone = Naming.Fit(zoneFor(c, loc), 16);
+                r.Zone = ZonePlanner.Canonical(spelling, zone.Length > 0 ? zone : Site);
                 p.Repeaters.Add(r);
                 result.Added.Add(r);
             }

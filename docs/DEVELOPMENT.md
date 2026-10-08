@@ -131,7 +131,7 @@ channels; *Remove from zone* removes the talkgroup from every repeater in the zo
 (`RepeaterEditor.ApplyZone`) or is added online gets `ApplyZoneTalkgroups`.
 
 **Mac version (started 2026-10-06):** `src/Mac` is an Avalonia UI on .NET 8 sharing `src/Core` and the UI-free App files
-(`Session`, `Online`, `RegionDownload`, `RadioPort`, linked, not copied). Those four files must stay free of WinForms; the
+(`Session`, `Online`, `RegionDownload`, `RadioPort`, `WizardState`, linked, not copied). Those five files must stay free of WinForms; the
 WinForms bit of `Online` lives in `OnlineUi.cs`. It may use NuGet (Avalonia, System.IO.Ports); the Windows app may not.
 Package with `tools/package-mac.ps1`. Status, first-launch steps and the port order are in `docs/MAC.md`.
 
@@ -154,6 +154,12 @@ programmatic changes don't fire edits.
 
 ## Status
 
+- **Review pass (2026-10-07):** wizard step 4 re-zones CHIRP (analog) repeaters too, not only DMR ones (weather channels keep
+  their zone; `Presets.IsNoaaWeather`), and *By band* names analog zones "2m FM" / "70cm FM". DMR and analog repeaters added
+  with one fixed zone name get the same (shortened, not cut) zone. Settings caps talkgroups per RX list at the radio's 64, and
+  `GenerationOptions.KeepWithinRadioLimits` repairs older projects on load. The analog name preview matches the generated name.
+  Saving replaces the project file in one step (`File.Replace`). Help, tooltips and docs updated for 1.3's Export menu and
+  shortened names. 79 tests.
 - **1.3 (2026-10-06):** renamed W6OZZ CPS (display name only; exe, settings and backup folders unchanged). Bottom bar has
   *Read from radio* / *Write to radio*; CSV export moved to the new **Export** menu (Ctrl+G). Names are shortened, not cut
   (`Naming.Fit`), both-slot talkgroups get TS1/TS2, clashes try smarter names before " 2"; unnamed talkgroups are named from

@@ -87,14 +87,15 @@ namespace CodeplugBuilder.App
             for (int i = 0; i < 4; i++) lg.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             numName = Num(8, 16);
             numZone = Num(1, 250);
-            numRx = Num(1, 128);
+            numRx = Num(1, 64);   // the radio's RX group list holds 64 talkgroups
             numScan = Num(1, 50);
             lg.Controls.Add(Ui.Label("Name length"), 0, 0); lg.Controls.Add(numName, 1, 0);
             lg.Controls.Add(Ui.Label("Channels per zone"), 2, 0); lg.Controls.Add(numZone, 3, 0);
             lg.Controls.Add(Ui.Label("Talkgroups per RX list"), 0, 1); lg.Controls.Add(numRx, 1, 1);
             lg.Controls.Add(Ui.Label("Channels per scan list"), 2, 1); lg.Controls.Add(numScan, 3, 1);
             Span(lg);
-            Span(Ui.Hint("Defaults match the DMR-6X2 PRO: 16-character names, 4000 channels, 250 zones of up to 250 channels. Bigger zones are split automatically.", wrap));
+            Span(Ui.Hint("Defaults match the DMR-6X2 PRO: 16-character names, 4000 channels, 250 zones of up to 250 channels, 64 talkgroups per RX list " +
+                         "and 50 channels per scan list. Bigger zones are split automatically.", wrap));
 
             Controls.Add(stack);
 
@@ -129,7 +130,7 @@ namespace CodeplugBuilder.App
             numScan.ValueChanged += (s, e) => { if (loading) return; session.Project.Options.MaxScanListChannels = (int)numScan.Value; session.MarkDirty(); };
 
             session.Replaced += (s, e) => Reload();
-            VisibleChanged += (s, e) => { if (Visible) Reload(); }; // the radio ID can be set from File > New from online data
+            VisibleChanged += (s, e) => { if (Visible) Reload(); }; // other places change these too (the radio ID, channel numbers stored by Export or Write to radio)
             Reload();
         }
 

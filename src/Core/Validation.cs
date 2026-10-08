@@ -94,9 +94,7 @@ namespace CodeplugBuilder.Core
                 if (string.IsNullOrWhiteSpace(r.Zone))
                     Warn(label + " isn't in a zone, so you can only reach its channels in channel mode.");
             }
-
-            if (p.HotspotEnabled && p.Hotspot.Talkgroups.Count == 0)
-                Warn("The hotspot is turned on but has no talkgroups.");
+            // (A hotspot that's switched on without talkgroups is reported in the loop above.)
 
             // Counts that depend on the generated output
             if (issues.All(i => i.Severity != Severity.Error))

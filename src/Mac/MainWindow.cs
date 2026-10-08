@@ -547,7 +547,8 @@ namespace CodeplugBuilder.Mac
                 "1. Click Export > Export CSV files for the CPS and pick a folder. The CSV files and a .LST file list are saved there.\n\n" +
                 "2. In the DMR-6X2 PRO CPS, open your current codeplug (or read it from the radio).\n\n" +
                 "3. Tool > Import > Import From File List, pick the .LST, then click Import.\n" +
-                "    This replaces the channels, zones, talk groups and receive group lists in the CPS. Other settings stay as they are.\n\n" +
+                "    This replaces the channels, zones, talk groups, receive group lists and radio ID list in the CPS, and the scan lists " +
+                "when scan lists are on. Other settings stay as they are.\n\n" +
                 "4. Check a few channels, save the codeplug, and write it to the radio.",
                 "Loading the files into the CPS");
         }

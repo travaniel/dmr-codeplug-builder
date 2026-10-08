@@ -791,6 +791,11 @@ namespace CodeplugBuilder.Tests
             Assert.True(p.Repeaters[0].Enabled, "enabled default");
             Assert.Equal(Modes.Digital, p.Repeaters[0].Mode, "mode default");
             Assert.Equal(16, p.Options.MaxNameLength, "options default");
+
+            var old = ProjectStore.FromJson("{\"Options\":{\"MaxRxGroupMembers\":128,\"MaxScanListChannels\":20,\"MaxZoneChannels\":0}}");
+            Assert.Equal(64, old.Options.MaxRxGroupMembers, "RX list limit above what the radio holds comes back to 64");
+            Assert.Equal(20, old.Options.MaxScanListChannels, "a smaller limit stays");
+            Assert.Equal(250, old.Options.MaxZoneChannels, "an unset limit gets the radio's");
         }
 
         [Test]

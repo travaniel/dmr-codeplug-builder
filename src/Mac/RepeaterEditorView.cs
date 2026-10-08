@@ -102,7 +102,7 @@ namespace CodeplugBuilder.Mac
             txtNotes = new TextBox { Watermark = "Optional notes (not sent to the radio)" };
             lblNotes = UiKit.Label("Notes");
             problem = new TextBlock { Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap };
-            ToolTip.SetTip(txtPrefix, "Channel names are made from this prefix plus the talkgroup name, e.g. \"W5FC Texas\". Leave it blank to name channels after the talkgroup only. Names are cut to 16 characters; you can also type a custom name per talkgroup below.");
+            ToolTip.SetTip(txtPrefix, "Channel names are made from this prefix plus the talkgroup name, e.g. \"W5FC Texas\". Leave it blank to name channels after the talkgroup only. Longer names are shortened to 16 characters; you can also type a custom name per talkgroup below.");
             ToolTip.SetTip(cboZone, "Pick an existing zone or type a new name. Every repeater with the same zone name goes into that zone.");
             ToolTip.SetTip(txtRx, "The frequency your radio listens on: the repeater's output.");
             ToolTip.SetTip(txtTx, "The frequency your radio transmits on: the repeater's input.");
@@ -309,8 +309,9 @@ namespace CodeplugBuilder.Mac
             if (rep == null) return;
             if (!rep.IsDigital)
             {
-                string n = Naming.Clean(rep.Name, MaxName);
-                example.Text = "Channel name: \"" + n + "\"" + (Naming.Clean(rep.Name, 0).Length > MaxName ? "  (cut to " + MaxName + " characters)" : "");
+                // The same shortening the generator uses (Naming.Fit), so this is the name the radio shows.
+                string n = Naming.Fit(rep.Name, MaxName);
+                example.Text = "Channel name: \"" + n + "\"" + (Naming.Clean(rep.Name, 0).Length > MaxName ? "  (shortened to " + MaxName + " characters)" : "");
                 return;
             }
             var names = rep.Talkgroups

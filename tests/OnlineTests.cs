@@ -453,7 +453,7 @@ namespace CodeplugBuilder.Tests
             var p = new Project { RadioIdName = "Test", RadioId = 1234567 };
             var rpts = RadioId.ParseRepeaters(RepeatersJson).Repeaters;
             var r = OnlineImporter.AddRepeaters(p, rpts.Take(2), new OnlineImportOptions { ZonePerCity = false, Zone = "Texas DMR repeaters list" }, null);
-            Assert.True(r.Added.All(x => x.Zone == "Texas DMR repeat"), "fixed zone, cut to 16");
+            Assert.True(r.Added.All(x => x.Zone == "TX DMR Rptrs lis"), "fixed zone, shortened to 16 like analog ones: " + r.Added[0].Zone);
             Assert.Equal(0, r.Added[1].Talkgroups.Count, "no defaults → no talkgroups");
             Assert.True(r.Notes.Any(n => n.StartsWith("No talkgroups yet")), "noted");
             Assert.Equal("Texas", p.FindTalkgroup(3148).Name, "owner's description shortened (no BrandMeister list)");
@@ -469,6 +469,8 @@ namespace CodeplugBuilder.Tests
             Assert.True(added.All(r => r.RxOnly && !r.IsDigital && r.Zone == "Weather" && r.RxMHz == r.TxMHz), "rx-only analog");
             Assert.Equal("NOAA WX1", added[0].Name, "WX order, not frequency order (WX2, already there, is skipped)");
             Assert.Equal(0, Presets.AddNoaaWeather(p).Count, "second time adds nothing");
+            Assert.True(added.All(Presets.IsNoaaWeather), "weather channels are recognised");
+            Assert.True(!p.Repeaters.Except(added).Any(Presets.IsNoaaWeather), "other channels aren't");
         }
     }
 }

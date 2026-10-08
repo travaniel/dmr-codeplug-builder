@@ -27,14 +27,14 @@ Export All), so the generator copies that exact layout.
 - **Hotspot tab:** the same editor bound to `Project.Hotspot`, plus an on/off switch. Generated last.
 - **Talkgroups tab:** master list (becomes TalkGroups.CSV). ID edits rewrite references; deletes remove
   the channels that used the talkgroup (after a confirmation). CSV import, sort, a small menu of common
-  BrandMeister talkgroups (9, 91, 93, 3100, 9990 private, 4000).
+  BrandMeister talkgroups (9, 91, 93, 3100, 310997 Parrot private, 4000).
 - **Zones tab:** zone order, rename (or merge), A/B channel per zone, live list of members.
 - **Settings tab:** Radio ID name + DMR ID, RX group list per repeater (on), scan list per zone (on for new
   codeplugs, off for ones imported from the CPS; template row from a real CPS scan list), write RadioIDList.CSV
   (on), CPS format source, radio limits.
 - **File menu:** new/open/save (`.cpb` JSON), *Import from CPS export* (builds a project from an Export
-  All folder), *Generate CSV files* (validates, shows warnings, asks where to save the `.LST`, writes the
-  CSVs next to it, explains how to import).
+  All folder), *Generate CSV files* (since 1.3 *Export > Export CSV files for the CPS*, Ctrl+G: validates, shows
+  warnings, asks where to save the `.LST`, writes the CSVs next to it, explains how to import).
 - **Status bar:** live channel/zone counts and a problems link (re-validated 400 ms after each edit).
 - **CLI:** `--generate` and `--import` for scripting and testing.
 
@@ -460,7 +460,7 @@ private, 1 group, 2 all), 1 name, 0x23 ID BCD, 0x27 alert.
 
 ## 5. Verification done
 
-Engine tests (`tests/Tests.cs`, 27 tests, all passing, run with the export folder as argument):
+Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 79, all passing, run with the export folder as argument):
 
 - Every exported CSV parses and re-serializes byte-for-byte (except RoamingZone/APRS, which have stray
   trailing commas the writer doesn't reproduce; they are never written).

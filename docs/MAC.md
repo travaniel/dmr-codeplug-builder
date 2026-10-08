@@ -2,7 +2,7 @@
 
 A second front end for the same engine: `src/Mac` (project `CodeplugBuilder.Mac.csproj`) is an **Avalonia** UI on
 **.NET 8**. It compiles `src/Core` and a few UI-free files from `src/App` (`Session.cs`, `Online.cs`,
-`RegionDownload.cs`, `RadioPort.cs`), so the engine, the CPS CSV rules, the online data and the radio protocol are
+`RegionDownload.cs`, `RadioPort.cs`, `WizardState.cs`), so the engine, the CPS CSV rules, the online data and the radio protocol are
 shared, not copied. The Windows app (WinForms, .NET Framework 4.8, zero NuGet) is unchanged. The Mac project uses
 NuGet (Avalonia 11.3, its DataGrid, System.IO.Ports 8). It runs on Windows and Linux too, which is how it is built
 and checked without a Mac.

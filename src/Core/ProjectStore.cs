@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Runtime.Serialization.Json;
 using System.Text;
@@ -42,11 +43,17 @@ namespace CodeplugBuilder.Core
         {
             string dir = Path.GetDirectoryName(Path.GetFullPath(path));
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            // Write to a temp file first so a crash mid-save can't destroy the project.
+            // Write to a temp file first so a crash mid-save can't destroy the project, then swap it in.
             string tmp = path + ".tmp";
             File.WriteAllText(tmp, ToJson(project), new UTF8Encoding(false));
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(tmp, path);
+            if (!File.Exists(path)) { File.Move(tmp, path); return; }
+            try { File.Replace(tmp, path, null); }
+            catch (Exception e) when (e is IOException || e is PlatformNotSupportedException || e is UnauthorizedAccessException)
+            {
+                // Some file systems (network shares, FAT) can't replace in one step.
+                File.Delete(path);
+                File.Move(tmp, path);
+            }
         }
 
         public static Project Load(string path)
