@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag such as v1.3 to build, test and publish a GitHub release with the zip attached.
+# Push a tag such as v1.3.1 to build, test and publish a GitHub release "W6OZZ CPS 1.3.1" with W6OZZ-CPS-windows-1.3.1.zip attached.
 on:
   push:
     tags: ['v*']
@@ -24,16 +24,21 @@ jobs:
       - name: Run the engine tests
         run: dotnet run --project tests -c Release
 
+      # The app is called W6OZZ CPS; the folder inside the zip keeps the program's original name, like its settings
+      # and backup folders, so an upgrade can be extracted over the old one.
       - name: Make the zip
         shell: pwsh
         run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
           $dir = "dist/DMR Codeplug Builder"
           New-Item -ItemType Directory $dir | Out-Null
           Copy-Item src/App/bin/Release/net48/CodeplugBuilder.exe, src/App/bin/Release/net48/CodeplugBuilder.exe.config, docs/README.txt $dir
-          Compress-Archive -Path $dir -DestinationPath "dist/DMR-Codeplug-Builder-$env:GITHUB_REF_NAME.zip"
+          Compress-Archive -Path $dir -DestinationPath "dist/W6OZZ-CPS-windows-$version.zip"
 
       - name: Publish the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME "dist/DMR-Codeplug-Builder-$env:GITHUB_REF_NAME.zip" --title "DMR Codeplug Builder $env:GITHUB_REF_NAME" --generate-notes
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          gh release create $env:GITHUB_REF_NAME "dist/W6OZZ-CPS-windows-$version.zip" --title "W6OZZ CPS $version" --generate-notes
