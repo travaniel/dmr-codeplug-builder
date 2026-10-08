@@ -994,6 +994,85 @@ namespace CodeplugBuilder.Tests
         }
     }
 
+    static class PoliteTransmitTests
+    {
+        const string PermitColumn = "Busy channel Lock-Out/TX Permit";
+
+        static Project WithDmrSimplex()
+        {
+            var p = Fixtures.Sample();
+            var s = Repeater.NewDigital("DMR Simplex");
+            s.Prefix = "SX";
+            s.Zone = "Simplex";
+            s.RxMHz = s.TxMHz = 441.000m;
+            s.Talkgroups.Add(new RepeaterTalkgroup(9, 1));
+            p.Repeaters.Add(s);
+            p.SyncZones();
+            return p;
+        }
+
+        [Test]
+        static void NewProjectsKeyOnlyOnAFreeSlot()
+        {
+            Assert.True(new Project().Options.PoliteTransmit, "on for new projects");
+            var p = WithDmrSimplex();
+            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            var seen = new HashSet<string>();
+            foreach (var c in g.ChannelList)
+            {
+                var row = g.Channels.Rows.First(r => g.Channels.Get(r, "Channel Name") == c.Name);
+                string expected = !c.IsDigital ? "Off" : c.Repeater == p.Hotspot || c.Repeater.Name == "DMR Simplex" ? "Always" : "Same Color Code";
+                Assert.Equal(expected, g.Channels.Get(row, PermitColumn), c.Name);
+                seen.Add(expected);
+            }
+            Assert.Equal(3, seen.Count, "repeater, simplex/hotspot and analog channels all present");
+            foreach (var row in g.Channels.Rows.Where(r => CpsFormat.ChannelNumber(g.Channels, r) >= CpsFormat.FirstVfoNumber))
+                Assert.True(g.Channels.Get(row, PermitColumn) != "Same Color Code", "VFO rows keep the template's value");
+
+            p.Options.PoliteTransmit = false;
+            g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            foreach (var c in g.ChannelList)
+            {
+                var row = g.Channels.Rows.First(r => g.Channels.Get(r, "Channel Name") == c.Name);
+                Assert.Equal(c.IsDigital ? "Always" : "Off", g.Channels.Get(row, PermitColumn), "off: the template's value for " + c.Name);
+            }
+        }
+
+        [Test]
+        static void OldProjectsAndImportsKeepTheirOutput()
+        {
+            // Saved before 1.4: no PoliteTransmit in the file, so it loads off and the output stays as it was.
+            var old = ProjectStore.FromJson("{\"FileVersion\":2,\"RadioIdName\":\"X\",\"Options\":{\"RxGroupListPerRepeater\":true,\"ScanListPerZone\":true}}");
+            Assert.True(!old.Options.PoliteTransmit, "old file: off");
+            var p = WithDmrSimplex();
+            var again = ProjectStore.FromJson(ProjectStore.ToJson(p));
+            Assert.True(again.Options.PoliteTransmit, "saved on, loads on");
+            p.Options.PoliteTransmit = false;
+            Assert.True(!ProjectStore.FromJson(ProjectStore.ToJson(p)).Options.PoliteTransmit, "saved off, loads off");
+
+            // An import is polite only when the CPS codeplug already was (this program's own output, imported back).
+            string dir = Path.Combine(Path.GetTempPath(), "polite-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                foreach (bool polite in new[] { true, false })
+                {
+                    p.Options.PoliteTransmit = polite;
+                    CodeplugGenerator.Generate(p, CpsFormat.BuiltIn()).WriteTo(dir);
+                    var imported = CpsImporter.Import(dir).Project;
+                    Assert.Equal(polite, imported.Options.PoliteTransmit, "imported back");
+                }
+            }
+            finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+        }
+
+        [Test]
+        static void UsersCodeplugImportsWithPoliteTransmitOff()
+        {
+            var p = CpsImporter.Import(Fixtures.RequireExport()).Project;
+            Assert.True(!p.Options.PoliteTransmit, "every DMR channel there is on Always");
+        }
+    }
+
     static class TalkgroupCsvTests
     {
         [Test]

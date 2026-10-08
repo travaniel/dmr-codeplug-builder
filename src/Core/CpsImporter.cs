@@ -25,7 +25,7 @@ namespace CodeplugBuilder.Core
             public string Name;
             public decimal Rx, Tx;
             public bool Digital;
-            public string Power, Bandwidth, Decode, Encode, Contact, Squelch;
+            public string Power, Bandwidth, Decode, Encode, Contact, Squelch, TxPermit;
             public int ColorCode, Slot;
             public bool TxProhibit;
             public string Zone = "";
@@ -131,6 +131,7 @@ namespace CodeplugBuilder.Core
                     Encode = Tones.Normalize(ct.Get(row, "CTCSS/DCS Encode")),
                     Contact = ct.Get(row, "Contact").Trim(),
                     Squelch = ct.Get(row, "Squelch Mode").Trim(),
+                    TxPermit = ct.Get(row, "Busy channel Lock-Out/TX Permit", "TX Permit").Trim(),
                     ColorCode = ParseInt(ct.Get(row, "Color Code"), 1),
                     Slot = ParseInt(ct.Get(row, "Slot"), 1) == 2 ? 2 : 1,
                     TxProhibit = string.Equals(ct.Get(row, "TX Prohibit", "PTT Prohibit").Trim(), "On", StringComparison.OrdinalIgnoreCase),
@@ -247,6 +248,10 @@ namespace CodeplugBuilder.Core
             }
 
             p.Repeaters.AddRange(repeaters);
+
+            // Polite transmit stays off (the template's values, so the round trip holds) unless the codeplug already follows it.
+            p.Options.PoliteTransmit = chans.Any(c => c.Digital && c.Rx != c.Tx) && chans.All(c =>
+                string.Equals(c.TxPermit, !c.Digital ? TxPermits.Off : c.Rx == c.Tx ? TxPermits.Always : TxPermits.SameColorCode, StringComparison.OrdinalIgnoreCase));
 
             string rgPath = CpsFormat.FindFile(folder, CpsFormat.RxGroupFile);
             if (rgPath != null && CsvTable.Load(rgPath).Rows.Count > 0)

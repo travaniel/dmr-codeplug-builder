@@ -96,7 +96,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `RepeaterBook.cs` | RepeaterBook without the API: `ChirpCsv` reads a CHIRP export (Name = callsign, Comment = city, CHIRP tone modes), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, zone suggestion from the county, `Add`). `StateFromName` (state from the file/folder name), `ToListings` (CHIRP lines as `OnlineRepeater`s with `Analog` set, placed at their towns, so the map picker and `OnlineImporter.AddRepeaters` take them like DMR listings) |
 | `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
 | `Zoning.cs` | `ZonePlanner`: automatic zone names per county/city/state/country/band/single, `Apply`, one spelling per zone (`Canonical`) |
-| `Radio/*.cs` | Direct radio access (HANDOFF 4d): `AnytoneLink` (serial protocol over a Stream), `MemoryImage` (16-byte blocks, `radio.img`), `Dmr6x2Pro` (memory map, read plan, `RadioReader`, CPS write set), `RadioCodeplug` (decoder), `RadioCsv` (→ CPS CSVs, `Compare`), `RadioEncoder` (CPS tables → image, the reverse), `RadioWriter` (full CPS-style write, guards), `RadioSettings` (table of optional settings: read/write/report; App `RadioSettingsForm` is the dev editor) |
+| `Radio/*.cs` | Direct radio access (HANDOFF 4d): `AnytoneLink` (serial protocol over a Stream), `MemoryImage` (16-byte blocks, `radio.img`), `Dmr6x2Pro` (memory map, read plan, `RadioReader`, CPS write set), `RadioCodeplug` (decoder), `RadioCsv` (→ CPS CSVs, `Compare`), `RadioEncoder` (CPS tables → image, the reverse), `RadioWriter` (full CPS-style write, guards), `RadioSettings` (table of optional settings: read/write/report; App `RadioSettingsForm` is the dev editor), `RecommendedSettings` (settings Write codeplug to radio offers to change: send talker alias) |
 | (`Models.cs`) | Zone talkgroup sets: `ZoneInfo.Talkgroups`, `RepeaterTalkgroup.FromZone`, `Project.AddZoneTalkgroup / RemoveZoneTalkgroup / SetZoneTalkgroupSlot / ApplyZoneTalkgroups`, `DefaultSlot`. Repeater location fields (`City`, `State`, `Country`, `County`, `AreaCode`, `Latitude/Longitude`, `SourceId`). All optional, never read by the generator |
 
 `src/App` (WinForms)
@@ -158,7 +158,11 @@ programmatic changes don't fire edits.
 - **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
   amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
   and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the
-  other Part 97.201(b) segments. Output unchanged. 83 tests.
+  other Part 97.201(b) segments. Output unchanged. **Polite transmit** (item 3): `GenerationOptions.PoliteTransmit` (Settings,
+  Windows and Mac) gives DMR repeater channels TX permit Same Color Code, hotspot/DMR simplex Always, analog Off; on for new
+  projects, off for older files and for CPS imports that weren't polite already (round trip unchanged). *Write codeplug to
+  radio* offers *Send talker alias* once (`RecommendedSettings`; a No is remembered). Still to check in the CPS and on the
+  radio: HANDOFF 7, "To check". 87 tests.
 - **1.3.1 (2026-10-07), review pass:** wizard step 4 re-zones CHIRP (analog) repeaters too, not only DMR ones (weather channels keep
   their zone; `Presets.IsNoaaWeather`), and *By band* names analog zones "2m FM" / "70cm FM". DMR and analog repeaters added
   with one fixed zone name get the same (shortened, not cut) zone. Settings caps talkgroups per RX list at the radio's 64, and

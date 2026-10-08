@@ -335,6 +335,28 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void RecommendsTalkerAliasUntilDeclined()
+        {
+            var img = SettingsImage();
+            var send = RadioSettings.Find("TalkerAliasSend");
+            RadioSettings.Write(img, send, 0);
+            byte before01 = img.U8(send.Address + 1u), before02 = img.U8(send.Address + 2u);
+            var recs = RecommendedSettings.Check(img, "Austin W6OZZ", null);
+            Assert.Equal(1, recs.Count, "talker alias offered");
+            Assert.True(recs[0].Describe().StartsWith("Send talker alias: now Off, recommended On.") && recs[0].Describe().Contains("\"Austin W6OZZ\""), recs[0].Describe());
+            RecommendedSettings.Apply(img, recs);
+            Assert.Equal(1L, RadioSettings.Read(img, send).Raw, "on");
+            Assert.True(img.U8(send.Address + 1u) == before01 && img.U8(send.Address + 2u) == before02, "the next two bytes (meaning unsure) untouched");
+            Assert.Equal(0, RecommendedSettings.Check(img, "Austin W6OZZ", null).Count, "nothing left to offer");
+
+            RadioSettings.Write(img, send, 0);
+            string declined = RecommendedSettings.Decline("Other", recs);
+            Assert.Equal("Other,TalkerAliasSend", declined, "kept with earlier ones");
+            Assert.Equal(0, RecommendedSettings.Check(img, "Austin W6OZZ", declined).Count, "declined: not offered again");
+            Assert.Equal(0, RecommendedSettings.Check(new MemoryImage(), "X", null).Count, "settings not read: nothing offered");
+        }
+
+        [Test]
         static void TableIsConsistent()
         {
             var all = RadioSettings.All;

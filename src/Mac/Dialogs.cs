@@ -58,6 +58,17 @@ namespace CodeplugBuilder.Mac
             return Show(owner, title, text, ok, cancel);
         }
 
+        /// <summary>True for <paramref name="yes"/>, false for <paramref name="no"/>, null when the window was closed instead.</summary>
+        public static async Task<bool?> YesNo(Window owner, string text, string yes, string no, string title = AppName)
+        {
+            var w = Make(title, 520);
+            var body = new StackPanel { Margin = new Thickness(18) };
+            body.Children.Add(Text(text));
+            body.Children.Add(Buttons(Button(no, () => w.Close((bool?)false)), Button(yes, () => w.Close((bool?)true), true)));
+            w.Content = body;
+            return await w.ShowDialog<bool?>(owner);
+        }
+
         static async Task<bool> Show(Window owner, string title, string text, string ok, string cancel)
         {
             var w = Make(title, 460);

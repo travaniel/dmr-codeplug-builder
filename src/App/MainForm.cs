@@ -524,7 +524,7 @@ namespace CodeplugBuilder.App
                 bool remembered = CodeplugGenerator.RememberOutput(p, g);
                 if (numbered > 0 || remembered) session.MarkDirty();
                 return numbered > 0 ? "\n\n" + Plural(numbered, "channel") + " got a channel number that will now stay the same; save the project (File > Save) to keep it." : "";
-            });
+            }, true);
         }
 
         /// <summary>Radio > Restore codeplug from a backup: writes the codeplug of a saved read (radio.img / before.img) back.</summary>
@@ -557,9 +557,10 @@ namespace CodeplugBuilder.App
         /// <summary>
         /// Shared by Write and Restore: read the radio, build the tables (<paramref name="build"/> gets the read and the
         /// folder with its CSVs), encode, review, write, verify. <paramref name="after"/> runs after a good write and
-        /// returns extra text for the closing message.
+        /// returns extra text for the closing message. <paramref name="offerSettings"/>: also offer <see cref="RecommendedSettings"/>.
         /// </summary>
-        void WriteCodeplugToRadio(string what, Func<MemoryImage, string, KeyValuePair<Dictionary<string, CsvTable>, List<string>>> build, Func<string> after)
+        void WriteCodeplugToRadio(string what, Func<MemoryImage, string, KeyValuePair<Dictionary<string, CsvTable>, List<string>>> build, Func<string> after,
+                                  bool offerSettings = false)
         {
             // 1. What's on the radio now: the base to write into, and the backup.
             string folder = RadioPort.NewReadFolder(" write");
@@ -599,6 +600,25 @@ namespace CodeplugBuilder.App
                     d.ShowDialog(this);
                 return;
             }
+
+            // Recommended settings go into the same write; No is remembered, Cancel stops the write.
+            var applied = new List<Recommendation>();
+            var recs = offerSettings ? RecommendedSettings.Check(enc.Image, session.Project.RadioIdName, AppSettings.Get(RecommendedSettings.DeclinedKey)) : applied;
+            if (recs.Count > 0)
+            {
+                string q = "Also change " + (recs.Count == 1 ? "this radio setting" : "these radio settings") + " in this write?\n\n" +
+                           string.Join("\n\n", recs.Select(r => r.Describe())) + "\n\n" +
+                           "Yes: change it. No: leave the radio's settings as they are (you won't be asked again; Radio > Radio settings changes them any time).";
+                var answer = MessageBox.Show(this, q, "Write to radio", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (answer == DialogResult.Cancel) return;
+                if (answer == DialogResult.Yes)
+                {
+                    RecommendedSettings.Apply(enc.Image, recs);
+                    applied = recs;
+                    changed = RadioWriter.ChangedBlocks(original, enc.Image).Count;
+                }
+                else AppSettings.Set(RecommendedSettings.DeclinedKey, RecommendedSettings.Decline(AppSettings.Get(RecommendedSettings.DeclinedKey), recs));
+            }
             if (changed == 0)
             {
                 Ui.Info(this, "The radio already holds " + what + ". Nothing to write.");
@@ -615,11 +635,13 @@ namespace CodeplugBuilder.App
             var removed = now.Channels.Where(c => !newNames.Contains(c.Name)).Select(c => c.Name).ToList();
             if (added.Count > 0) lines.Add("New channels (" + added.Count + "): " + Shorten(added));
             if (removed.Count > 0) lines.Add("Channels taken off the radio (" + removed.Count + "): " + Shorten(removed));
+            lines.AddRange(applied.Select(r => "Setting: " + r.Def.Label + " " + new SettingValue { Def = r.Def, Raw = r.Value }.Display + "."));
             lines.AddRange(notes.Concat(enc.Notes).Distinct());
             string head = "Write " + what + " to the radio?\n\n" +
                           "On the radio now:  " + Counts(now) + "\n" +
                           "After writing:       " + Counts(next) + "\n\n" +
-                          "This replaces the channels, zones, talkgroups, RX group lists, scan lists and radio IDs on the radio. Its settings stay as they are.";
+                          "This replaces the channels, zones, talkgroups, RX group lists, scan lists and radio IDs on the radio. Its settings stay as they are" +
+                          (applied.Count > 0 ? ", except " + string.Join(", ", applied.Select(r => r.Def.Label.ToLowerInvariant())) + "." : ".");
             using (var d = new IssuesDialog(head, new string[0], lines, true, "Write to radio"))
                 if (d.ShowDialog(this) != DialogResult.OK) return;
             string text = "Ready to write.\n\n" +

@@ -33,6 +33,7 @@ namespace CodeplugBuilder.Mac
         DataGrid talkgroupGrid;
         ZonesTab zonesTab;
         TextBox radioIdName, radioId;
+        CheckBox politeTransmit;
         bool loading, discardOnClose;
         List<Issue> lastIssues = new List<Issue>();
 
@@ -217,6 +218,18 @@ namespace CodeplugBuilder.Mac
             settings.Children.Add(new TextBlock { Text = "Your radio ID (the CPS's Radio ID list)", FontWeight = Avalonia.Media.FontWeight.SemiBold });
             settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Name", Width = 60, VerticalAlignment = VerticalAlignment.Center }, radioIdName } });
             settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "DMR ID", Width = 60, VerticalAlignment = VerticalAlignment.Center }, radioId } });
+            politeTransmit = new CheckBox { Content = "Polite transmit: on a repeater, key up only when its slot is free" };
+            politeTransmit.IsCheckedChanged += (s, e) => { if (loading) return; session.Project.Options.PoliteTransmit = politeTransmit.IsChecked == true; session.MarkDirty(); };
+            settings.Children.Add(new TextBlock { Text = "Transmitting", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(politeTransmit);
+            // Same text as the Windows SettingsPage.
+            var politeHint = UiKit.Hint("DMR repeater channels get TX permit \"Same Color Code\": the radio won't transmit while the repeater's slot carries another call. " +
+                                        "The hotspot and DMR simplex channels stay on \"Always\" (a hotspot on a stricter setting can refuse to key) and analog channels on \"Off\". " +
+                                        "Turned off, channels keep the CPS default (Always for DMR). Codeplugs imported from the CPS or saved before version 1.4 start with it off, " +
+                                        "so their channels don't change.");
+            politeHint.MaxWidth = 720;
+            politeHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(politeHint);
 
             var tabs = new TabControl();
             zonesTab = new ZonesTab(session, this);
@@ -291,6 +304,7 @@ namespace CodeplugBuilder.Mac
             talkgroupGrid.ItemsSource = p.Talkgroups.ToList();
             radioIdName.Text = p.RadioIdName;
             radioId.Text = p.RadioId.ToString(CultureInfo.InvariantCulture);
+            politeTransmit.IsChecked = p.Options.PoliteTransmit;
             loading = false;
         }
 

@@ -31,7 +31,7 @@ Export All), so the generator copies that exact layout.
 - **Zones tab:** zone order, rename (or merge), A/B channel per zone, live list of members.
 - **Settings tab:** Radio ID name + DMR ID, RX group list per repeater (on), scan list per zone (on for new
   codeplugs, off for ones imported from the CPS; template row from a real CPS scan list), write RadioIDList.CSV
-  (on), CPS format source, radio limits.
+  (on), polite transmit (1.4: on for new codeplugs, off for imported and older ones), CPS format source, radio limits.
 - **File menu:** new/open/save (`.cpb` JSON), *Import from CPS export* (builds a project from an Export
   All folder), *Generate CSV files* (since 1.3 *Export > Export CSV files for the CPS*, Ctrl+G: validates, shows
   warnings, asks where to save the `.LST`, writes the CSVs next to it, explains how to import).
@@ -165,8 +165,8 @@ Export All of the codeplug and writes back what the program doesn't manage:
 - Radio ID = a name from RadioIDList.CSV.
 - Fields the generator manages: No., Channel Name, both frequencies, Transmit Power, TX Prohibit,
   Radio ID, Band Width, both tones, Squelch Mode (analog), Contact, Contact Call Type, Color Code and Slot
-  (digital), Receive Group List, Scan List 1 (if scan lists are on), plus `Contact TG/DMR ID` if a future
-  layout has it. Channel Type comes from the template row.
+  (digital), Receive Group List, Scan List 1 (if scan lists are on), Busy channel Lock-Out/TX Permit (if polite transmit is
+  on), plus `Contact TG/DMR ID` if a future layout has it. Channel Type comes from the template row.
 
 **Zone.CSV:** No., Zone Name, Zone Channel Member (`a|b|c`), A Channel, B Channel. Names only, no
 frequencies (AnyTone 878 CPS versions add member frequency columns; the generator fills them if present).
@@ -216,7 +216,17 @@ column (OptionalSetting has 169 columns).
 - **TX permit** (`Busy channel Lock-Out/TX Permit`): digital values Always, Same Color Code, Channel Free, Different Color
   Code; analog Off, Channel Free, Different CTCSS/DCS, Same CTCSS/DCS (`RadioCsv.DigitalPermit/AnalogPermit`). The built-in
   digital template row has **Always**, so every generated DMR channel keys over a busy slot; the user's own 10 digital
-  channels have Always too.
+  channels have Always too. The CPS's own strings (`DMR_6X2Pro_1.22\language\english.ini` in the user's profile, 2026-10-08):
+  20081 TX Permit, 20082 Always, 20083 **ChannelFree** (no space), 20084 Different Color Code, 20088 Same Color Code. dmr-tools
+  gives the channel byte 0x1A bits 1:0 as 0 always, 1 colorcode, 2 channel free (matches `RadioCsv`'s order for 0-2). Only
+  Always and Off have been seen in a CSV; whether a CSV import takes `Same Color Code` (and `Channel Free` vs `ChannelFree`) is
+  unconfirmed (polite transmit, section 7, writes `Same Color Code`).
+- **Talker alias** (CPS Optional Setting > Talker Alias Settings, english.ini 30700-30755): Send Talker Alias, Talker Alias Type
+  (Radio Alias / Custom Text, with Enter Custom Text), Alias Display Priority (No Display / Contact Alias / Air Alias), Alias Data
+  Format (ISO 8...). OptionalSetting.CSV columns in byte order: `SctTxTalkAliasEn`, `SctTxTalkAliasKind`, `ExTxTalkAliasName`,
+  `SctRxTalkAliasDis`, then `WorkCharDisColour` (= extended 0x03, verified); `SctTalkAliasForm` comes much later. dmr-tools has
+  extended 0x00 send, 0x01 "source" (Off / Contacts / Over the air = the CPS's display priority), 0x02 format. The CSV order hints
+  0x01 = type and 0x02 = display instead, so only 0x00 is trusted (the user's radio: all 0).
 - OptionalSetting: `SctTxTalkAliasEn` 0 (talker alias not sent), `TmZone` 14 (GMT-5), GPS 1.
 - **Satellite data** isn't in Export All. The CPS's Tool > Satellite Data Updating ("Will be written to the radio GPS
   Satellite Data") downloads `https://celestrak.org/NORAD/elements/amateur.txt` or `https://www.amsat.org/tle/dailytle.txt`
@@ -499,7 +509,7 @@ private, 1 group, 2 all), 1 name, 0x23 ID BCD, 0x27 alert.
 
 ## 5. Verification done
 
-Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 83, all passing, run with the export folder as argument):
+Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 87, all passing, run with the export folder as argument):
 
 - Every exported CSV parses and re-serializes byte-for-byte (except RoamingZone/APRS, which have stray
   trailing commas the writer doesn't reproduce; they are never written).
@@ -628,11 +638,17 @@ before it's called done.
    confirmation. Also a "144.390 APRS" receive channel in a utility zone (the PRO receives and displays APRS). Check in
    the CPS UI what `APRS Report Channel` (Channel.CSV) and APRS.CSV `channel1-8` mean before writing them.
    When a read shows the factory BG6LKK values, say so.
-3. **Polite transmit + talker alias.** `GenerationOptions` TX permit policy: repeater DMR channels `Same Color Code`,
+3. **Polite transmit + talker alias. Built 2026-10-08; to check in the CPS and on the radio (below).** `GenerationOptions` TX permit policy: repeater DMR channels `Same Color Code`,
    hotspot and DMR simplex `Always`, analog `Off`; on for new projects, off for imported ones. Guides: polite (color code)
    admit on repeaters, Always on hotspots (a hotspot on Channel Free stalls). Confirm on the air that `Same Color Code`
    refuses to key on a busy slot. Talker alias: `RadioSettings` `TalkerAliasSend`/display; offer as a recommended setting
    on Write to radio (OptionalSetting.CSV isn't generated).
+   *As built:* `GenerationOptions.PoliteTransmit` (Settings > Transmitting, Windows and Mac; `Repeater.PoliteTxPermit`). The
+   constructor turns it on; `Init` (also run when a file loads) leaves it off, so projects saved before 1.4 keep their output.
+   `CpsImporter` turns it on only when the export already follows the policy exactly (so the round trip holds both ways).
+   Talker alias: `Core/Radio/RecommendedSettings` offers *Send talker alias* (extended 0x00 only; 0x01/0x02 are uncertain,
+   section 4) after the review step of *Write codeplug to radio* (not Restore): Yes writes it in the same write and the review
+   says so; No is remembered in the app settings (`DeclinedRadioSettings`); Cancel / closing stops the write.
 4. **Repeater health and real talkgroups (BrandMeister, 4b).** Dead: for listings whose RadioID network is BrandMeister,
    `last_seen` older than a year in the cached device list → grey on the map and list, unticked by default, a Validator
    warning for project repeaters (by `SourceId`). Don't flag repeaters on other networks. Talkgroups: for picked
@@ -720,7 +736,11 @@ before it's called done.
 - APRS.CSV `channel1-8`/`slot`/`Aprs Tg`/`Call Type` and Channel.CSV `APRS Report Channel` meanings; an APRS beacon heard
   on aprs.fi (analog, and BrandMeister digital).
 - GpsRoaming.CSV minute columns and zone index; how GPS zone switching behaves when driving.
-- `Same Color Code` refuses to key on a busy slot.
+- `Same Color Code` refuses to key on a busy slot. Before that: a polite codeplug (new project) imports into the CPS and its
+  Export All gives back the same Channel.CSV (proves the `Same Color Code` spelling), and a CPS write of it read back with
+  `--radio-read` shows TX permit 1 on those channels (proves the byte).
+- Send talker alias after an app write with the recommendation accepted: CPS *Read from radio* > Optional Setting > Talker
+  Alias Settings shows Send Talker Alias on (and nothing else there changed).
 - Where the CPS writes satellite data and the caller database (USB captures).
 
 ### Sources (2026-10-08)

@@ -334,6 +334,7 @@ namespace CodeplugBuilder.Core
                 g.Channels.Set(row, r.Power, "Transmit Power");
                 g.Channels.Set(row, r.RxOnly ? "On" : "Off", "TX Prohibit", "PTT Prohibit");
                 if (radioId != null) g.Channels.Set(row, radioId, "Radio ID");
+                if (o.PoliteTransmit) g.Channels.Set(row, r.PoliteTxPermit(r == p.Hotspot), "Busy channel Lock-Out/TX Permit", "TX Permit");
 
                 if (c.IsDigital)
                 {

@@ -40,6 +40,15 @@ namespace CodeplugBuilder.Core
         public static readonly string[] Values = { Narrow, Wide };
     }
 
+    /// <summary>Channel.CSV "Busy channel Lock-Out/TX Permit" values (CPS 1.22e spellings, english.ini 20082/20088).</summary>
+    public static class TxPermits
+    {
+        public const string Always = "Always";
+        public const string SameColorCode = "Same Color Code";
+        /// <summary>Analog: no busy-channel lockout.</summary>
+        public const string Off = "Off";
+    }
+
     [DataContract(Namespace = "")]
     public sealed class Talkgroup
     {
@@ -177,6 +186,13 @@ namespace CodeplugBuilder.Core
             return new Repeater { Name = name, Mode = Modes.Analog, Bandwidth = Bandwidths.Wide, Power = "High" };
         }
 
+        /// <summary>The TX permit a <see cref="GenerationOptions.PoliteTransmit"/> codeplug gives this repeater's channels.</summary>
+        public string PoliteTxPermit(bool isHotspot)
+        {
+            if (!IsDigital) return TxPermits.Off;
+            return isHotspot || RxMHz == TxMHz ? TxPermits.Always : TxPermits.SameColorCode;
+        }
+
         public static Repeater NewHotspot()
         {
             return new Repeater
@@ -272,8 +288,20 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 11, EmitDefaultValue = false)] public bool KeepCpsChannels { get; set; }
         /// <summary>A CPS "Export All" of the codeplug as it is in the CPS now (for <see cref="KeepCpsChannels"/>).</summary>
         [DataMember(Order = 12, EmitDefaultValue = false)] public string BaseExportFolder { get; set; }
+        /// <summary>
+        /// Polite transmit (Channel.CSV TX permit): DMR repeater channels "Same Color Code", so the radio won't key over a busy
+        /// slot of that repeater; the hotspot and DMR simplex "Always" (a hotspot on Channel Free stalls); analog "Off". When off,
+        /// channels keep the template row's value (Always for DMR, Off for analog), as before 1.4. On for new projects, off for
+        /// projects saved before 1.4 (it isn't in their file) and for CPS imports that weren't polite already, so their output
+        /// doesn't change.
+        /// </summary>
+        [DataMember(Order = 13, EmitDefaultValue = false)] public bool PoliteTransmit { get; set; }
 
-        public GenerationOptions() { Init(); }
+        public GenerationOptions()
+        {
+            Init();
+            PoliteTransmit = true; // new projects only: Init (also run when a file loads) leaves it off
+        }
 
         [OnDeserializing] void OnDeserializing(StreamingContext c) { Init(); }
 

@@ -43,7 +43,12 @@ per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches ev
    follow), import from a CSV, or add common BrandMeister talkgroups.
 5. **Zones tab.** Zone order on the radio, renaming, which channel each zone opens on, and the
    talkgroups every repeater in a zone carries.
-6. **Settings tab.** Your Radio ID name and DMR ID, receive group lists, scan lists, and limits.
+6. **Settings tab.** Your Radio ID name and DMR ID, receive group lists, scan lists, polite transmit, and limits.
+   *Polite transmit* (on for new codeplugs) sets DMR repeater channels to TX permit "Same Color Code", so the radio
+   won't key over a call already on that repeater's slot; the hotspot and DMR simplex stay on "Always".
+   The problems list also warns about channels that transmit outside the amateur bands (a MURS or GMRS
+   channel without *Receive only*), and about a hotspot or DMR simplex channel in a satellite sub-band
+   (145.8-146, 435-438 MHz) or on an APRS or calling frequency.
 7. Click **Export > Export CSV files for the CPS** (Ctrl+G) and save the `.LST`. The CSVs are saved next to it.
 8. In the CPS: open your codeplug, **Tool > Import > Import From File List**, pick the `.LST`, click
    **Import**, check a few channels, then write to the radio.
@@ -61,7 +66,8 @@ TalkGroups, ReceiveGroupCallList, RadioIDList, Channel, ScanList, Zone.
 With the programming cable connected and the BTECH CPS closed, **Radio > Write codeplug to radio...** reads the
 radio, writes this project's channels, zones, talkgroups, receive group lists, scan lists and radio ID into it, shows
 what will change, and after you confirm sends it the way the CPS does and checks it. The radio's settings stay as
-they are. What was on the radio is saved first (Documents\DMR Codeplug Builder\Radio reads), and **Radio > Restore
+they are, except that it offers once to turn on *Send talker alias* (so other radios and network dashboards show your
+name), if it's off. What was on the radio is saved first (Documents\DMR Codeplug Builder\Radio reads), and **Radio > Restore
 codeplug from a backup...** writes any saved read back. Keep a CPS codeplug file (.rdt) as well, just in case.
 **Radio > Read codeplug from radio** opens what's on the radio as a project. The **Read from radio** and **Write to radio** buttons at the bottom right of the window do the same.
 
@@ -76,7 +82,7 @@ hotspot; analog channels, zones and channel names are kept.
 
 - **The CPS's own rows are the template.** Generated rows are copies of rows the CPS exported, with only
   the fields this program manages changed (name, frequencies, power, bandwidth, tones, contact, color
-  code, slot, receive group list, TX prohibit). Columns it doesn't manage keep the CPS defaults. The
+  code, slot, receive group list, TX prohibit, and TX permit with polite transmit on). Columns it doesn't manage keep the CPS defaults. The
   built-in layout comes from a CPS 1.22 export; if a CPS update changes the columns, export again and
   use **Settings > Load from CPS export...**.
 - **Names link everything.** This CPS's Zone and receive group list files refer to channels and

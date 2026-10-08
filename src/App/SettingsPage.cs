@@ -11,7 +11,7 @@ namespace CodeplugBuilder.App
     {
         readonly Session session;
         readonly TextBox txtRadioName, txtRadioId;
-        readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkKeep;
+        readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkPolite, chkKeep;
         Label lblBase;
         readonly NumericUpDown numName, numZone, numRx, numScan;
         readonly Label lblFormat, lblNumbers;
@@ -53,6 +53,10 @@ namespace CodeplugBuilder.App
             chkScanLists = Check("Make a scan list for each zone (up to 50 channels each)");
             Span(Ui.Hint("Each list copies the settings of a scan list made in the CPS (scan mode off, revert to the selected channel), " +
                          "and every channel in the zone scans its zone's list.", wrap));
+
+            Section("Transmitting");
+            chkPolite = Check("Polite transmit: on a repeater, key up only when its slot is free");
+            Span(Ui.Hint(PoliteTransmitHint, wrap));
 
             Section("Channels made in the CPS");
             chkKeep = Check("Keep channels, zones and talkgroups made in the CPS (merge with a CPS export)");
@@ -112,6 +116,7 @@ namespace CodeplugBuilder.App
             chkRadioIdList.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.WriteRadioIdList = chkRadioIdList.Checked; session.MarkDirty(); };
             chkRxLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.RxGroupListPerRepeater = chkRxLists.Checked; session.MarkDirty(); };
             chkScanLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.ScanListPerZone = chkScanLists.Checked; session.MarkDirty(); };
+            chkPolite.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.PoliteTransmit = chkPolite.Checked; session.MarkDirty(); };
             chkKeep.CheckedChanged += (s, e) =>
             {
                 if (loading) return;
@@ -133,6 +138,13 @@ namespace CodeplugBuilder.App
             VisibleChanged += (s, e) => { if (Visible) Reload(); }; // other places change these too (the radio ID, channel numbers stored by Export or Write to radio)
             Reload();
         }
+
+        // Same text on the Mac Settings tab (MainWindow).
+        const string PoliteTransmitHint =
+            "DMR repeater channels get TX permit \"Same Color Code\": the radio won't transmit while the repeater's slot carries another call. " +
+            "The hotspot and DMR simplex channels stay on \"Always\" (a hotspot on a stricter setting can refuse to key) and analog channels on \"Off\". " +
+            "Turned off, channels keep the CPS default (Always for DMR). Codeplugs imported from the CPS or saved before version 1.4 start with it off, " +
+            "so their channels don't change.";
 
         void Span(Control c)
         {
@@ -180,6 +192,7 @@ namespace CodeplugBuilder.App
             chkRadioIdList.Checked = p.Options.WriteRadioIdList;
             chkRxLists.Checked = p.Options.RxGroupListPerRepeater;
             chkScanLists.Checked = p.Options.ScanListPerZone;
+            chkPolite.Checked = p.Options.PoliteTransmit;
             numName.Value = Clamp(p.Options.MaxNameLength, numName);
             numZone.Value = Clamp(p.Options.MaxZoneChannels, numZone);
             numRx.Value = Clamp(p.Options.MaxRxGroupMembers, numRx);
