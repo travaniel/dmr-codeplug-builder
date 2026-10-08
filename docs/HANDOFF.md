@@ -198,6 +198,32 @@ Code, Slot, Name; `No Use` for CC/slot); RoamingZone.CSV (No., Name, Roaming Cha
 trailing comma in the header); APRS.CSV and OptionalSetting.CSV are single settings rows with no `No.`
 column (OptionalSetting has 169 columns).
 
+**Not-generated files in the user's radio (Export All `CPSnow`, looked at 2026-10-08, for roadmap section 7):**
+- DigitalContactList.CSV has **0 rows**: the radio shows numbers, not names, for callers. A real row (to use as the
+  template, rule 2) still has to come from the CPS: import a 3-row list there, Export All, copy it.
+- APRS.CSV is still the **factory default**: Your Call Sign `BG6LKK`, SSID 8, Transmission Frequency 144.64, fixed position
+  34°12.73' N 108°50' E (China), symbol `/` `&`, Digipeater Path `WIDE1-1`, Enter Your Sending Text `APRSCN WIFI 4.30V`,
+  Destination Call Sign `APBT62` (right for the 6X2 family), Manual TX Interval 40 s, auto beacon 0 (off). Digital part:
+  channel1-8 = 4001 (VFO A), slot1-8 = 0, Aprs Tg1-8 = 310999, Call Type1-8 = 1, then `APRS TG`, `Call Type`, Repeater
+  Activation Delay, APRS TX Tone, TOCALL SSID, Transmit Delay, Send Sub Tone, CTCSS, DCS, Prewave Time, Transmit Power. The
+  built-in template must be scrubbed of the BG6LKK values before it ships. Channel.CSV's `APRS Report Channel` is 1 on
+  every row (meaning not checked).
+- GpsRoaming.CSV: **32 rows**, all off: OnOff, Zone, Latitude Degree, North or South, Longtitude Degree, East or West,
+  Latitude Minute, Latitude Minute1, Longtitude Minute, Longtitude Minute1, Radius(Meter) (minutes as `00.00`; what the two
+  minute columns each hold, and whether Zone is 0- or 1-based, is unknown: set one entry in the CPS UI and export).
+- RoamingChannel/RoamingZone hold Chinese test values (410-418 MHz, "Roam Zone 1"); HotKey_HotKey (18 keys) and
+  HotKey_QuickCall (4) are unconfigured; FM.CSV has one broadcast entry.
+- **TX permit** (`Busy channel Lock-Out/TX Permit`): digital values Always, Same Color Code, Channel Free, Different Color
+  Code; analog Off, Channel Free, Different CTCSS/DCS, Same CTCSS/DCS (`RadioCsv.DigitalPermit/AnalogPermit`). The built-in
+  digital template row has **Always**, so every generated DMR channel keys over a busy slot; the user's own 10 digital
+  channels have Always too.
+- OptionalSetting: `SctTxTalkAliasEn` 0 (talker alias not sent), `TmZone` 14 (GMT-5), GPS 1.
+- **Satellite data** isn't in Export All. The CPS's Tool > Satellite Data Updating ("Will be written to the radio GPS
+  Satellite Data") downloads `https://celestrak.org/NORAD/elements/amateur.txt` or `https://www.amsat.org/tle/dailytle.txt`
+  (URLs found in `DMR_6X2Pro.exe` 1.22e); no satellite frequency table is in the CPS, so the list presumably lives in the
+  firmware (1.20+, "Satellite Predicting", automatic Doppler). Where the data goes in the radio is unknown (needs a USB
+  capture of that CPS write, as in 4d).
+
 ## 4b. Online data sources (checked 2026-10-06)
 
 **RadioID.net** (free, no key, no documented rate limit):
@@ -217,6 +243,19 @@ entries, ~45 KB; some names non-ASCII, 429 longer than 16 characters, e.g. "Texa
 US statewide talkgroups are 31 + the state's FIPS code (3148 Texas, 3106 California). The US Parrot is
 310997 (private call). `/v2/device/{id}` gives lat/lng per repeater, but `/v2/device/{id}/talkgroup`
 returned HTTP 500.
+
+**Rechecked 2026-10-08:** `/v2/device/{id}/talkgroup` works for repeaters on the network and returns their **static
+talkgroups with slots**: `[{"talkgroup":"3148","slot":"1","repeaterid":"311178"}, ...]` (WB5BRY: 3148 and 31480-31484 on
+TS1; KG5MMT: 31301 on TS2, 3148 and 31483 on TS1; KC5CZX: 3187707 on slot "0"). It answers 500 or `[]` for devices that
+are gone. `/v2/device/{id}` (and each entry of the device list the app already caches, `BrandMeister.DeviceUrl`) has
+`last_seen` and `status`: KA3IDN (314811) and W5SLG (313512), both picked by the Texas `--ui-walkthrough`, were last seen
+2022-07-19 with `tx` 0.0000, so RadioID still lists repeaters BrandMeister hasn't heard from in years.
+
+**RadioID user database (checked 2026-10-08):** `https://radioid.net/static/user.csv` (same file at
+`database.radioid.net/static/user.csv`), 17 MB, rebuilt daily, header `RADIO_ID,CALLSIGN,FIRST_NAME,LAST_NAME,CITY,STATE,COUNTRY`
+(about 300,000 rows: fits the PRO's 500,000-record caller database; the plain DMR-6X2 holds 200,000).
+`database.radioid.net/static/users.json` is the same as JSON (85 MB). Send the app's User-Agent; cache it like the
+BrandMeister names.
 
 `GET https://radioid.net/api/dmr/repeater/?country=Canada[&page=N]` also works (checked 2026-10-06): United
 States 5101 (26 pages), Germany 758, Canada 481, United Kingdom 418, Australia 198. Outside the US the `state`
@@ -542,64 +581,152 @@ it nor a bare test dialog, so off-screen clicks can't be tested this way. Nothin
 7. **Hotspot slot:** the user's simplex hotspot channels are on slot 1. Pi-Star/WPSD simplex hotspots
    normally use slot 2. Left as imported; worth asking the user if receive through the hotspot is flaky.
 
-## 7. Roadmap (in priority order)
+## 7. Roadmap (rewritten 2026-10-08)
 
-**P1: make the import bulletproof**
-1. ~~Run section 6 items 1-3 in the real CPS~~ (done 2026-10-06, all fine, new talkgroups included).
-2. ~~Real scan-list template~~ (done 2026-10-06, test `BuiltInScanTemplateIsTheRealCpsRow`). Scan-lists-on import
-   verified; on by default for new codeplugs since 2026-10-06 (`CpsImporter` keeps imports off). Remaining: Scan
-   List 2-8 support.
-3. ~~Stable channel numbers~~: done in 1.2 (section 4, Channel.CSV `No.`; test `ChannelNumbersStayPut`).
-4. ~~Merge mode~~: done in 1.2 (section 4, "Merge mode"; test `MergeKeepsWhatWasMadeInTheCps`), verified in the
-   real CPS 2026-10-06.
-5. Windows polish: test DPI; consider `PerMonitorV2` via app.config; fix anything Mono hid.
+Rewritten 2026-10-08 after a review of what makes a codeplug useful (community guides, BTECH/AnyTone docs, RadioID
+and BrandMeister APIs, the user's own radio; sources at the end of this section). Done before that: stable channel
+numbers and merge mode (1.2), real scan-list template, TS1/TS2 names for both-slot talkgroups (1.3), radio read/write
+(4d).
 
-**From 1.2**
-- Same talkgroup listed on both slots of one repeater still gives "WA5TBB2 Texas" and "WA5TBB2 Texas 2"; a slot
-  suffix ("Texas 1"/"Texas 2") would read better.
-- Map: draw is 75-200 ms per frame at 4K scaling; cache screen paths per zoom level if panning feels slow.
-- Wizard step 3: offer "pick the whole region" in one click; remember the picked areas in the project.
-- Bigger GeoNames file for small towns abroad (needs the user's OK to download).
+**The idea.** A codeplug is used in four situations: **home** (a few favourite channels, scanning), **travel** (zones that
+follow you), **emergencies** (simplex, weather, nets) and **extras** (caller names, APRS, satellites); plus **upkeep**
+(repeaters die, talkgroups change). The program covers home and area zones well and stops at the five lists the CPS
+import replaces. The user's own radio shows the gaps (section 4, "Not-generated files in the user's radio"): APRS on
+factory values (BG6LKK, 144.640, a position in China), an empty caller database, 32 unused GPS zone-switch slots, every
+DMR channel on TX permit Always, a MURS channel (154.570) with transmit on, and a hand-made "Hwy 183" travel zone.
 
-**P2: data sources ("automatic" codeplugs)**
-Done in 1.1: RadioID.net DMR repeaters + talkgroups, RadioID callsign → DMR ID, BrandMeister talkgroup
-names and browser, NOAA preset (section 4b). Ideas left: per-repeater "re-sync from RadioID" for repeaters
-added online (their notes hold the repeater ID), and a nearest-first sort using BrandMeister device lat/lng.
-6. RepeaterBook: since 2026-03-03 its API only serves approved clients, and since 2026-03-31 it uses
-   tokens (commercial users pay). Approved distributed apps let each user generate their own app-bound
-   token. Options: apply for approval, let the user paste a token, or import RepeaterBook's own CSV/KML
-   downloads instead of calling the API.
-7. RadioID.net: free API with DMR repeaters (frequencies, color codes) and the user database, which could
-   also generate DigitalContactList.CSV (filter by country/state; the radio holds 500,000 contacts).
-8. BrandMeister: official talkgroup names for the picker; possibly a repeater's static talkgroups per
-   slot to pre-fill its channels (check what the current API offers).
-9. Talkgroup sets: named presets ("BM wide area", "Texas") applied to one or many repeaters; mark
-   talkgroups static vs. dynamic; per-network tags (BrandMeister, TGIF, DMR-MARC, local).
+The target workflow, each step filling as much as it can from what the user already gave:
+1. **Me:** callsign → DMR ID, Radio ID name, home town (RadioID user lookup → `GeoAtlas.Locate` → home point), APRS
+   identity, caller-database scope.
+2. **Where:** home, areas, routes.
+3. **What:** talkgroups per zone (as now); toggles for simplex, weather, satellites, APRS.
+4. **Check:** dead repeaters, safety warnings, printable card.
+5. **Write:** codeplug + APRS + GPS zone switching + caller names (+ orbital data later).
+6. **Upkeep:** "Check for updates" now and then.
 
-**P3: usability**
-10. Multi-select repeaters to set zone/power/talkgroup set at once; drag-and-drop ordering; search and
-    sort (frequency, zone).
-11. Undo/redo (JSON snapshots in `Session`), recent projects, automatic `.cpb` backups.
-12. Printable channel list per zone (HTML).
-13. Show generator notes beside the affected channel (e.g. renamed for uniqueness).
+Rules for all of it: new model fields optional (`EmitDefaultValue = false`, defaults in `Init`); anything that would change
+the five generated files for an existing project is off for imported projects (like `ScanListPerZone`), so
+`RoundTripReproducesUsersCodeplug` stays green; new CSVs start from a real CPS row (rule 2) scrubbed of personal or factory
+values; Windows and Mac in step; tests for each Core piece; anything about the radio is checked on the radio by the user
+before it's called done.
 
-**P4: more radio features**
-14. Roaming: generate RoamingChannel.CSV / RoamingZone.CSV for repeaters that share a talkgroup set.
-15. Per-repeater TX permit (`Busy channel Lock-Out/TX Permit`; check allowed values in the CPS UI),
-    talk-around, APRS report channel.
+### Milestone 1.4: the rest of the radio (the five generated lists unchanged)
 
-**P5: other radios**
-16. AnyTone D878UV/D578UV and relatives use the same CPS lineage. Loading their Export All as a format may
-    mostly work already (frequency columns in Zone.CSV and `Contact TG/DMR ID` are filled when present);
-    needs real exports to test. Add a radio-model setting for limits.
-17. qdmr YAML export, so the same project can program other brands through `dmrconf`.
+1. **Caller names (DigitalContactList.CSV, `.LST` section 15).** Download RadioID `user.csv` (4b), cache a week. Scope in
+   Settings: off (default; the import would replace the radio's list), whole world (fits 500,000), countries, or US
+   states. Name = first + last name; Call Type `Private Call`; Call Alert `None` (check against a real CPS row first);
+   dedupe IDs; ascending ID order. Capacity check per model. Add the section to `CpsFormat.ListIndex`/`Files` and
+   `GeneratedCodeplug.Files()`. Unknowns: CPS import time for ~300,000 rows, field length limits. Write to radio can't
+   send it yet (the CPS writes the caller database separately; needs a USB capture): say so and point to Export.
+2. **APRS from the callsign (APRS.CSV, section 19, and Write to radio).** New `AprsSettings` on the project: callsign
+   (last word of the Radio ID name or the RadioID lookup), SSID (7 handheld, 9 mobile), symbol table + icon, path
+   `WIDE1-1,WIDE2-1`, analog frequency by region (144.390 North America, 144.800 Europe), destination `APBT62` (keep),
+   power, beacon intervals (automatic off by default; manual/PTT), fixed position (home) or GPS, digital report
+   destination (BrandMeister `xxx999` per master, e.g. 310999 private call for US masters; editable, not universal).
+   Template: the user's APRS.CSV row scrubbed. Direct write: `RadioSettings` already decodes APRS callsign, SSID,
+   destination, path, symbol, FM frequency, power and intervals (0x2501000); Write to radio applies them after
+   confirmation. Also a "144.390 APRS" receive channel in a utility zone (the PRO receives and displays APRS). Check in
+   the CPS UI what `APRS Report Channel` (Channel.CSV) and APRS.CSV `channel1-8` mean before writing them.
+   When a read shows the factory BG6LKK values, say so.
+3. **Polite transmit + talker alias.** `GenerationOptions` TX permit policy: repeater DMR channels `Same Color Code`,
+   hotspot and DMR simplex `Always`, analog `Off`; on for new projects, off for imported ones. Guides: polite (color code)
+   admit on repeaters, Always on hotspots (a hotspot on Channel Free stalls). Confirm on the air that `Same Color Code`
+   refuses to key on a busy slot. Talker alias: `RadioSettings` `TalkerAliasSend`/display; offer as a recommended setting
+   on Write to radio (OptionalSetting.CSV isn't generated).
+4. **Repeater health and real talkgroups (BrandMeister, 4b).** Dead: for listings whose RadioID network is BrandMeister,
+   `last_seen` older than a year in the cached device list → grey on the map and list, unticked by default, a Validator
+   warning for project repeaters (by `SourceId`). Don't flag repeaters on other networks. Talkgroups: for picked
+   BrandMeister repeaters, `/v2/device/{id}/talkgroup` gives the static talkgroups with slots; prefer them over the
+   owner-typed RadioID list (keep RadioID's names), mark which is which; ≤ 6 requests at a time, cache a day. Slot "0"
+   (seen on a simplex device): treat as unknown.
+5. **Safety checks (Validator warnings).** Transmit outside the amateur bands unless RX-only (US 144-148, 420-450 MHz;
+   region from the project) - the user's "Tall Oaks Ranch" 154.570 (MURS ch 4) is one; hotspot or DMR simplex in the
+   satellite sub-bands 145.8-146.0 / 435-438 MHz (Part 97.201(b); AMSAT traced hotspot interference); hotspot on
+   144.390, 145.825, 146.520 or 446.000.
+6. **Simplex preset** (like `Presets.AddNoaaWeather`, zone "Simplex"): 146.520 and 446.000 (national calling, analog
+   wide); DMR simplex 441.000, 446.500, 446.075, 145.790, 145.510, CC1 TS1 talkgroup 99 ("Simplex 99"), TX permit
+   Always. The DMR list is widely copied but its authority is unclear (DCI/DMR-MARC): keep it editable and say so.
 
-**Code health**
-- Move UI-side cascades into Core with tests: talkgroup ID change and delete (`TalkgroupsPage`), and the
-  zone operations already in `Project`.
-- The status bar regenerates the whole codeplug on each change; fine up to 4000 channels, cache if it
-  ever feels slow.
-- Consider structured issue codes instead of message strings.
+### Milestone 1.5: an organized codeplug
+
+7. **Zones as views (a channel in several zones).** Today `Repeater.Zone` gives each channel exactly one zone. Add zone
+   kinds: Area (as now), Favorites (explicit channel refs: repeater + talkgroup + slot, or an analog repeater), Talkgroup
+   (a rule: talkgroup(s) on the repeaters in some areas or within N miles, nearest first; e.g. "TX Statewide"), Utility
+   (Simplex, Weather, APRS, Satellites). The CPS links zones by channel name, so one channel in several zones is fine.
+   `CpsImporter` now keeps a channel only in its first zone ("is in more than one zone"): keep the rest as Favorites
+   membership, and extend the round trip to multi-zone Zone.CSV. UI: "Add to favorites" on channels; new-zone kinds on
+   the Zones tab.
+8. **Order that matches use.** `Project.Home` (point + town). Zone order: home/hotspot/favorites, area zones by distance
+   from home, utilities last; once the user reorders, keep their order. Within a repeater: local (8, 9, its own ID),
+   state (31xx), regional, wide area (91, 93, 3100), private calls (RATS convention); optional. Distance and bearing in
+   the repeater list.
+9. **Scan lists 2-8.** Channel.CSV has Scan List 1-8; the generator writes only 1. Add a Favorites scan list with the
+   home repeater or hotspot as priority channel (ScanList.CSV `Priority Channel Select`/`Priority Channel 1`) and a
+   local-analog list. 250 lists of 50 channels.
+10. **GPS zone switching (GpsRoaming.CSV, section 22).** Up to 32 entries from area zones: centre of the zone's repeaters
+    (or the county's label point), radius = farthest repeater + margin; nearest 32 to home, or along a route. Learn the
+    columns first (section 4). Users report it changes only the zone (not the nearest repeater), overrides manual zone
+    changes while it's on, and sets only the main channel; GPS roaming is switched on in the radio (key function "GPS
+    Roaming"). Off by default, explained in the UI, tried on the radio before release.
+11. **Route builder.** On the map: two towns, or a highway (`GeoAtlas.Roads`), and a corridor width; take repeaters within
+    it (point-to-polyline distance), zones per county in driving order, a route zone like the user's hand-made "Hwy 183",
+    GPS zone switching along the way.
+12. **Check for updates.** For repeaters with a `SourceId`: RadioID by ID (`RadioId.RepeaterIdUrl`) and BrandMeister device
+    + static talkgroups → frequency/offset/CC changes, talkgroups added or dropped, off-air; new repeaters in the
+    project's areas; a diff with ticks, applied selectively; also refresh caller names. Remember when it last ran.
+
+### Later
+
+- **Satellites.** (a) Fresh orbital data on Write to radio: capture the CPS's Satellite Data Updating write over USB (section
+  4 has the URLs it downloads), then add it to `RadioWriter` with the same guards. (b) Optional preset, as a dated list:
+  ISS APRS digipeater 145.825 simplex, ISS voice 145.800 receive, ISS crossband 145.990 up (67 Hz) / 437.800 down, SO-50
+  145.850 up (67 Hz; 74.4 Hz arms its timer) / 436.795 down with Doppler steps. Satellite status changes often (AMSAT
+  "Live FM satellites").
+- **Printable zone card** (HTML): per zone, each channel's RX/TX, CC/slot/talkgroup or tone.
+- **Other AnyTone-lineage radios** (D878UVII, D578, plain DMR-6X2, DA-7X2): needs a real Export All per model, then a
+  model profile (zone size, caller capacity 200,000 vs 500,000, APRS destination call, scan-list slots). `CpsFormat`
+  already loads a layout from an export. The biggest audience multiplier.
+- **Hotspot from BrandMeister:** `/v2/device/{hotspot id}/talkgroup` is public, so the Hotspot tab could fill its static
+  talkgroups (hotspot IDs are the DMR ID + 2 digits). Check that hotspots answer like repeaters.
+- **Repeater roaming lists** (RoamingChannel/RoamingZone): users say it only works within one coordinated network and is
+  slow with many sites. Low value.
+- **Caller names over USB** (capture the CPS's caller-database write).
+- **qdmr YAML export**, so the same project can program other brands through `dmrconf`.
+
+### Still open from the earlier roadmap
+
+- RepeaterBook API client when a token arrives (4b has the promised limits).
+- Talkgroup sets: named presets ("BM wide area", "Texas") for one or many repeaters; per-network tags.
+- Usability: multi-select repeaters (zone, power, talkgroup set); drag-and-drop ordering; search and sort; undo/redo
+  (JSON snapshots in `Session`); automatic `.cpb` snapshots on each Export/Write ("save iterations"); generator notes
+  beside the affected channel.
+- Windows polish: DPI other than the user's; `PerMonitorV2`.
+- Map: 75-200 ms per frame at 4K (cache screen paths per zoom); wizard step 3 "pick the whole region"; remember picked
+  areas; a bigger GeoNames file for small towns abroad (needs the user's OK).
+- Code health: move UI-side cascades into Core with tests (talkgroup ID change/delete in `TalkgroupsPage`); cache the
+  status-bar generation if it ever feels slow; structured issue codes instead of message strings.
+
+### To check on the radio or in the CPS (before the matching item ships)
+
+- A real DigitalContactList row; CPS import time for ~300,000 rows.
+- APRS.CSV `channel1-8`/`slot`/`Aprs Tg`/`Call Type` and Channel.CSV `APRS Report Channel` meanings; an APRS beacon heard
+  on aprs.fi (analog, and BrandMeister digital).
+- GpsRoaming.CSV minute columns and zone index; how GPS zone switching behaves when driving.
+- `Same Color Code` refuses to key on a busy slot.
+- Where the CPS writes satellite data and the caller database (USB captures).
+
+### Sources (2026-10-08)
+
+BTECH: caller database (baofengtech.com/driving-the-dmr-digital-contact-lists-in-the-dmr-6x2-radio-series/, ?p=72589),
+PRO spec sheet (500,000 contacts), analog APRS (baofengtech.com/new-firmware-adds-analog-aprs-to-the-dmr-6x2-handheld-radio/),
+GPS/digital APRS (baofengtech.com/using-the-dmr-6x2s-built-in-gps-receiver/), roaming (baofengtech.com/?p=374847),
+satellites (baofengtech.com/using-the-satellite-function-on-the-dmr-6x2-series-radios/, ?p=277588), firmware repository
+(baofengtech.com/dmr/dmr-6x2-pro/). Roaming in practice: forums.radioreference.com/threads/digital-roaming.482504/,
+dmrhub.ru/tech/en/dmr-roaming. Admit criteria: minnesotadmr.com DMR-Radio-1702.pdf, miklor.com/DMR/DMR-CP101.php,
+dmrhub.ru/tech/en/kanal-hotspota-ruchnoy. Codeplug organization: codeplugs.rats.net/diy. Hotspots and satellites:
+arrl.org/news/digital-mobile-radio-hotspots-may-be-interfering-with-satellite-uplinks-amsat-reports. FM satellites:
+amsat.org/live-fm-satellites/. DMR simplex list: forums.radioreference.com/threads/programing-in-70cm-simplex-freq.293439/.
+APRS conventions: jpole-antenna.com/2018/09/25/aprs-ssids-paths-and-beacons/. Prior art: github.com/jimdawdy-hub/codeplugger.
 
 ## 8. Checking the UI without Windows (what this session did)
 

@@ -212,5 +212,9 @@ programmatic changes don't fire edits.
 
 ## Recommended next steps (details and more in HANDOFF)
 
+The plan is HANDOFF section 7 (rewritten 2026-10-08): **milestone 1.4** (caller names, APRS from the callsign, polite
+transmit, repeater health from BrandMeister, safety checks, a simplex preset), then **1.5** (zones as views, order by
+distance, scan lists 2-8, GPS zone switching, route builder, check for updates). Also still open:
+
 1. Click through the wizard and Add from map on screen (hover, wheel zoom, drag, county picking, list ticks).
 2. Analog repeaters online: RepeaterBook with a user-supplied token (RadioID.net and BrandMeister are done).
