@@ -746,6 +746,13 @@ namespace CodeplugBuilder.App
             }
 
             var warnings = issues.Where(i => i.Severity == Severity.Warning).Select(i => i.Message).Concat(g.Notes).Distinct().ToList();
+            if (!string.IsNullOrEmpty(p.Options.CallerScope))
+            {
+                string note;
+                try { note = RadioProgressDialog.Run(this, "Caller names", pr => Online.AttachCallers(g, p), "Getting RadioID.net's user list (about 17 MB, kept a week)..."); }
+                catch (Exception ex) { note = "Caller names weren't added: " + ex.Message; }
+                if (note != null) warnings.Add(note);
+            }
             if (mergeBase != null)
             {
                 // An export older than the last generated codeplug may be missing what was made in the CPS since.

@@ -29,7 +29,7 @@ namespace CodeplugBuilder.Core
         static readonly Dictionary<string, int> ListIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             { ChannelFile, 0 }, { RadioIdFile, 1 }, { ZoneFile, 2 }, { ScanListFile, 3 },
-            { TalkGroupsFile, 5 }, { RxGroupFile, 8 },
+            { TalkGroupsFile, 5 }, { RxGroupFile, 8 }, { CallerDatabase.File, 15 }, { Aprs.File, 19 },
         };
 
         /// <summary>First channel number used by the VFO A/B rows in Channel.CSV.</summary>
@@ -226,7 +226,7 @@ namespace CodeplugBuilder.Core
             RadioIds.CloneHeader().Save(Path.Combine(folder, RadioIdFile));
         }
 
-        static string ReadResource(string file)
+        internal static string ReadResource(string file)
         {
             var asm = typeof(CpsFormat).Assembly;
             string name = "CodeplugBuilder.Templates." + file;

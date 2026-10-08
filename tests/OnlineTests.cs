@@ -316,6 +316,19 @@ namespace CodeplugBuilder.Tests
             Assert.Equal("Jurgen Muller|Munchen|3", t.Get(de, "Name") + "|" + t.Get(de, "City") + "|" + t.Get(de, "No."), "ASCII, numbered");
             Assert.Equal("Private Call|None|", t.Get(de, "Call Type") + "|" + t.Get(de, "Call Alert") + "|" + t.Get(de, "Remarks"), "template values kept, remarks cleared");
             Assert.True(ProjectStore.FromJson("{\"Options\":{}}").Options.CallerScope == null, "off for every project by default");
+
+            // The built-in template is the CPS's own header and row (CPS 1.22e export, 2026-10-08), and fields are cut like the CPS cuts them.
+            var builtIn = CallerDatabase.BuiltInTemplate();
+            Assert.Equal("No.,Radio ID,Callsign,Name,City,State,Country,Remarks,Call Type,Call Alert", string.Join(",", builtIn.Header), "header");
+            var longOne = new Caller { Id = 2621234, Callsign = "DL1ABCDEFGHIJ", FirstName = "Jürgen", LastName = "Müller-Lüdenscheidt", City = "Garmisch-Partenkirchen",
+                                       State = "Bayern Freistaat Bavaria", Country = "Germany Federal Republic" };
+            var cutTable = CallerDatabase.ToTable(new[] { longOne });
+            Assert.Equal("DL1ABCDE|Jurgen Muller-Lu|Garmisch-Parten|Bayern Freistaat|Germany Federal|Private Call|None",
+                         string.Join("|", new[] { "Callsign", "Name", "City", "State", "Country", "Call Type", "Call Alert" }.Select(c => cutTable.Get(cutTable.Rows[0], c))), "CPS lengths");
+            var g = CodeplugGenerator.Generate(Fixtures.Sample(), CpsFormat.BuiltIn());
+            Assert.True(!g.ListFileText().Contains(CallerDatabase.File), "not written unless attached");
+            g.Callers = cutTable;
+            Assert.True(g.ListFileText().Contains("15,\"" + CallerDatabase.File + "\""), "section 15 in the .LST: " + g.ListFileText());
         }
 
         /// <summary>The whole RadioID user database, when CODEPLUGBUILDER_USERS_CSV points at a downloaded user.csv.</summary>

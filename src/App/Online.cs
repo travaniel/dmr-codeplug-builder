@@ -85,6 +85,26 @@ namespace CodeplugBuilder.App
             });
         }
 
+        /// <summary>
+        /// Adds DigitalContactList.CSV (caller names) to a generated codeplug when the project asks for them
+        /// (<see cref="GenerationOptions.CallerScope"/>). Blocks while downloading (run it off the UI thread). Returns a note for
+        /// the export summary, or null when caller names are off.
+        /// </summary>
+        public static string AttachCallers(GeneratedCodeplug g, Project p)
+        {
+            string scope = p.Options.CallerScope;
+            if (string.IsNullOrEmpty(scope)) return null;
+            string file = CallerDatabaseFileAsync().Result;
+            if (file == null) return "Caller names: RadioID.net's user list couldn't be downloaded, so " + CallerDatabase.File + " wasn't written.";
+            List<Caller> all;
+            using (var r = new StreamReader(file, Encoding.UTF8)) all = CallerDatabase.Parse(r).ToList();
+            var picked = CallerDatabase.Select(all, scope, p.Options.CallerAreas, CallerDatabase.Capacity, out int cut);
+            if (picked.Count == 0)
+                return "Caller names: nobody in RadioID.net's list matched " + string.Join(", ", p.Options.CallerAreas ?? new List<string>()) + ", so " + CallerDatabase.File + " wasn't written.";
+            g.Callers = CallerDatabase.ToTable(picked);
+            return CallerDatabase.Note(picked.Count, cut, scope, p.Options.CallerAreas);
+        }
+
         /// <summary>Every repeater RadioID.net lists for a state or province (all pages).</summary>
         public static Task<List<OnlineRepeater>> RepeatersAsync(string state, IProgress<string> progress)
         {

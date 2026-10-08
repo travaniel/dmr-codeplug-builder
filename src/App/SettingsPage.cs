@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using CodeplugBuilder.Core;
 
@@ -12,6 +13,11 @@ namespace CodeplugBuilder.App
         readonly Session session;
         readonly TextBox txtRadioName, txtRadioId;
         readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkPolite, chkKeep;
+        readonly ComboBox cboCallers;
+        readonly TextBox txtCallerAreas;
+        readonly CheckBox chkAprs;
+        readonly TextBox txtAprsCall, txtAprsFreq;
+        readonly NumericUpDown numAprsSsid;
         Label lblBase;
         readonly NumericUpDown numName, numZone, numRx, numScan;
         readonly Label lblFormat, lblNumbers;
@@ -57,6 +63,28 @@ namespace CodeplugBuilder.App
             Section("Transmitting");
             chkPolite = Check("Polite transmit: on a repeater, key up only when its slot is free");
             Span(Ui.Hint(PoliteTransmitHint, wrap));
+
+            Section("Caller names");
+            cboCallers = Ui.Combo(false, CallerChoices);
+            cboCallers.Width = Ui.S(220);
+            cboCallers.Anchor = AnchorStyles.Left;
+            Pair("Caller list", cboCallers);
+            txtCallerAreas = Ui.Text("e.g. Texas, Oklahoma  or  United States, Canada");
+            txtCallerAreas.Width = Ui.S(420);
+            txtCallerAreas.Anchor = AnchorStyles.Left;
+            Pair("Countries or states", txtCallerAreas);
+            Span(Ui.Hint(CallerHint, wrap));
+
+            Section("APRS");
+            chkAprs = Check("Write APRS.CSV with my APRS callsign, SSID and frequency");
+            txtAprsCall = new TextBox { Width = Ui.S(120), MaxLength = 6, CharacterCasing = CharacterCasing.Upper, Anchor = AnchorStyles.Left };
+            numAprsSsid = new NumericUpDown { Minimum = 0, Maximum = 15, Width = Ui.S(60), Anchor = AnchorStyles.Left };
+            txtAprsFreq = new TextBox { Width = Ui.S(120), Anchor = AnchorStyles.Left };
+            var aprsRow = Ui.Row(Ui.Label("Callsign"), txtAprsCall, Ui.Label("SSID"), numAprsSsid, Ui.Label("Frequency MHz"), txtAprsFreq);
+            aprsRow.Dock = DockStyle.None;
+            aprsRow.WrapContents = false;
+            Span(aprsRow);
+            Span(Ui.Hint(AprsHint, wrap));
 
             Section("Channels made in the CPS");
             chkKeep = Check("Keep channels, zones and talkgroups made in the CPS (merge with a CPS export)");
@@ -117,6 +145,32 @@ namespace CodeplugBuilder.App
             chkRxLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.RxGroupListPerRepeater = chkRxLists.Checked; session.MarkDirty(); };
             chkScanLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.ScanListPerZone = chkScanLists.Checked; session.MarkDirty(); };
             chkPolite.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.PoliteTransmit = chkPolite.Checked; session.MarkDirty(); };
+            cboCallers.SelectedIndexChanged += (s, e) =>
+            {
+                txtCallerAreas.Enabled = cboCallers.SelectedIndex >= 2;
+                if (loading) return;
+                string v = CallerScopeValues[Math.Max(0, cboCallers.SelectedIndex)];
+                session.Project.Options.CallerScope = v.Length == 0 ? null : v;
+                session.MarkDirty();
+            };
+            chkAprs.CheckedChanged += (s, e) =>
+            {
+                txtAprsCall.Enabled = numAprsSsid.Enabled = txtAprsFreq.Enabled = chkAprs.Checked;
+                if (loading) return;
+                session.Project.Aprs = chkAprs.Checked ? ReadAprs() : null;
+                session.MarkDirty();
+            };
+            EventHandler aprsEdited = (s, e) => { if (loading || !chkAprs.Checked) return; session.Project.Aprs = ReadAprs(); session.MarkDirty(); };
+            txtAprsCall.TextChanged += aprsEdited;
+            numAprsSsid.ValueChanged += aprsEdited;
+            txtAprsFreq.TextChanged += aprsEdited;
+            txtCallerAreas.TextChanged += (s, e) =>
+            {
+                if (loading) return;
+                var areas = txtCallerAreas.Text.Split(',').Select(a => a.Trim()).Where(a => a.Length > 0).ToList();
+                session.Project.Options.CallerAreas = areas.Count == 0 ? null : areas;
+                session.MarkDirty();
+            };
             chkKeep.CheckedChanged += (s, e) =>
             {
                 if (loading) return;
@@ -138,6 +192,30 @@ namespace CodeplugBuilder.App
             VisibleChanged += (s, e) => { if (Visible) Reload(); }; // other places change these too (the radio ID, channel numbers stored by Export or Write to radio)
             Reload();
         }
+
+        /// <summary>The APRS settings as typed: the suggestion (symbol, path, gateway) with the user's callsign, SSID and frequency.</summary>
+        AprsPlan ReadAprs()
+        {
+            var a = session.Project.Aprs ?? Aprs.Suggest(session.Project);
+            a.Callsign = txtAprsCall.Text.Trim().ToUpperInvariant();
+            a.Ssid = (int)numAprsSsid.Value;
+            if (decimal.TryParse(txtAprsFreq.Text.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal f) && f > 0) a.FrequencyMHz = f;
+            return a;
+        }
+
+        // Same text on the Mac Settings tab (MainWindow).
+        const string AprsHint =
+            "Export adds APRS.CSV: your callsign and SSID (7 = handheld, 9 = mobile), the APRS frequency, the person symbol, path WIDE1-1,WIDE2-1, " +
+            "fixed position off (the radio's GPS is used) and, in the US, BrandMeister's APRS gateway 310999 as a private call for digital reports. " +
+            "Importing it in the CPS replaces all of its APRS settings, and the CPS also resets some the file doesn't hold (transmit delay, display " +
+            "time, analog bandwidth, receive filters): check the CPS's APRS screen after importing. Beacons stay as they are (manual).";
+
+        static readonly string[] CallerChoices = { "Off (keep the CPS's list)", "Whole world", "Countries", "US states" };
+        static readonly string[] CallerScopeValues = { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates };
+        const string CallerHint =
+            "Export adds DigitalContactList.CSV with DMR users from RadioID.net (downloaded once a week, about 17 MB), so the radio shows a caller's " +
+            "callsign and name instead of a number. Importing it in the CPS replaces the caller list there. The whole world fits the 6X2 PRO (about 315,000 " +
+            "users; it holds 500,000). Write to radio doesn't send caller names yet: import the file in the CPS and write from there.";
 
         // Same text on the Mac Settings tab (MainWindow).
         const string PoliteTransmitHint =
@@ -193,6 +271,15 @@ namespace CodeplugBuilder.App
             chkRxLists.Checked = p.Options.RxGroupListPerRepeater;
             chkScanLists.Checked = p.Options.ScanListPerZone;
             chkPolite.Checked = p.Options.PoliteTransmit;
+            cboCallers.SelectedIndex = Math.Max(0, Array.IndexOf(CallerScopeValues, p.Options.CallerScope ?? ""));
+            txtCallerAreas.Text = string.Join(", ", p.Options.CallerAreas ?? new System.Collections.Generic.List<string>());
+            txtCallerAreas.Enabled = cboCallers.SelectedIndex >= 2;
+            chkAprs.Checked = p.Aprs != null;
+            var aprs = p.Aprs ?? Aprs.Suggest(p);
+            txtAprsCall.Text = aprs.Callsign;
+            numAprsSsid.Value = Math.Max(0, Math.Min(15, aprs.Ssid));
+            txtAprsFreq.Text = aprs.FrequencyMHz > 0 ? aprs.FrequencyMHz.ToString("0.000", CultureInfo.InvariantCulture) : "";
+            txtAprsCall.Enabled = numAprsSsid.Enabled = txtAprsFreq.Enabled = chkAprs.Checked;
             numName.Value = Clamp(p.Options.MaxNameLength, numName);
             numZone.Value = Clamp(p.Options.MaxZoneChannels, numZone);
             numRx.Value = Clamp(p.Options.MaxRxGroupMembers, numRx);

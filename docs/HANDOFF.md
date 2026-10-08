@@ -228,6 +228,22 @@ column (OptionalSetting has 169 columns).
   extended 0x00 send, 0x01 "source" (Off / Contacts / Over the air = the CPS's display priority), 0x02 format. The CSV order hints
   0x01 = type and 0x02 = display instead, so only 0x00 is trusted (the user's radio: all 0).
 - OptionalSetting: `SctTxTalkAliasEn` 0 (talker alias not sent), `TmZone` 14 (GMT-5), GPS 1.
+- **Caller list and APRS, checked in CPS 1.22e (2026-10-08, by driving the CPS; exports in `CPSnow\callertest`, `callergen`/`callerback`,
+  `callerworld`, `aprsgen`/`aprsback`):**
+  - Digital Contact List editor: Name, Call Type (Private Call / Group Call / All Call), TG/DMR ID, Call Alert (None / Ring / Online
+    Alert; a Group Call offers only None / Online Alert), City, User ID (= the CSV's Callsign), State/Prov, Country, Remarks. Typed text is
+    cut at Name 16, Callsign 8, City 15, State 16, Country 15, Remarks 16; the export shows the same. Non-ASCII letters are written as
+    Latin-1 bytes (ü = 0xFC). A generated list (9,306 Texas users) imported with the `.LST` (section 15) and exported back byte for byte,
+    with the other five files; the whole world (314,598, 31 MB) imported in about 2.5 minutes, no dialogs, and exported back byte for byte.
+  - TX permit spellings in Channel.CSV: `Always`, `Same Color Code` (confirmed by setting it in the editor); the editor lists Always,
+    ChannelFree, Different Color Code, Same Color Code.
+  - Channel editor: *APRS Report Type* Off / Analog / Digital = Channel.CSV `AprsUpDateKind` 0 / 1 / 2; *APRS Report Channel* 1-8 = the
+    row on the APRS screen's digital list (`APRS Report Channel`). APRS screen digital rows: Report Channel = a digital channel by name
+    or Channel VFO A (CSV `channelN` = the channel's number, 4001 = VFO A), Report Slot Channel Slot / Slot1 / Slot2 (`slotN` 0/1/2), APRS
+    TG, Call Type Private / Group (`Call TypeN` 0 / 1). Your SSID shows as "-7" in the CPS, 7 in the CSV; frequency is written "144.39".
+  - Importing APRS.CSV: everything in the file arrives, but the CPS also resets APRS settings the file doesn't hold (receive filter
+    ticks all off, display time 3 s, Ana APRSTx Narrow) and set Transmit Delay to 0 although the file said 60 (= 1200 ms). The generated
+    APRS.CSV (written with the CPS's stray end commas) otherwise came back byte for byte.
 - **Satellite data** isn't in Export All. The CPS's Tool > Satellite Data Updating ("Will be written to the radio GPS
   Satellite Data") downloads `https://celestrak.org/NORAD/elements/amateur.txt` or `https://www.amsat.org/tle/dailytle.txt`
   (URLs found in `DMR_6X2Pro.exe` 1.22e); no satellite frequency table is in the CPS, so the list presumably lives in the
@@ -630,13 +646,13 @@ before it's called done.
 
 ### Milestone 1.4: the rest of the radio (the five generated lists unchanged)
 
-1. **Caller names (DigitalContactList.CSV, `.LST` section 15).** Download RadioID `user.csv` (4b), cache a week. Scope in
+1. **Caller names (DigitalContactList.CSV, `.LST` section 15). Done 2026-10-08 (CSV export; verified in the CPS).** Download RadioID `user.csv` (4b), cache a week. Scope in
    Settings: off (default; the import would replace the radio's list), whole world (fits 500,000), countries, or US
    states. Name = first + last name; Call Type `Private Call`; Call Alert `None` (check against a real CPS row first);
    dedupe IDs; ascending ID order. Capacity check per model. Add the section to `CpsFormat.ListIndex`/`Files` and
    `GeneratedCodeplug.Files()`. Unknowns: CPS import time for ~300,000 rows, field length limits. Write to radio can't
    send it yet (the CPS writes the caller database separately; needs a USB capture): say so and point to Export.
-   *Started 2026-10-08 (no output yet):* `Core/CallerDatabase.cs` reads user.csv (the real file, 2026-10-08: 314,598 users in
+   *As built:* `Core/CallerDatabase.cs` reads user.csv (the real file, 2026-10-08: 314,598 users in
    0.44 s, all fit 500,000; Texas 9,306, US 132,991; longest name 79 and city 64 characters; 1,785 names with non-ASCII letters,
    362 of them nothing but non-Latin script, so empty after folding to ASCII), picks by scope (`GenerationOptions.CallerScope` +
    `CallerAreas`, off by default), each ID once in ID order, and fills a template table (`ToTable`: identity columns only; Call
@@ -644,7 +660,11 @@ before it's called done.
    user's real CPS row arrives: built-in template, `.LST` section 15 in `CpsFormat`, generator output, Settings UI (both apps),
    the "replaces the radio's list" warning, field length limits. Optional check: `CODEPLUGBUILDER_USERS_CSV=user.csv` runs
    `OnlineTests.CallerDatabaseRealFile`.
-2. **APRS from the callsign (APRS.CSV, section 19, and Write to radio).** New `AprsSettings` on the project: callsign
+   *Finished the same night:* built-in template `Templates/DigitalContactList.CSV` (the CPS's header and row, personal values replaced),
+   fields cut to the CPS's lengths, `GeneratedCodeplug.Callers` + `.LST` section 15; Export (Windows, Mac, CLI) attaches callers when
+   Settings > Caller names is set (`Online.AttachCallers`, with a wait dialog). Verified in the CPS (section 4). Write to radio still
+   doesn't send the caller list (needs a USB capture of the CPS's write).
+2. **APRS from the callsign (APRS.CSV, section 19, and Write to radio). APRS.CSV done 2026-10-08 (verified in the CPS); Write to radio not yet.** New `AprsSettings` on the project: callsign
    (last word of the Radio ID name or the RadioID lookup), SSID (7 handheld, 9 mobile), symbol table + icon, path
    `WIDE1-1,WIDE2-1`, analog frequency by region (144.390 North America, 144.800 Europe), destination `APBT62` (keep),
    power, beacon intervals (automatic off by default; manual/PTT), fixed position (home) or GPS, digital report
@@ -654,7 +674,7 @@ before it's called done.
    confirmation. Also a "144.390 APRS" receive channel in a utility zone (the PRO receives and displays APRS). Check in
    the CPS UI what `APRS Report Channel` (Channel.CSV) and APRS.CSV `channel1-8` mean before writing them.
    When a read shows the factory BG6LKK values, say so.
-   *Started 2026-10-08 (no output yet):* `Core/Aprs.cs`: `Suggest(project)` = callsign from the Radio ID name, SSID 7, `/[`,
+   *As built:* `Core/Aprs.cs`: `Suggest(project)` = callsign from the Radio ID name, SSID 7, `/[`,
    WIDE1-1,WIDE2-1, frequency by country (144.390 North America and unknown, 144.800 Europe, 145.175 Australia), APBT62, digital
    gateway 310999 for US/unknown only. `ReadNotes(image)` says so when a radio read still has the factory callsign BG6LKK
    (shown after *Read codeplug from radio*, Windows and Mac). **The radio's APRS addresses check out:** the user's radio image
@@ -662,6 +682,11 @@ before it's called done.
    the same non-default values as the CPS's APRS.CSV of that radio, so `RadioSettings` 0x2501000 fields read right (still marked
    unchecked; a write would prove them). Still to do: the APRS.CSV template row (scrubbed), the channel1-8 / slot / Aprs Tg /
    Call Type and APRS Report Channel meanings from the CPS, a project field and UI, and the Write to radio offer.
+   *Finished the same night:* `Project.Aprs` (Settings > APRS, Windows and Mac; off by default) writes APRS.CSV from the built-in template
+   `Templates/APRS.CSV` (the user's export with BG6LKK, the China position and the text taken out) with `Aprs.ToCsv`, which keeps the CPS's
+   stray end commas; verified in the CPS, including what an APRS.CSV import resets (section 4, so the Settings text warns). Digital report
+   rows keep VFO A as their channel (choose one in the CPS). Still to do: offer the APRS identity on Write to radio (the 0x2501000 fields
+   read right; a write would prove them), and the "144.390 APRS" receive channel.
 3. **Polite transmit + talker alias. Built 2026-10-08; to check in the CPS and on the radio (below).** `GenerationOptions` TX permit policy: repeater DMR channels `Same Color Code`,
    hotspot and DMR simplex `Always`, analog `Off`; on for new projects, off for imported ones. Guides: polite (color code)
    admit on repeaters, Always on hotspots (a hotspot on Channel Free stalls). Confirm on the air that `Same Color Code`

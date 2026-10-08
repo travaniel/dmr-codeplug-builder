@@ -303,7 +303,7 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 13, EmitDefaultValue = false)] public bool PoliteTransmit { get; set; }
         /// <summary>
         /// Caller names (DigitalContactList.CSV) from RadioID.net: <see cref="CallerScopes"/>; null/empty = off (the default:
-        /// importing the file replaces the radio's list). Not generated until a real CPS row is the template (<see cref="CallerDatabase"/>).
+        /// importing the file replaces the radio's list). Attached on Export by the App (<see cref="CallerDatabase"/>).
         /// </summary>
         [DataMember(Order = 14, EmitDefaultValue = false)] public string CallerScope { get; set; }
         /// <summary>Countries or US states for <see cref="CallerScope"/> Countries / UsStates.</summary>
@@ -368,6 +368,8 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 10, EmitDefaultValue = false)] public List<KnownChannel> KnownChannels { get; set; }
         [DataMember(Order = 11, EmitDefaultValue = false)] public List<string> KnownZones { get; set; }
         [DataMember(Order = 12, EmitDefaultValue = false)] public List<int> KnownTalkgroups { get; set; }
+        /// <summary>APRS identity for APRS.CSV (<see cref="Core.Aprs"/>); null = APRS.CSV isn't written and the CPS's APRS settings stay.</summary>
+        [DataMember(Order = 13, EmitDefaultValue = false)] public AprsPlan Aprs { get; set; }
 
         public Project() { Init(); }
 

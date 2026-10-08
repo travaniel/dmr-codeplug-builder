@@ -35,6 +35,11 @@ namespace CodeplugBuilder.Mac
         ZonesTab zonesTab;
         TextBox radioIdName, radioId;
         CheckBox politeTransmit;
+        ComboBox callerScope;
+        TextBox callerAreas;
+        CheckBox aprsOn;
+        TextBox aprsCall, aprsFreq;
+        NumericUpDown aprsSsid;
         bool loading, discardOnClose;
         List<Issue> lastIssues = new List<Issue>();
 
@@ -231,6 +236,68 @@ namespace CodeplugBuilder.Mac
             politeHint.MaxWidth = 720;
             politeHint.HorizontalAlignment = HorizontalAlignment.Left;
             settings.Children.Add(politeHint);
+            // Caller names (same choices and text as the Windows SettingsPage).
+            var callerValues = new[] { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates };
+            callerScope = new ComboBox { ItemsSource = new[] { "Off (keep the CPS's list)", "Whole world", "Countries", "US states" }, Width = 240 };
+            callerAreas = new TextBox { Width = 420, Watermark = "e.g. Texas, Oklahoma  or  United States, Canada" };
+            callerScope.SelectionChanged += (s, e) =>
+            {
+                callerAreas.IsEnabled = callerScope.SelectedIndex >= 2;
+                if (loading) return;
+                string v = callerValues[Math.Max(0, callerScope.SelectedIndex)];
+                session.Project.Options.CallerScope = v.Length == 0 ? null : v;
+                session.MarkDirty();
+            };
+            callerAreas.LostFocus += (s, e) =>
+            {
+                if (loading) return;
+                var areas = (callerAreas.Text ?? "").Split(',').Select(a => a.Trim()).Where(a => a.Length > 0).ToList();
+                session.Project.Options.CallerAreas = areas.Count == 0 ? null : areas;
+                session.MarkDirty();
+            };
+            settings.Children.Add(new TextBlock { Text = "Caller names", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Caller list", Width = 140, VerticalAlignment = VerticalAlignment.Center }, callerScope } });
+            settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Countries or states", Width = 140, VerticalAlignment = VerticalAlignment.Center }, callerAreas } });
+            var callerHint = UiKit.Hint("Export adds DigitalContactList.CSV with DMR users from RadioID.net (downloaded once a week, about 17 MB), so the radio shows a caller's " +
+                                        "callsign and name instead of a number. Importing it in the CPS replaces the caller list there. The whole world fits the 6X2 PRO (about 315,000 " +
+                                        "users; it holds 500,000). Write to radio doesn't send caller names yet: import the file in the CPS and write from there.");
+            callerHint.MaxWidth = 720;
+            callerHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(callerHint);
+            // APRS (same text as the Windows SettingsPage).
+            aprsOn = new CheckBox { Content = "Write APRS.CSV with my APRS callsign, SSID and frequency" };
+            aprsCall = new TextBox { Width = 120, MaxLength = 6 };
+            aprsSsid = new NumericUpDown { Minimum = 0, Maximum = 15, Increment = 1, FormatString = "0", Width = 110 };
+            aprsFreq = new TextBox { Width = 120 };
+            void AprsEdited()
+            {
+                if (loading || aprsOn.IsChecked != true) return;
+                session.Project.Aprs = ReadAprs();
+                session.MarkDirty();
+            }
+            aprsOn.IsCheckedChanged += (s, e) =>
+            {
+                aprsCall.IsEnabled = aprsSsid.IsEnabled = aprsFreq.IsEnabled = aprsOn.IsChecked == true;
+                if (loading) return;
+                session.Project.Aprs = aprsOn.IsChecked == true ? ReadAprs() : null;
+                session.MarkDirty();
+            };
+            aprsCall.LostFocus += (s, e) => AprsEdited();
+            aprsFreq.LostFocus += (s, e) => AprsEdited();
+            aprsSsid.ValueChanged += (s, e) => AprsEdited();
+            settings.Children.Add(new TextBlock { Text = "APRS", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(aprsOn);
+            settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = {
+                new TextBlock { Text = "Callsign", VerticalAlignment = VerticalAlignment.Center }, aprsCall,
+                new TextBlock { Text = "SSID", VerticalAlignment = VerticalAlignment.Center }, aprsSsid,
+                new TextBlock { Text = "Frequency MHz", VerticalAlignment = VerticalAlignment.Center }, aprsFreq } });
+            var aprsHint = UiKit.Hint("Export adds APRS.CSV: your callsign and SSID (7 = handheld, 9 = mobile), the APRS frequency, the person symbol, path WIDE1-1,WIDE2-1, " +
+                                      "fixed position off (the radio's GPS is used) and, in the US, BrandMeister's APRS gateway 310999 as a private call for digital reports. " +
+                                      "Importing it in the CPS replaces all of its APRS settings, and the CPS also resets some the file doesn't hold (transmit delay, display " +
+                                      "time, analog bandwidth, receive filters): check the CPS's APRS screen after importing. Beacons stay as they are (manual).");
+            aprsHint.MaxWidth = 720;
+            aprsHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(aprsHint);
 
             var tabs = new TabControl();
             zonesTab = new ZonesTab(session, this);
@@ -238,7 +305,7 @@ namespace CodeplugBuilder.Mac
             tabs.Items.Add(new TabItem { Header = "Hotspot", Content = new HotspotTab(session) });
             tabs.Items.Add(new TabItem { Header = "Talkgroups", Content = tgPage });
             tabs.Items.Add(new TabItem { Header = "Zones", Content = zonesTab });
-            tabs.Items.Add(new TabItem { Header = "Settings", Content = settings });
+            tabs.Items.Add(new TabItem { Header = "Settings", Content = new ScrollViewer { Content = settings } });
             // Counts on the Zones tab follow edits made on the other tabs.
             tabs.SelectionChanged += (s, e) => { if (e.Source == tabs && tabs.SelectedItem is TabItem t && t.Content == zonesTab) zonesTab.Refresh(); };
             return tabs;
@@ -306,7 +373,26 @@ namespace CodeplugBuilder.Mac
             radioIdName.Text = p.RadioIdName;
             radioId.Text = p.RadioId.ToString(CultureInfo.InvariantCulture);
             politeTransmit.IsChecked = p.Options.PoliteTransmit;
+            callerScope.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates }, p.Options.CallerScope ?? ""));
+            callerAreas.Text = string.Join(", ", p.Options.CallerAreas ?? new List<string>());
+            callerAreas.IsEnabled = callerScope.SelectedIndex >= 2;
+            aprsOn.IsChecked = p.Aprs != null;
+            var aprs = p.Aprs ?? Aprs.Suggest(p);
+            aprsCall.Text = aprs.Callsign;
+            aprsSsid.Value = Math.Max(0, Math.Min(15, aprs.Ssid));
+            aprsFreq.Text = aprs.FrequencyMHz > 0 ? aprs.FrequencyMHz.ToString("0.000", CultureInfo.InvariantCulture) : "";
+            aprsCall.IsEnabled = aprsSsid.IsEnabled = aprsFreq.IsEnabled = p.Aprs != null;
             loading = false;
+        }
+
+        /// <summary>The APRS settings as typed: the suggestion (symbol, path, gateway) with the user's callsign, SSID and frequency.</summary>
+        AprsPlan ReadAprs()
+        {
+            var a = session.Project.Aprs ?? Aprs.Suggest(session.Project);
+            a.Callsign = (aprsCall.Text ?? "").Trim().ToUpperInvariant();
+            a.Ssid = (int)(aprsSsid.Value ?? 7);
+            if (decimal.TryParse((aprsFreq.Text ?? "").Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal f) && f > 0) a.FrequencyMHz = f;
+            return a;
         }
 
         void UpdateTitle()
@@ -537,6 +623,13 @@ namespace CodeplugBuilder.Mac
                 return;
             }
             var warnings = issues.Where(i => i.Severity == Severity.Warning).Select(i => i.Message).Concat(g.Notes).Distinct().ToList();
+            if (!string.IsNullOrEmpty(p.Options.CallerScope))
+            {
+                string note;
+                try { note = await Dialogs.Progress(this, "Caller names", pr => Online.AttachCallers(g, p), "Getting RadioID.net's user list (about 17 MB, kept a week)..."); }
+                catch (Exception ex) { note = "Caller names weren't added: " + ex.Message; }
+                if (note != null) warnings.Add(note);
+            }
             string summary = (g.ChannelList.Count + g.KeptChannels.Count) + " channels in " + g.ZoneList.Count + " zones";
             if (warnings.Count > 0 && !await Dialogs.List(this, "Ready to export " + summary + ". A few things to check first:", new string[0], warnings, true)) return;
 

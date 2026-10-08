@@ -81,6 +81,8 @@ namespace CodeplugBuilder.App
                     {
                         var g = CodeplugGenerator.Generate(p, format, mergeBase);
                         log.AddRange(g.Notes.Select(n => "Note: " + n));
+                        string callers = Online.AttachCallers(g, p); // caller names, when the project asks for them
+                        if (callers != null) log.Add("Note: " + callers);
                         foreach (var f in g.WriteTo(args[2])) log.Add("Wrote " + f);
                         log.Add(g.ChannelList.Count + " channels" + (g.KeptChannels.Count > 0 ? " + " + g.KeptChannels.Count + " kept from the CPS" : "") + ", " + g.ZoneList.Count + " zones, " + g.TalkGroups.Rows.Count + " talkgroups, " + g.RxGroupLists.Rows.Count + " RX group lists");
                         code = 0;

@@ -32,8 +32,8 @@ namespace CodeplugBuilder.Core
     /// <summary>
     /// The radio's caller database: who a DMR ID belongs to, so the radio shows "W6OZZ Austin" instead of a number.
     /// Source: RadioID.net's daily user.csv. Pure: the App downloads and caches the file.
-    /// Not written to the codeplug yet: DigitalContactList.CSV must start from a row the CPS exported (rule 2), and the
-    /// user's radio has an empty list (HANDOFF 4). Once a real row is in hand it becomes a template and <see cref="ToTable"/> fills it.
+    /// Written as DigitalContactList.CSV (.LST section 15) from the built-in template, a real CPS row (CPS 1.22e Export All of
+    /// three hand-made contacts, 2026-10-08) with the personal values replaced. The App attaches it on Export when a scope is set.
     /// </summary>
     public static class CallerDatabase
     {
@@ -45,6 +45,31 @@ namespace CodeplugBuilder.Core
 
         /// <summary>DigitalContactList.CSV's section in a CPS .LST.</summary>
         public const string File = "DigitalContactList.CSV";
+
+        // What the CPS 1.22e contact editor keeps (typed longer text was cut there, and the Export All shows the same).
+        public const int NameLength = 16, CallsignLength = 8, CityLength = 15, StateLength = 16, CountryLength = 15;
+
+        /// <summary>The built-in template: the CPS's header and one of its rows (Private Call, Call Alert None), scrubbed.</summary>
+        public static CsvTable BuiltInTemplate() { return CsvTable.Parse(CpsFormat.ReadResource(File)); }
+
+        /// <summary>The DigitalContactList.CSV for these callers, from the built-in template.</summary>
+        public static CsvTable ToTable(IList<Caller> callers) { return ToTable(callers, BuiltInTemplate()); }
+
+        /// <summary>Folded to ASCII, then cut to <paramref name="max"/> characters (trailing spaces dropped).</summary>
+        public static string Cut(string s, int max)
+        {
+            string a = Ascii(s);
+            return a.Length <= max ? a : a.Substring(0, max).TrimEnd();
+        }
+
+        /// <summary>A line for the export summary: how many callers, from where, and what the import does.</summary>
+        public static string Note(int count, int cut, string scope, IEnumerable<string> areas)
+        {
+            string where = scope == CallerScopes.World ? "the whole world" : string.Join(", ", areas ?? Enumerable.Empty<string>());
+            return "Caller names: " + count.ToString("N0", CultureInfo.InvariantCulture) + " DMR users from RadioID.net (" + where + ") in " + File +
+                   (cut > 0 ? " (" + cut.ToString("N0", CultureInfo.InvariantCulture) + " more didn't fit the radio's " + Capacity.ToString("N0", CultureInfo.InvariantCulture) + ")" : "") +
+                   ". Importing it replaces the caller list in the CPS. Write to radio doesn't send it yet: write from the CPS.";
+        }
 
         /// <summary>Reads user.csv line by line (quoted fields allowed). Bad lines are skipped.</summary>
         public static IEnumerable<Caller> Parse(TextReader reader)
@@ -129,8 +154,8 @@ namespace CodeplugBuilder.Core
 
         /// <summary>
         /// DigitalContactList.CSV from a template table (header + one real CPS row): No. 1, 2, 3..., Radio ID, Callsign, Name,
-        /// City, State, Country, Remarks cleared. Call Type and Call Alert keep the template row's values. Text is folded to
-        /// ASCII (the CPS files are ASCII). Field length limits in the CPS are still unknown, so nothing is cut here.
+        /// City, State, Country, Remarks cleared. Call Type and Call Alert keep the template row's values (Private Call, None).
+        /// Text is folded to ASCII and cut to what the CPS keeps (<see cref="NameLength"/> and friends).
         /// </summary>
         public static CsvTable ToTable(IList<Caller> callers, CsvTable template)
         {
@@ -143,11 +168,11 @@ namespace CodeplugBuilder.Core
                 var row = t.NewRow(proto);
                 t.Set(row, (++no).ToString(CultureInfo.InvariantCulture), "No.");
                 t.Set(row, c.Id.ToString(CultureInfo.InvariantCulture), "Radio ID");
-                t.Set(row, Ascii(c.Callsign), "Callsign");
-                t.Set(row, Ascii(c.Name), "Name");
-                t.Set(row, Ascii(c.City), "City");
-                t.Set(row, Ascii(c.State), "State");
-                t.Set(row, Ascii(c.Country), "Country");
+                t.Set(row, Cut(c.Callsign, CallsignLength), "Callsign");
+                t.Set(row, Cut(c.Name, NameLength), "Name");
+                t.Set(row, Cut(c.City, CityLength), "City");
+                t.Set(row, Cut(c.State, StateLength), "State");
+                t.Set(row, Cut(c.Country, CountryLength), "Country");
                 t.Set(row, "", "Remarks");
                 t.Rows.Add(row);
             }

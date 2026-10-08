@@ -350,6 +350,23 @@ namespace CodeplugBuilder.Tests
             plan = Aprs.Suggest(p);
             Assert.True(plan.FrequencyMHz == 144.800m && plan.DigitalTalkgroup == 0 && plan.Notes.Count == 1, "Germany: " + string.Join("; ", plan.Notes));
 
+            // APRS.CSV: the writer gives back the template exactly (the CPS's quoting, stray end commas, CRLF) ...
+            var same = new AprsPlan { Callsign = "N0CALL", Ssid = 8, FrequencyMHz = 144.64m, Symbol = "&", Path = "WIDE1-1" };
+            Assert.Equal(CpsFormat.ReadResource(Aprs.File), Aprs.ToCsv(same), "template round trip");
+            // ... and puts the plan in.
+            var us = Aprs.Suggest(new Project { RadioIdName = "Austin W6OZZ" });
+            var t = CsvTable.Parse(Aprs.ToCsv(us));
+            Assert.Equal("W6OZZ|7|144.39|/|[|WIDE1-1,WIDE2-1|APBT62|0|310999|0|4001", string.Join("|", new[] { "Your Call Sign", "Your SSID", "Transmission Frequency [MHz]",
+                "APRS Symbol Table", "APRS Map Icon", "Digipeater Path", "Destination Call Sign", "Fixed Location Beacon", "Aprs Tg3", "Call Type3", "channel3" }
+                .Select(c => t.Get(t.Rows[0], c))), "fields");
+            var gp = Fixtures.Sample();
+            Assert.True(CodeplugGenerator.Generate(gp, CpsFormat.BuiltIn()).AprsCsv == null, "no APRS settings: no APRS.CSV");
+            gp.Aprs = us;
+            var gen = CodeplugGenerator.Generate(gp, CpsFormat.BuiltIn());
+            Assert.True(gen.AprsCsv != null && gen.ListFileText().Contains("19,\"APRS.CSV\""), gen.ListFileText());
+            Assert.Equal(144.39m, ProjectStore.FromJson(ProjectStore.ToJson(gp)).Aprs.FrequencyMHz, "saved");
+            Assert.True(ProjectStore.FromJson("{\"RadioIdName\":\"X\"}").Aprs == null, "old projects: off");
+
             var img = SettingsImage();
             var source = RadioSettings.Find("AprsSource");
             RadioSettings.WriteText(img, source, "BG6LKK");

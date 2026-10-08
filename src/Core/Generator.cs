@@ -46,6 +46,10 @@ namespace CodeplugBuilder.Core
         public CsvTable RxGroupLists;
         /// <summary>Null when scan lists are turned off.</summary>
         public CsvTable ScanLists;
+        /// <summary>DigitalContactList.CSV (caller names), when the App attached one (<see cref="CallerDatabase"/>); null otherwise.</summary>
+        public CsvTable Callers;
+        /// <summary>APRS.CSV text (written as the CPS writes it, <see cref="Aprs.ToCsv"/>) when the project has APRS settings; null otherwise.</summary>
+        public string AprsCsv;
         /// <summary>Null when there is no DMR ID to write.</summary>
         public CsvTable RadioIds;
 
@@ -70,12 +74,15 @@ namespace CodeplugBuilder.Core
             if (ScanLists != null) files.Add(new KeyValuePair<string, CsvTable>(CpsFormat.ScanListFile, ScanLists));
             files.Add(new KeyValuePair<string, CsvTable>(CpsFormat.TalkGroupsFile, TalkGroups));
             files.Add(new KeyValuePair<string, CsvTable>(CpsFormat.RxGroupFile, RxGroupLists));
+            if (Callers != null) files.Add(new KeyValuePair<string, CsvTable>(CallerDatabase.File, Callers));
             return files;
         }
 
         public string ListFileText()
         {
-            return CpsFormat.BuildListFile(Files().Select(f => f.Key));
+            var names = Files().Select(f => f.Key).ToList();
+            if (AprsCsv != null) names.Add(Aprs.File);
+            return CpsFormat.BuildListFile(names);
         }
 
         /// <summary>Writes the CSVs and the .LST file list. Returns the paths written.</summary>
@@ -88,6 +95,12 @@ namespace CodeplugBuilder.Core
                 string path = Path.Combine(folder, f.Key);
                 f.Value.Save(path);
                 written.Add(path);
+            }
+            if (AprsCsv != null)
+            {
+                string aprs = Path.Combine(folder, Aprs.File);
+                File.WriteAllText(aprs, AprsCsv, CsvTable.FileEncoding);
+                written.Add(aprs);
             }
             string lst = Path.Combine(folder, listFileName);
             File.WriteAllText(lst, ListFileText(), CsvTable.FileEncoding);
@@ -392,6 +405,7 @@ namespace CodeplugBuilder.Core
                 g.RadioIds.Rows.Add(row);
             }
             merge?.AddRadioIds();
+            if (p.Aprs != null) g.AprsCsv = Aprs.ToCsv(p.Aprs);
 
             return g;
         }

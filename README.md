@@ -53,6 +53,9 @@ per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches ev
    The problems list also warns about channels that transmit outside the amateur bands (a MURS or GMRS
    channel without *Receive only*), and about a hotspot or DMR simplex channel in a satellite sub-band
    (145.8-146, 435-438 MHz) or on an APRS or calling frequency.
+   *Caller names* (off by default) adds DigitalContactList.CSV with DMR users from RadioID.net (the whole world, countries
+   or US states), so the radio shows who is calling. *APRS* (off by default) adds APRS.CSV with your callsign, SSID and
+   frequency. Importing either replaces that part of the CPS's codeplug; after an APRS import, check the CPS's APRS screen.
 7. Click **Export > Export CSV files for the CPS** (Ctrl+G) and save the `.LST`. The CSVs are saved next to it.
 8. In the CPS: open your codeplug, **Tool > Import > Import From File List**, pick the `.LST`, click
    **Import**, check a few channels, then write to the radio.
