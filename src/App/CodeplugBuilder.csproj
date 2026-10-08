@@ -16,7 +16,7 @@
     <Product>W6OZZ CPS</Product>
     <AssemblyTitle>W6OZZ CPS</AssemblyTitle>
     <Description>Builds CSV codeplugs for the BTECH DMR-6X2 PRO CPS.</Description>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Copyright>Copyright © 2026</Copyright>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
