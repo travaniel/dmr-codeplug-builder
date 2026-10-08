@@ -355,7 +355,7 @@ namespace CodeplugBuilder.App
         {
             var info = project?.FindZone(zone ?? "");
             if (info == null || !info.HasTalkgroups) { Ui.Info(FindForm(), "Tick some talkgroups in this zone first."); return; }
-            var others = project.Zones.Where(z => z != info && project.ZoneRepeaters(z.Name).Count > 0).ToList();
+            var others = project.Zones.Where(z => z != info && project.TakesZoneTalkgroups(z.Name)).ToList();
             if (others.Count == 0) { Ui.Info(FindForm(), "There are no other zones with DMR repeaters."); return; }
             if (!Ui.Confirm(FindForm(), "Put this zone's " + info.Talkgroups.Count + " ticked talkgroup" + (info.Talkgroups.Count == 1 ? "" : "s") +
                                         " on every repeater in the other " + others.Count + " zone" + (others.Count == 1 ? "" : "s") + " too?"))

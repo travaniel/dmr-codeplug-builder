@@ -83,7 +83,8 @@ namespace CodeplugBuilder.App
                 Ui.Button("Duplicate", (s, e) => Duplicate()),
                 Ui.Button("Delete", (s, e) => Delete()),
                 btnUp, btnDown,
-                Ui.Button("Add NOAA weather", (s, e) => AddWeather()));
+                Ui.Button("Add NOAA weather", (s, e) => AddWeather()),
+                Ui.Button("Add simplex", (s, e) => AddSimplex()));
             left.Controls.Add(buttons, 0, 3);
             split.Panel1.Controls.Add(left);
 
@@ -262,6 +263,16 @@ namespace CodeplugBuilder.App
             if (added.Count == 0) { Ui.Info(FindForm(), "You already have all 7 NOAA weather channels."); return; }
             session.MarkDirty();
             cboFilter.SelectedIndex = 0; // they go in the "Weather" zone, which another zone filter would hide
+            Reload(added[0]);
+        }
+
+        void AddSimplex()
+        {
+            var added = Presets.AddSimplex(session.Project);
+            if (added.Count == 0) { Ui.Info(FindForm(), "You already have all the simplex channels."); return; }
+            session.MarkDirty();
+            session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new
+            cboFilter.SelectedIndex = 0;
             Reload(added[0]);
         }
 

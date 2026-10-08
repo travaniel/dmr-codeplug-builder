@@ -848,6 +848,76 @@ namespace CodeplugBuilder.Core
         /// <summary>True for a channel <see cref="AddNoaaWeather"/> made (it keeps its own zone when repeaters are re-zoned).</summary>
         public static bool IsNoaaWeather(Repeater r) { return Wx(r) > 0; }
 
+        /// <summary>North American FM simplex calling frequencies (analog, wide).</summary>
+        public static readonly KeyValuePair<string, decimal>[] SimplexCalling =
+        {
+            new KeyValuePair<string, decimal>("2 m", 146.520m), new KeyValuePair<string, decimal>("70 cm", 446.000m),
+        };
+
+        /// <summary>
+        /// DMR simplex frequencies (CC 1, TS 1, talkgroup 99). Widely copied between codeplugs, but no band plan or
+        /// network makes them official (some credit DCI or DMR-MARC), so they're only a starting point.
+        /// </summary>
+        public static readonly decimal[] DmrSimplex = { 441.000m, 446.500m, 446.075m, 145.790m, 145.510m };
+
+        /// <summary>The usual DMR simplex talkgroup.</summary>
+        public const int SimplexTalkgroup = 99;
+
+        const string SimplexNote = "Simplex preset: ";
+
+        /// <summary>
+        /// Adds simplex channels the project doesn't have yet (same mode and frequency, simplex): 146.520 and 446.000 MHz
+        /// FM calling, then the <see cref="DmrSimplex"/> list on talkgroup 99 ("Simplex 99", added to the talkgroups when
+        /// missing). All in <paramref name="zone"/>. A simplex DMR channel's TX permit is Always (polite transmit).
+        /// </summary>
+        public static List<Repeater> AddSimplex(Project p, string zone = "Simplex")
+        {
+            var added = new List<Repeater>();
+            bool Has(bool digital, decimal mhz) =>
+                p.Repeaters.Any(r => r.IsDigital == digital && r.RxMHz == mhz && r.TxMHz == mhz);
+            foreach (var kv in SimplexCalling)
+            {
+                if (Has(false, kv.Value)) continue;
+                string f = kv.Value.ToString("0.000", CultureInfo.InvariantCulture);
+                var r = Repeater.NewAnalog(f + " FM Call");
+                r.Zone = zone;
+                r.RxMHz = r.TxMHz = kv.Value;
+                r.Bandwidth = Bandwidths.Wide;
+                r.Notes = SimplexNote + "national " + kv.Key + " FM simplex calling frequency.";
+                p.Repeaters.Add(r);
+                added.Add(r);
+            }
+            Talkgroup tg = null;
+            foreach (decimal mhz in DmrSimplex)
+            {
+                if (Has(true, mhz)) continue;
+                if (tg == null)
+                {
+                    tg = p.FindTalkgroup(SimplexTalkgroup);
+                    if (tg == null) p.Talkgroups.Add(tg = new Talkgroup("Simplex 99", SimplexTalkgroup));
+                }
+                string f = mhz.ToString("0.000", CultureInfo.InvariantCulture);
+                var r = Repeater.NewDigital("DMR Simplex " + f);
+                r.Prefix = f;
+                r.Zone = zone;
+                r.RxMHz = r.TxMHz = mhz;
+                r.ColorCode = 1;
+                r.Talkgroups.Add(new RepeaterTalkgroup(tg.Id, 1, f + " DMR"));
+                r.Notes = SimplexNote + "DMR simplex, CC 1, TS 1, talkgroup 99. A widely shared list, not an official band plan: change it to what your area uses.";
+                p.Repeaters.Add(r);
+                added.Add(r);
+            }
+            p.SyncZones();
+            foreach (var r in added) p.ApplyZoneTalkgroups(r);
+            return added;
+        }
+
+        /// <summary>True for a channel <see cref="AddSimplex"/> made.</summary>
+        public static bool IsSimplex(Repeater r) { return (r.Notes ?? "").StartsWith(SimplexNote, StringComparison.Ordinal); }
+
+        /// <summary>A channel from a preset (weather, simplex): it keeps its own zone when repeaters are re-zoned.</summary>
+        public static bool IsPreset(Repeater r) { return IsNoaaWeather(r) || IsSimplex(r); }
+
         /// <summary>1-7 for a weather channel from <see cref="AddNoaaWeather"/>, else 0.</summary>
         static int Wx(Repeater r)
         {

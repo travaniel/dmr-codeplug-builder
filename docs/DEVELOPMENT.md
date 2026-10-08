@@ -91,7 +91,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `Naming.cs`, `Tones.cs` | 16-character names, uniqueness, auto channel names; CTCSS/DCS normalization |
 | `ProjectStore.cs`, `TalkgroupCsv.cs` | `.cpb` JSON save/load (atomic); talkgroup CSV import |
 | `Json.cs` | Minimal JSON reader (objects → `Dictionary<string, object>`, numbers → `decimal`) for the online APIs |
-| `OnlineData.cs` | RadioID.net repeater/user parsing (by state or country), BrandMeister talkgroup names + US state TGs (31 + FIPS), `Networks.Normalize`, `BandPlan` (offsets), `OnlineImporter.AddRepeaters` (repeaters + talkgroups + location into a project; same-callsign repeaters get prefix `CALL2`; applies zone talkgroup sets), `Presets.AddNoaaWeather`. Pure: no HTTP |
+| `OnlineData.cs` | RadioID.net repeater/user parsing (by state or country), BrandMeister talkgroup names + US state TGs (31 + FIPS), `Networks.Normalize`, `BandPlan` (offsets), `OnlineImporter.AddRepeaters` (repeaters + talkgroups + location into a project; same-callsign repeaters get prefix `CALL2`; applies zone talkgroup sets), `Presets.AddNoaaWeather`, `Presets.AddSimplex` (`IsPreset`: preset channels keep their zone). Pure: no HTTP |
 | `Geo.cs` | `GeoAtlas`: the embedded map (`Geo/atlas.gz`: countries, states/provinces, US counties, ~63k places). `Locate(city, state, country)` → `GeoLocation` (point + areas), `AreaAt`, `FindCountry/State/Place`, `Key()` name folding |
 | `RepeaterBook.cs` | RepeaterBook without the API: `ChirpCsv` reads a CHIRP export (Name = callsign, Comment = city, CHIRP tone modes), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, zone suggestion from the county, `Add`). `StateFromName` (state from the file/folder name), `ToListings` (CHIRP lines as `OnlineRepeater`s with `Analog` set, placed at their towns, so the map picker and `OnlineImporter.AddRepeaters` take them like DMR listings) |
 | `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
@@ -162,7 +162,9 @@ programmatic changes don't fire edits.
   Windows and Mac) gives DMR repeater channels TX permit Same Color Code, hotspot/DMR simplex Always, analog Off; on for new
   projects, off for older files and for CPS imports that weren't polite already (round trip unchanged). *Write codeplug to
   radio* offers *Send talker alias* once (`RecommendedSettings`; a No is remembered). Still to check in the CPS and on the
-  radio: HANDOFF 7, "To check". 87 tests.
+  radio: HANDOFF 7, "To check". **Simplex preset** (item 6): `Presets.AddSimplex` (FM calling 146.520/446.000, five DMR simplex
+  frequencies on TG 99, zone "Simplex"), *Add simplex* on the Repeaters tab and a wizard checkbox (US/Canada), Windows and Mac;
+  simplex-only zones take no zone talkgroups. 89 tests.
 - **1.3.1 (2026-10-07), review pass:** wizard step 4 re-zones CHIRP (analog) repeaters too, not only DMR ones (weather channels keep
   their zone; `Presets.IsNoaaWeather`), and *By band* names analog zones "2m FM" / "70cm FM". DMR and analog repeaters added
   with one fixed zone name get the same (shortened, not cut) zone. Settings caps talkgroups per RX list at the radio's 64, and

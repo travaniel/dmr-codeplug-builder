@@ -37,6 +37,10 @@ per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches ev
      when needed (common abbreviations first, such as `TX` for Texas, and numbers at the end are never cut).
      Type in the *Channel name* column to use your own name; clear it to go back to automatic.
    - Untick a repeater in the list to keep it in the project but leave it out of the codeplug.
+   - *Add NOAA weather* adds the seven weather channels (receive only). *Add simplex* adds the 146.520 and 446.000 FM
+     calling frequencies and five DMR simplex frequencies (441.000, 446.500, 446.075, 145.790, 145.510; color code 1,
+     slot 1, talkgroup 99) in a "Simplex" zone. That DMR list is widely shared but not official: change it to what
+     your area uses.
 3. **Hotspot tab.** Tick *Include my hotspot*, set its frequency (Offset *Simplex* for a simplex
    MMDVM hotspot), color code, and the talkgroups you use on it.
 4. **Talkgroups tab.** The master list (the CPS Talk Groups list). Add, rename, change IDs (repeaters

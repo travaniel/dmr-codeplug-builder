@@ -12,7 +12,10 @@ namespace CodeplugBuilder.App
         public RegionDownload Download;
         public string Callsign = "", RadioIdName = "", Power = "High";
         public int RadioId;
-        public bool Hotspot, Noaa;
+        public bool Hotspot, Noaa, Simplex;
+
+        /// <summary>The wizard's simplex checkbox (North America only).</summary>
+        public const string SimplexChoice = "Add simplex channels: 146.520 and 446.000 FM calling, and 5 DMR simplex frequencies on talkgroup 99 (zone \"Simplex\")";
         public decimal HotspotRx, HotspotTx;
         public int HotspotCC = 1;
         public List<OnlineRepeater> Picked = new List<OnlineRepeater>();
@@ -50,7 +53,7 @@ namespace CodeplugBuilder.App
         string BuildKey(List<OnlineRepeater> picked)
         {
             return string.Join(",", picked.Select(r => r.Callsign + r.RxMHz + r.ColorCode + r.DmrId)) + "|" + RadioIdName + "|" + RadioId + "|" +
-                   Power + "|" + Hotspot + HotspotRx + HotspotTx + HotspotCC + "|" + Noaa;
+                   Power + "|" + Hotspot + HotspotRx + HotspotTx + HotspotCC + "|" + Noaa + "|" + Simplex;
         }
 
         /// <summary>True when <see cref="Build"/> with these picks would start the project over (losing zone and talkgroup edits).</summary>
@@ -84,17 +87,18 @@ namespace CodeplugBuilder.App
             }
             var o = new OnlineImportOptions { Power = Power, ZoneFor = r => ZonePlanner.ZoneName(r, Scheme, SingleZone), Scheme = Scheme, MoreNames = Download?.TalkgroupNames };
             var result = OnlineImporter.AddRepeaters(p, Picked, o, Download?.BrandMeisterNames);
+            if (Simplex) Presets.AddSimplex(p);
             if (Noaa) Presets.AddNoaaWeather(p);
             SortZones(p);
             Notes = result.Notes;
             Project = p;
         }
 
-        /// <summary>Hotspot first, weather last, the rest by name.</summary>
+        /// <summary>Hotspot first, then the rest by name, then simplex and weather.</summary>
         public static void SortZones(Project p)
         {
             p.SyncZones();
-            var sorted = p.Zones.OrderBy(z => Project.SameZone(z.Name, p.Hotspot.Zone) ? 0 : Project.SameZone(z.Name, "Weather") ? 2 : 1)
+            var sorted = p.Zones.OrderBy(z => Project.SameZone(z.Name, p.Hotspot.Zone) ? 0 : Project.SameZone(z.Name, "Simplex") ? 2 : Project.SameZone(z.Name, "Weather") ? 3 : 1)
                                 .ThenBy(z => z.Name, StringComparer.OrdinalIgnoreCase).ToList();
             p.Zones.Clear();
             p.Zones.AddRange(sorted);

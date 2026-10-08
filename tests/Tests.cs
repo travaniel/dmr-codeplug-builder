@@ -1073,6 +1073,60 @@ namespace CodeplugBuilder.Tests
         }
     }
 
+    static class SimplexPresetTests
+    {
+        [Test]
+        static void AddsCallingAndDmrSimplexChannels()
+        {
+            var p = Fixtures.Sample();
+            int tgs = p.Talkgroups.Count;
+            var added = Presets.AddSimplex(p);
+            Assert.Equal(7, added.Count, "2 FM calling + 5 DMR");
+            Assert.Equal(tgs + 1, p.Talkgroups.Count, "talkgroup 99 added");
+            Assert.Equal("Simplex 99", p.FindTalkgroup(99).Name, "its name");
+            Assert.True(added.All(Presets.IsSimplex) && added.All(Presets.IsPreset) && added.All(r => r.Zone == "Simplex"), "marked, in zone Simplex");
+            Assert.True(p.Zones.Any(z => z.Name == "Simplex"), "zone made");
+            Assert.True(!p.TakesZoneTalkgroups("Simplex") && p.TakesZoneTalkgroups("Metro"), "no network talkgroups on simplex");
+            Assert.Equal(0, Presets.AddSimplex(p).Count, "second time: nothing new");
+
+            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
+            string Field(string channel, string column) => g.Channels.Get(g.Channels.Rows.First(r => g.Channels.Get(r, "Channel Name") == channel), column);
+            Assert.Equal("146.52000", Field("146.520 FM Call", "Transmit Frequency"), "2 m calling");
+            Assert.Equal("25K", Field("446.000 FM Call", "Band Width"), "wide FM");
+            foreach (string f in new[] { "441.000", "446.500", "446.075", "145.790", "145.510" })
+            {
+                string name = f + " DMR";
+                Assert.Equal(f + "00", Field(name, "Receive Frequency"), name + " RX");
+                Assert.Equal(f + "00", Field(name, "Transmit Frequency"), name + " TX");
+                Assert.Equal("Simplex 99", Field(name, "Contact"), name + " contact");
+                Assert.Equal("1", Field(name, "Color Code"), name + " CC");
+                Assert.Equal("1", Field(name, "Slot"), name + " slot");
+                Assert.Equal("Always", Field(name, "Busy channel Lock-Out/TX Permit"), name + " TX permit");
+            }
+            Assert.Equal(0, Validator.SafetyWarnings(p).Count, string.Join("\n", Validator.SafetyWarnings(p)));
+            Assert.True(Validator.Validate(p).All(i => i.Severity != Severity.Error), string.Join("\n", Validator.Validate(p)));
+        }
+
+        [Test]
+        static void KeepsWhatTheProjectAlreadyHas()
+        {
+            var p = Fixtures.Sample();
+            p.Talkgroups.Add(new Talkgroup("DMR Simplex", 99));
+            var mine = Repeater.NewDigital("My 441");
+            mine.RxMHz = mine.TxMHz = 441.000m;
+            mine.Talkgroups.Add(new RepeaterTalkgroup(99, 1));
+            p.Repeaters.Add(mine);
+            var fm = Repeater.NewAnalog("Calling");
+            fm.RxMHz = fm.TxMHz = 146.520m;
+            p.Repeaters.Add(fm);
+            var added = Presets.AddSimplex(p);
+            Assert.Equal(5, added.Count, "146.520 and DMR 441.000 already there");
+            Assert.Equal(1, p.Talkgroups.Count(t => t.Id == 99), "talkgroup 99 not added twice");
+            Assert.True(added.Where(r => r.IsDigital).All(r => r.Talkgroups.Single().TalkgroupId == 99), "uses the project's own TG 99");
+            Assert.Equal("DMR Simplex", p.FindTalkgroup(99).Name, "and keeps its name");
+        }
+    }
+
     static class TalkgroupCsvTests
     {
         [Test]

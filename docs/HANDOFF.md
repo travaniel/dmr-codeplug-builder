@@ -509,7 +509,7 @@ private, 1 group, 2 all), 1 name, 0x23 ID BCD, 0x27 alert.
 
 ## 5. Verification done
 
-Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 87, all passing, run with the export folder as argument):
+Engine tests (`tests/Tests.cs` at 1.0: 27 tests; all of `tests/` now has 89, all passing, run with the export folder as argument):
 
 - Every exported CSV parses and re-serializes byte-for-byte (except RoamingZone/APRS, which have stray
   trailing commas the writer doesn't reproduce; they are never written).
@@ -667,9 +667,16 @@ before it's called done.
    446.000 (North America and unknown), 144.800 / 145.500 / 433.500 (Europe), 145.175 (Australia); hotspot only, US and
    unknown: the rest of 97.201(b) (144.0-144.5, 431-433 MHz; checked against the CFR text 2026-10-08). Analog simplex in the
    satellite sub-bands is not flagged (FM satellite uplinks). The user's codeplug gets exactly one warning (154.570).
-6. **Simplex preset** (like `Presets.AddNoaaWeather`, zone "Simplex"): 146.520 and 446.000 (national calling, analog
+6. **Simplex preset. Done 2026-10-08.** (like `Presets.AddNoaaWeather`, zone "Simplex"): 146.520 and 446.000 (national calling, analog
    wide); DMR simplex 441.000, 446.500, 446.075, 145.790, 145.510, CC1 TS1 talkgroup 99 ("Simplex 99"), TX permit
    Always. The DMR list is widely copied but its authority is unclear (DCI/DMR-MARC): keep it editable and say so.
+   *As built:* `Presets.AddSimplex` (channels "146.520 FM Call", "441.000 DMR"...; repeaters "DMR Simplex 441.000" with prefix
+   "441.000"; a project talkgroup 99 is used under its own name; same mode + frequency already simplex in the project = skipped).
+   Notes start "Simplex preset:" (`Presets.IsSimplex`; the DMR note says the list isn't official). *Add simplex* on the Repeaters
+   tab and a wizard step-2 checkbox for US/Canada regions (Windows and Mac). Preset channels keep their zone when the wizard
+   re-zones (`Presets.IsPreset`); a zone of only simplex presets is left out of *Copy ticked to all zones* and wizard step 5
+   (`Project.TakesZoneTalkgroups`), so network talkgroups don't land on simplex. Wizard zone order: hotspot, areas, Simplex,
+   Weather. Polite transmit already gives simplex Always; the safety checks pass on all five.
 
 ### Milestone 1.5: an organized codeplug
 

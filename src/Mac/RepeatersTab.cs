@@ -69,6 +69,7 @@ namespace CodeplugBuilder.Mac
             buttons.Children.Add(btnDown); btnDown.Margin = new Thickness(0, 0, 6, 6);
             AddButton("Add from map...", async () => await AddFromMap());
             AddButton("Add NOAA weather", async () => await AddWeather());
+            AddButton("Add simplex", async () => await AddSimplex());
 
             var filterRow = new DockPanel { Margin = new Thickness(0, 4, 0, 6) };
             var show = UiKit.Label("Show");
@@ -182,6 +183,16 @@ namespace CodeplugBuilder.Mac
             if (added.Count == 0) { await Dialogs.Info(owner, "You already have all 7 NOAA weather channels."); return; }
             session.MarkDirty();
             cboFilter.SelectedIndex = 0; // they go in the "Weather" zone, which another zone filter would hide
+            Reload(added[0]);
+        }
+
+        async System.Threading.Tasks.Task AddSimplex()
+        {
+            var added = Presets.AddSimplex(session.Project);
+            if (added.Count == 0) { await Dialogs.Info(owner, "You already have all the simplex channels."); return; }
+            session.MarkDirty();
+            session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new
+            cboFilter.SelectedIndex = 0;
             Reload(added[0]);
         }
 

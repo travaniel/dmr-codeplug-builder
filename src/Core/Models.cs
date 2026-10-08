@@ -522,6 +522,15 @@ namespace CodeplugBuilder.Core
             return AllRepeaters().Where(r => r.IsDigital && (r != Hotspot || HotspotEnabled) && SameZone(r.Zone, zone)).ToList();
         }
 
+        /// <summary>
+        /// True when the zone has DMR repeaters that network talkgroups make sense on: not a zone of only simplex preset
+        /// channels (<see cref="Presets.AddSimplex"/>), which "copy to all zones" and the wizard's talkgroup step leave alone.
+        /// </summary>
+        public bool TakesZoneTalkgroups(string zone)
+        {
+            return ZoneRepeaters(zone).Any(r => !Presets.IsSimplex(r));
+        }
+
         /// <summary>Channels a zone will hold: one per talkgroup on its included DMR repeaters, one per analog channel.</summary>
         public int ZoneChannelCount(string zone)
         {

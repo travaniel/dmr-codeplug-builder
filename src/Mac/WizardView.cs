@@ -237,7 +237,7 @@ namespace CodeplugBuilder.Mac
         readonly TextBox txtCall, txtId, txtName, txtHsRx, txtHsTx;
         readonly TextBlock lblLookup, lblProblem;
         readonly ComboBox cboPower;
-        readonly CheckBox chkHotspot, chkNoaa;
+        readonly CheckBox chkHotspot, chkNoaa, chkSimplex;
         readonly NumericUpDown numCC;
         readonly Button btnLookup;
         readonly Control hotspotFields;
@@ -254,6 +254,7 @@ namespace CodeplugBuilder.Mac
             txtName = new TextBox { Width = 240, MaxLength = 16 };
             cboPower = new ComboBox { ItemsSource = Powers.Values, Width = 110 };
             chkNoaa = new CheckBox { Content = "Add the 7 NOAA weather channels (receive only, zone \"Weather\")" };
+            chkSimplex = new CheckBox { Content = WizardState.SimplexChoice };
             chkHotspot = new CheckBox { Content = "I have an MMDVM hotspot or my own repeater" };
             txtHsRx = new TextBox { Width = 120 };
             txtHsTx = new TextBox { Width = 120, Watermark = "same (simplex)" };
@@ -276,6 +277,7 @@ namespace CodeplugBuilder.Mac
             p.Children.Add(Section("Channels"));
             p.Children.Add(Pair("Transmit power", cboPower));
             p.Children.Add(chkNoaa);
+            p.Children.Add(chkSimplex);
             p.Children.Add(Section("Hotspot (optional)"));
             p.Children.Add(chkHotspot);
             p.Children.Add(hotspotFields);
@@ -289,6 +291,7 @@ namespace CodeplugBuilder.Mac
             UiKit.OnText(txtName, () => { if (!loading) Store(); });
             cboPower.SelectionChanged += (o, e) => { if (!loading) State.Power = cboPower.SelectedItem as string ?? "High"; };
             chkNoaa.IsCheckedChanged += (o, e) => { if (!loading) State.Noaa = chkNoaa.IsChecked == true; };
+            chkSimplex.IsCheckedChanged += (o, e) => { if (!loading) State.Simplex = chkSimplex.IsChecked == true; };
             chkHotspot.IsCheckedChanged += (o, e) => { hotspotFields.IsEnabled = chkHotspot.IsChecked == true; if (!loading) Store(); };
             UiKit.OnText(txtHsRx, () => { if (!loading) Store(); });
             UiKit.OnText(txtHsTx, () => { if (!loading) Store(); });
@@ -317,6 +320,9 @@ namespace CodeplugBuilder.Mac
             bool us = State.Region.Any(a => a.CountryCode == "US");
             chkNoaa.IsVisible = us;
             chkNoaa.IsChecked = us && State.Noaa;
+            bool northAmerica = State.Region.Any(a => a.CountryCode == "US" || a.CountryCode == "CA");
+            chkSimplex.IsVisible = northAmerica;
+            chkSimplex.IsChecked = northAmerica && State.Simplex;
             chkHotspot.IsChecked = State.Hotspot;
             hotspotFields.IsEnabled = State.Hotspot;
             txtHsRx.Text = State.HotspotRx > 0 ? UiKit.FormatMHz(State.HotspotRx) : "";
@@ -549,7 +555,7 @@ namespace CodeplugBuilder.Mac
             State.Scheme = scheme;
             State.SingleZone = single;
             // DMR and CHIRP (analog) repeaters alike; the weather channels keep their own zone.
-            ZonePlanner.Apply(p, p.Repeaters.Where(r => !Presets.IsNoaaWeather(r)), State.Scheme, State.SingleZone);
+            ZonePlanner.Apply(p, p.Repeaters.Where(r => !Presets.IsPreset(r)), State.Scheme, State.SingleZone);
             WizardState.SortZones(p);
             Fill(null);
         }
@@ -657,7 +663,7 @@ namespace CodeplugBuilder.Mac
             loading = true;
             var p = State.Project;
             var used = p.UsedZoneNames();
-            rows = p.Zones.Where(z => used.Contains(z.Name) && p.ZoneRepeaters(z.Name).Count > 0).Select(z => new ZRow { Zone = z, P = p }).ToList();
+            rows = p.Zones.Where(z => used.Contains(z.Name) && p.TakesZoneTalkgroups(z.Name)).Select(z => new ZRow { Zone = z, P = p }).ToList();
             zones.ItemsSource = rows;
             loading = false;
             if (rows.Count > 0) zones.SelectedItem = rows[0];
