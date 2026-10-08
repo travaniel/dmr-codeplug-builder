@@ -38,7 +38,7 @@ Use the programming cable, radio on, **the BTECH CPS closed** (it does not run o
 
 | # | Do | Expect |
 | --- | --- | --- |
-| 1 | Help > Diagnostics with the radio connected | "Ports the system lists" shows `/dev/cu.usbmodem...`; "Found as the radio" shows the same; the System Information block shows vendor 0x28e9 |
+| 1 | Help > Diagnostics with the radio connected | "Ports the system lists" shows `/dev/cu.usbmodem...`; "Found as the radio" shows the same; the USB (I/O registry) entry shows vendor 0x28e9 ("GD32 Virtual ComPort in FS Mode") |
 | 2 | Radio > Read codeplug from radio | A progress bar, then a summary of what was imported. Reads are read-only and safe |
 | 3 | Check the backup | `~/Documents/DMR Codeplug Builder/Radio reads/<date>/radio.img` and the CSVs exist |
 | 4 | Compare | The imported channels/zones/talkgroups match what the radio and the CPS show |
@@ -49,7 +49,7 @@ Windows version use (verified there), but its Mac serial port handling has not b
 
 If the radio is not found: Radio > Radio port... lists every serial port and lets you pick one by hand (it is remembered).
 If nothing like `/dev/cu.usbmodem` exists, the Mac does not see the radio: try another cable or USB port, and look at the
-System Information block in the diagnostics.
+USB (I/O registry) entry in the diagnostics.
 
 ## 3. What to report
 

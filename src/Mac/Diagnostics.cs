@@ -117,27 +117,47 @@ namespace CodeplugBuilder.Mac
             catch (Exception ex) { L(what.PadRight(32) + ": FAILED, " + ex.Message.Replace('\n', ' ')); }
         }
 
-        /// <summary>macOS only: the lines of System Information's USB tree around the radio's vendor ID (0x28e9).</summary>
+        /// <summary>
+        /// macOS only: the radio's USB entry (vendor 0x28e9 = 10473), from the I/O registry. <c>system_profiler SPUSBDataType</c> prints
+        /// nothing on recent macOS versions, so <c>ioreg</c> is asked instead; it prints the IDs in decimal.
+        /// </summary>
         static void UsbLines(Action<string> L)
         {
             try
             {
-                var psi = new ProcessStartInfo("system_profiler", "SPUSBDataType") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                var psi = new ProcessStartInfo("ioreg", "-r -c IOUSBHostDevice -l") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
                 using (var p = Process.Start(psi))
                 {
                     string all = p.StandardOutput.ReadToEnd();
                     if (!p.WaitForExit(20000)) { try { p.Kill(); } catch { } }
-                    var lines = all.Split('\n');
-                    var hits = Enumerable.Range(0, lines.Length).Where(i => lines[i].IndexOf("0x28e9", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-                    if (hits.Count == 0) { L("System Information (USB): no device with vendor 0x28e9 (the radio is not on USB, or is not recognized)"); return; }
-                    foreach (int i in hits)
+                    var found = false;
+                    var keys = new[] { "\"USB Product Name\"", "\"USB Vendor Name\"", "\"idVendor\"", "\"idProduct\"", "\"USB Serial Number\"" };
+                    var entry = new List<string>();
+                    bool isRadio = false;
+                    var shown = new HashSet<string>();
+                    Action flush = () =>
                     {
-                        L("System Information (USB) entry for vendor 0x28e9:");
-                        for (int k = Math.Max(0, i - 6); k <= Math.Min(lines.Length - 1, i + 6); k++) L("    " + lines[k].TrimEnd());
+                        // ioreg repeats a device's properties on its child nodes; show each distinct, complete entry once.
+                        if (isRadio && entry.Any(l => l.StartsWith("\"USB Product Name\"")) && shown.Add(string.Join("\n", entry)))
+                        {
+                            found = true;
+                            L("USB (I/O registry) entry for vendor 0x28e9:");
+                            foreach (var l in entry) L("    " + l);
+                        }
+                        entry.Clear(); isRadio = false;
+                    };
+                    foreach (string raw in all.Split('\n'))
+                    {
+                        string line = raw.Trim().TrimStart('|', ' ');
+                        if (line.StartsWith("+-o ")) { flush(); continue; }
+                        if (keys.Any(k => line.StartsWith(k)) && !entry.Contains(line)) entry.Add(line);
+                        if (line.StartsWith("\"idVendor\"") && line.EndsWith("= " + 0x28E9.ToString(System.Globalization.CultureInfo.InvariantCulture))) isRadio = true;
                     }
+                    flush();
+                    if (!found) L("USB (I/O registry): no device with vendor 0x28e9 (the radio is not on USB, or is not recognized)");
                 }
             }
-            catch (Exception ex) { L("System Information (USB) could not be read: " + ex.Message); }
+            catch (Exception ex) { L("USB (I/O registry) could not be read: " + ex.Message); }
         }
     }
 }

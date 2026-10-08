@@ -119,9 +119,13 @@ Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0
   (`write.log`, `before.img`, `written.img` kept in `Radio reads/<date time> write/`). A separate read afterwards gave six CSVs
   byte-identical to what was written, and an image that differs from `written.img` only in the 8 timestamp bytes in its header. The radio
   restarted and works with the new codeplug.
+- Diagnostics USB entry: with the radio connected the report shows "GD32 Virtual ComPort in FS Mode", idVendor 10473 (0x28E9),
+  idProduct 394 (0x018A).
 
 **Fixed**
 
+- Diagnostics USB line (`Diagnostics.cs`): it said "no device with vendor 0x28e9" with the radio connected, because
+  `system_profiler SPUSBDataType` prints nothing on recent macOS. It now reads the I/O registry (`ioreg -r -c IOUSBHostDevice -l`).
 - Wizard zones step (`WizardView.cs`): clicking a grouping option regrouped with the first ticked option instead of the one clicked,
   because the new button's checked event fires before the old one is unchecked. "One zone per country" gave state zones. `Rezone` now
   takes the clicked scheme.
@@ -139,6 +143,4 @@ Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0
 
 **Known issues**
 
-- Help > Diagnostics (`--diagnose`) says "no device with vendor 0x28e9" for the USB check even with the radio connected and detected; the
-  `system_profiler` call returned nothing from the shell used. Detection itself does not depend on it.
 - A zone for "One zone per country" is named "United States of" (the country name is cut to 16 characters).
