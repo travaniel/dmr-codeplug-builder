@@ -282,6 +282,63 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void CallerDatabaseFromRadioIdUsers()
+        {
+            // First lines of radioid.net/static/user.csv (2026-10-08), plus made-up ones for the cases.
+            const string csv = "RADIO_ID,CALLSIGN,FIRST_NAME,LAST_NAME,CITY,STATE,COUNTRY\n" +
+                               "1023008,VE3JMR,Mark,,Niagara Falls,Ontario,Canada\n" +
+                               "1023007,VA3BOC,Hans Juergen,,Cornwall,Ontario,Canada\n" +
+                               "3226509,w6ozz,Austin,Thompson,Brownwood,Texas,United States\n" +
+                               "3226509,W6OZZ,Duplicate,,Brownwood,Texas,United States\n" +
+                               "3106001,K0TEST,\"Pat, Jr\",Smith,Los Angeles,California,United States\n" +
+                               "2621234,DL1ABC,Jürgen,Müller,München,Bayern,Germany\n" +
+                               "notanumber,X,,,,,\n";
+            var all = CallerDatabase.Parse(new StringReader(csv)).ToList();
+            Assert.Equal(6, all.Count, "bad line skipped");
+            Assert.Equal("W6OZZ", all[2].Callsign, "callsign upper case");
+            Assert.Equal("Pat, Jr Smith", all[4].Name, "quoted comma, first + last");
+
+            var world = CallerDatabase.Select(all, CallerScopes.World, null, CallerDatabase.Capacity, out int cut);
+            Assert.Equal("1023007,1023008,2621234,3106001,3226509", string.Join(",", world.Select(c => c.Id)), "each ID once, ascending");
+            Assert.Equal("Austin Thompson", world.Last().Name, "first listing wins");
+            Assert.Equal(0, CallerDatabase.Select(all, CallerScopes.Off, null, 0, out cut).Count, "off");
+            Assert.Equal(2, CallerDatabase.Select(all, CallerScopes.Countries, new[] { "canada" }, 0, out cut).Count, "countries, any case");
+            Assert.Equal("3226509", string.Join(",", CallerDatabase.Select(all, CallerScopes.UsStates, new[] { "Texas" }, 0, out cut).Select(c => c.Id)), "US states");
+            var two = CallerDatabase.Select(all, CallerScopes.World, null, 2, out cut);
+            Assert.True(two.Count == 2 && cut == 3, "capacity");
+
+            // Filled into a template (the header from HANDOFF 4; the real row is still to come from the CPS).
+            var template = CsvTable.Parse("\"No.\",\"Radio ID\",\"Callsign\",\"Name\",\"City\",\"State\",\"Country\",\"Remarks\",\"Call Type\",\"Call Alert\"\r\n" +
+                                          "\"1\",\"1\",\"X\",\"X\",\"X\",\"X\",\"X\",\"X\",\"Private Call\",\"None\"\r\n");
+            var t = CallerDatabase.ToTable(world, template);
+            Assert.Equal(5, t.Rows.Count, "rows");
+            var de = t.Rows.First(r => t.Get(r, "Radio ID") == "2621234");
+            Assert.Equal("Jurgen Muller|Munchen|3", t.Get(de, "Name") + "|" + t.Get(de, "City") + "|" + t.Get(de, "No."), "ASCII, numbered");
+            Assert.Equal("Private Call|None|", t.Get(de, "Call Type") + "|" + t.Get(de, "Call Alert") + "|" + t.Get(de, "Remarks"), "template values kept, remarks cleared");
+            Assert.True(ProjectStore.FromJson("{\"Options\":{}}").Options.CallerScope == null, "off for every project by default");
+        }
+
+        /// <summary>The whole RadioID user database, when CODEPLUGBUILDER_USERS_CSV points at a downloaded user.csv.</summary>
+        [Test]
+        static void CallerDatabaseRealFile()
+        {
+            string path = Environment.GetEnvironmentVariable("CODEPLUGBUILDER_USERS_CSV");
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) throw new SkipException("set CODEPLUGBUILDER_USERS_CSV to a downloaded radioid.net user.csv");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            List<Caller> all;
+            using (var r = new StreamReader(path, System.Text.Encoding.UTF8)) all = CallerDatabase.Parse(r).ToList();
+            var world = CallerDatabase.Select(all, CallerScopes.World, null, CallerDatabase.Capacity, out int cut);
+            Console.WriteLine("        user.csv: " + all.Count + " lines, " + world.Count + " callers (cut " + cut + ") in " + sw.ElapsedMilliseconds + " ms; Texas " +
+                              CallerDatabase.Select(all, CallerScopes.UsStates, new[] { "Texas" }, 0, out _).Count + ", US " +
+                              CallerDatabase.Select(all, CallerScopes.Countries, new[] { "United States" }, 0, out _).Count +
+                              "; longest name " + world.Max(c => CallerDatabase.Ascii(c.Name).Length) + ", city " + world.Max(c => CallerDatabase.Ascii(c.City).Length) +
+                              "; non-ASCII names " + world.Count(c => c.Name.Any(ch => ch > 126)) + ", nothing left after folding " +
+                              world.Count(c => c.Name.Length > 0 && CallerDatabase.Ascii(c.Name).Length == 0));
+            Assert.True(world.Count > 100000 && world.Count <= CallerDatabase.Capacity, "a plausible count: " + world.Count);
+            Assert.True(world.Any(c => c.Id == 3226509 && c.Callsign == "W6OZZ"), "the user is in it");
+        }
+
+        [Test]
         static void BrandMeisterTellsWhichRepeatersAreOffTheAir()
         {
             // Device list (shape of api.brandmeister.network/v2/device, 2026-10-08): KC5EZZ live, K5ZZZ live under a new ID

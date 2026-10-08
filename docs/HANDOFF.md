@@ -636,6 +636,14 @@ before it's called done.
    dedupe IDs; ascending ID order. Capacity check per model. Add the section to `CpsFormat.ListIndex`/`Files` and
    `GeneratedCodeplug.Files()`. Unknowns: CPS import time for ~300,000 rows, field length limits. Write to radio can't
    send it yet (the CPS writes the caller database separately; needs a USB capture): say so and point to Export.
+   *Started 2026-10-08 (no output yet):* `Core/CallerDatabase.cs` reads user.csv (the real file, 2026-10-08: 314,598 users in
+   0.44 s, all fit 500,000; Texas 9,306, US 132,991; longest name 79 and city 64 characters; 1,785 names with non-ASCII letters,
+   362 of them nothing but non-Latin script, so empty after folding to ASCII), picks by scope (`GenerationOptions.CallerScope` +
+   `CallerAreas`, off by default), each ID once in ID order, and fills a template table (`ToTable`: identity columns only; Call
+   Type and Call Alert come from the template row). `Online.CallerDatabaseFileAsync` keeps the download a week. Still to do once the
+   user's real CPS row arrives: built-in template, `.LST` section 15 in `CpsFormat`, generator output, Settings UI (both apps),
+   the "replaces the radio's list" warning, field length limits. Optional check: `CODEPLUGBUILDER_USERS_CSV=user.csv` runs
+   `OnlineTests.CallerDatabaseRealFile`.
 2. **APRS from the callsign (APRS.CSV, section 19, and Write to radio).** New `AprsSettings` on the project: callsign
    (last word of the Radio ID name or the RadioID lookup), SSID (7 handheld, 9 mobile), symbol table + icon, path
    `WIDE1-1,WIDE2-1`, analog frequency by region (144.390 North America, 144.800 Europe), destination `APBT62` (keep),

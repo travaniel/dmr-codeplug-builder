@@ -301,6 +301,13 @@ namespace CodeplugBuilder.Core
         /// doesn't change.
         /// </summary>
         [DataMember(Order = 13, EmitDefaultValue = false)] public bool PoliteTransmit { get; set; }
+        /// <summary>
+        /// Caller names (DigitalContactList.CSV) from RadioID.net: <see cref="CallerScopes"/>; null/empty = off (the default:
+        /// importing the file replaces the radio's list). Not generated until a real CPS row is the template (<see cref="CallerDatabase"/>).
+        /// </summary>
+        [DataMember(Order = 14, EmitDefaultValue = false)] public string CallerScope { get; set; }
+        /// <summary>Countries or US states for <see cref="CallerScope"/> Countries / UsStates.</summary>
+        [DataMember(Order = 15, EmitDefaultValue = false)] public List<string> CallerAreas { get; set; }
 
         public GenerationOptions()
         {

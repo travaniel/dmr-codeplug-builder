@@ -51,6 +51,40 @@ namespace CodeplugBuilder.App
             }
         }
 
+        /// <summary>
+        /// RadioID.net's user database (<see cref="CallerDatabase.Url"/>, ~17 MB) as a file in the settings folder, downloaded
+        /// at most once a week. Returns the path, or null when there is neither a download nor an old copy.
+        /// </summary>
+        public static Task<string> CallerDatabaseFileAsync(bool forceRefresh = false)
+        {
+            return Task.Run(() =>
+            {
+                string file = Path.Combine(AppSettings.Folder, "radioid-users.csv");
+                bool fresh = File.Exists(file) && (DateTime.Now - File.GetLastWriteTime(file)).TotalDays < 7;
+                if (fresh && !forceRefresh) return file;
+                try
+                {
+                    Directory.CreateDirectory(AppSettings.Folder);
+                    string tmp = file + ".tmp";
+                    var req = (HttpWebRequest)WebRequest.Create(CallerDatabase.Url);
+                    req.UserAgent = UserAgent;
+                    req.Timeout = req.ReadWriteTimeout = 120000;
+                    req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+                    using (var resp = (HttpWebResponse)req.GetResponse())
+                    using (var src = resp.GetResponseStream())
+                    using (var dst = File.Create(tmp))
+                        src.CopyTo(dst);
+                    if (File.Exists(file)) File.Delete(file);
+                    File.Move(tmp, file);
+                    return file;
+                }
+                catch
+                {
+                    return File.Exists(file) ? file : null;
+                }
+            });
+        }
+
         /// <summary>Every repeater RadioID.net lists for a state or province (all pages).</summary>
         public static Task<List<OnlineRepeater>> RepeatersAsync(string state, IProgress<string> progress)
         {
