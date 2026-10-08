@@ -722,7 +722,7 @@ namespace CodeplugBuilder.Core
         /// The project's talkgroup with this ID, or a new one with a unique name. A talkgroup the project only knows
         /// as "TG 1234" takes the real name when there is one now.
         /// </summary>
-        static Talkgroup Ensure(Project p, int id, string name, string callType, OnlineImportResult result)
+        internal static Talkgroup Ensure(Project p, int id, string name, string callType, OnlineImportResult result)
         {
             bool Taken(string x) { return p.Talkgroups.Any(t => t.Id != id && string.Equals(t.Name, x, StringComparison.OrdinalIgnoreCase)); }
             var tg = p.FindTalkgroup(id);

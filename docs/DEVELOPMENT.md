@@ -97,6 +97,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `Geo.cs` | `GeoAtlas`: the embedded map (`Geo/atlas.gz`: countries, states/provinces, US counties, ~63k places). `Locate(city, state, country)` → `GeoLocation` (point + areas), `AreaAt`, `FindCountry/State/Place`, `Key()` name folding |
 | `RepeaterBook.cs` | RepeaterBook without the API: `ChirpCsv` reads a CHIRP export (Name = callsign, Comment = city, CHIRP tone modes), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, zone suggestion from the county, `Add`). `StateFromName` (state from the file/folder name), `ToListings` (CHIRP lines as `OnlineRepeater`s with `Analog` set, placed at their towns, so the map picker and `OnlineImporter.AddRepeaters` take them like DMR listings) |
 | `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
+| `Updates.cs` | `UpdateCheck`: Check for updates (item 12): `Compare` (project vs current RadioID.net listings, BrandMeister last-seen and static talkgroups, new repeaters in the project's counties) → `UpdateItem`s with suggested ticks; `Apply` |
 | `Home.cs` | `HomeLocation` (Project.Home; `Parse` a typed town on the atlas), `Distances` (km, bearing, "148 mi NE"), `ZoneOrder.Sort` (hotspot, favorites, areas nearest first, talkgroup zones, utilities), `TalkgroupOrder` (local first) |
 | `Zoning.cs` | `ZonePlanner`: automatic zone names per county/city/state/country/band/single, `Apply`, one spelling per zone (`Canonical`) |
 | `Radio/*.cs` | Direct radio access (HANDOFF 4d): `AnytoneLink` (serial protocol over a Stream), `MemoryImage` (16-byte blocks, `radio.img`), `Dmr6x2Pro` (memory map, read plan, `RadioReader`, CPS write set), `RadioCodeplug` (decoder), `RadioCsv` (→ CPS CSVs, `Compare`), `RadioEncoder` (CPS tables → image, the reverse), `RadioWriter` (full CPS-style write, guards), `RadioSettings` (table of optional settings: read/write/report; App `RadioSettingsForm` is the dev editor), `RecommendedSettings` (settings Write codeplug to radio offers to change: send talker alias) |
@@ -165,7 +166,10 @@ programmatic changes don't fire edits.
   Windows and Mac. Older projects' output unchanged. Still to check in the CPS: a multi-zone Zone.CSV import (HANDOFF 7, "To check").
   **Order that matches use** (item 8): `Project.Home` (Settings > Home town, callsign lookup, wizard), distance and direction on the
   Repeaters list, Zones > *Sort by distance* (`ZoneOrder`), *Local first* talkgroup order (`TalkgroupOrder`), talkgroup zones nearest first
-  with an optional radius. Nothing reorders an existing project unless the user clicks. 104 tests.
+  with an optional radius. Nothing reorders an existing project unless the user clicks.
+  **Check for updates** (item 12, done before 9 because 9 needs the CPS): File > Check repeaters for updates compares repeaters added
+  from RadioID.net with RadioID.net and BrandMeister now (frequency, color code, talkgroups, off air, delisted, new repeaters in their
+  counties), ticks, applies the ticked ones (`UpdateCheck`, `Online.CheckForUpdates`; dev `--check-updates`). Windows and Mac. 108 tests.
 - **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
   amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
   and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the

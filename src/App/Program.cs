@@ -37,12 +37,35 @@ namespace CodeplugBuilder.App
                 else if (args[i] == "--radio-settings-snapshot" && i + 2 < args.Length) return RadioSettingsForm.Snapshot(args[i + 1], args[i + 2]);
                 else if (args[i] == "--radio-settings-ui") { Application.Run(new RadioSettingsForm(i + 1 < args.Length ? Path.GetFullPath(args[i + 1]) : null)); return 0; }
                 else if (args[i] == "--map-snapshot" && i + 1 < args.Length) return MapSnapshots.Run(args[i + 1]);
+                else if (args[i] == "--check-updates" && i + 2 < args.Length) return CheckUpdatesCli(args[i + 1], args[i + 2]);
                 else if (args[i] == "--repeaterbook-snapshot" && i + 3 < args.Length) return RepeaterBookSnapshot.Run(args[i + 1], args[i + 2], args[i + 3]);
                 else if (args[i] == "--ui-walkthrough" && i + 1 < args.Length) return UiWalkthrough.Run(args[i + 1], i + 2 < args.Length ? args[i + 2] : "W6OZZ", i + 3 < args.Length ? args[i + 3] : null);
                 else if (File.Exists(args[i])) path = Path.GetFullPath(args[i]);
             }
             Application.Run(new MainForm(path, tab));
             return 0;
+        }
+
+        /// <summary>Dev check: <c>--check-updates project.cpb report.txt</c> runs Check for updates (nothing is applied or saved).</summary>
+        static int CheckUpdatesCli(string projectPath, string reportPath)
+        {
+            var lines = new List<string>();
+            try
+            {
+                var p = ProjectStore.Load(projectPath);
+                var started = DateTime.Now;
+                var report = Online.CheckForUpdates(p, null, System.Threading.CancellationToken.None);
+                lines.Add(report.Tracked + " tracked repeater(s), areas " + string.Join(", ", UpdateCheck.Areas(p)) + ", " + (DateTime.Now - started).TotalSeconds.ToString("0.0") + " s");
+                foreach (var e in report.Errors) lines.Add("ERROR " + e);
+                foreach (var i in report.Items) lines.Add((i.Ticked ? "[x] " : "[ ] ") + i.Kind + ": " + i.Text);
+                var copy = ProjectStore.FromJson(ProjectStore.ToJson(p));
+                var again = Online.CheckForUpdates(copy, null, System.Threading.CancellationToken.None);
+                foreach (var n in UpdateCheck.Apply(copy, again.Items.Where(i => i.Ticked), again.BrandMeisterNames)) lines.Add("applied: " + n);
+                lines.Add("after applying, validation: " + string.Join(" | ", Validator.Validate(copy).Where(x => x.Severity == Severity.Error).Select(x => x.Message)));
+            }
+            catch (Exception ex) { lines.Add("FAILED " + ex); }
+            File.WriteAllLines(reportPath, lines);
+            return lines.Any(l => l.StartsWith("FAILED")) ? 1 : 0;
         }
     }
 

@@ -442,6 +442,8 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 13, EmitDefaultValue = false)] public AprsPlan Aprs { get; set; }
         /// <summary>Where the user lives (distances, zone order, nearest-first talkgroup zones). Null = not set; nothing changes.</summary>
         [DataMember(Order = 14, EmitDefaultValue = false)] public HomeLocation Home { get; set; }
+        /// <summary>"2026-10-08": when Check for updates last ran on this project (<see cref="UpdateCheck"/>); null = never.</summary>
+        [DataMember(Order = 15, EmitDefaultValue = false)] public string LastUpdateCheck { get; set; }
 
         public Project() { Init(); }
 

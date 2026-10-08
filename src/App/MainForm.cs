@@ -54,6 +54,7 @@ namespace CodeplugBuilder.App
             file.DropDownItems.Add(ProjectItem(Item("Save &as...", Keys.Control | Keys.Shift | Keys.S, (s, e) => SaveAs())));
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add(Item("&Import from CPS export...", Keys.None, (s, e) => ImportFromCps()));
+            file.DropDownItems.Add(ProjectItem(Item("Check repeaters for &updates...", Keys.None, (s, e) => CheckForUpdates())));
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add(Item("E&xit", Keys.None, (s, e) => Close()));
             var export = new ToolStripMenuItem("E&xport");
@@ -416,6 +417,40 @@ namespace CodeplugBuilder.App
         {
             try { Directory.CreateDirectory(AppSettings.DocumentsFolder); } catch { }
             return AppSettings.DocumentsFolder;
+        }
+
+        /// <summary>File > Check repeaters for updates: download, show the differences with ticks, apply the ticked ones.</summary>
+        void CheckForUpdates()
+        {
+            var p = session.Project;
+            if (UpdateCheck.Tracked(p).Count == 0)
+            {
+                Ui.Info(this, "None of this project's repeaters came from RadioID.net (Add from map, Find online or the wizard), so there is nothing to check. " +
+                              "Repeaters typed in by hand or imported from the CPS have no listing to compare with.");
+                return;
+            }
+            Online.UpdateReport report;
+            var cancel = new System.Threading.CancellationTokenSource();
+            try
+            {
+                report = RadioProgressDialog.Run(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
+                                                 "Asking RadioID.net and BrandMeister about your " + UpdateCheck.Tracked(p).Count + " repeater(s)...");
+            }
+            catch (Exception ex) { Ui.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
+            using (var d = new UpdatesDialog(report, p))
+            {
+                p.LastUpdateCheck = RepeaterHealth.DateText(DateTime.Now); // after the dialog took the previous date
+                session.MarkDirty();
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                var notes = UpdateCheck.Apply(p, d.Ticked, report.BrandMeisterNames);
+                if (d.RefreshCallers)
+                {
+                    try { RadioProgressDialog.Run(this, "Caller names", pr => Online.CallerDatabaseFileAsync(true).Result, "Downloading RadioID.net's user list (about 17 MB)..."); notes.Add("Caller list downloaded again."); }
+                    catch (Exception ex) { notes.Add("Couldn't download the caller list: " + ex.Message); }
+                }
+                session.Replace(p, session.FilePath, true); // every page shows the changes
+                if (notes.Count > 0) using (var n = new IssuesDialog("Updated:", new string[0], notes, false)) n.ShowDialog(this);
+            }
         }
 
         void ImportFromCps()

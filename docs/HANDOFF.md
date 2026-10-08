@@ -785,6 +785,16 @@ before it's called done.
 12. **Check for updates.** For repeaters with a `SourceId`: RadioID by ID (`RadioId.RepeaterIdUrl`) and BrandMeister device
     + static talkgroups → frequency/offset/CC changes, talkgroups added or dropped, off-air; new repeaters in the
     project's areas; a diff with ticks, applied selectively; also refresh caller names. Remember when it last ran.
+    *Built 2026-10-08 (`src/Core/Updates.cs`, `Online.CheckForUpdates`; File > Check repeaters for updates, Windows `UpdatesDialog`, Mac
+    `UpdatesWindow`).* Downloads RadioID.net for the states (abroad: countries) the tracked repeaters (`SourceId` > 0) are in, asks by ID
+    for any not found there (none = delisted), BrandMeister last-seen for BrandMeister-only tracked repeaters and new candidates, and
+    static talkgroups. Items: frequency, color code, talkgroups added (BrandMeister's static list for BrandMeister-only repeaters, else
+    the owner's), talkgroups no longer listed (unticked; zone-set, private and the repeater's own ID left alone), off the air / back on
+    the air, delisted (unticked; applying switches the repeater off), new repeaters in the project's counties (abroad: states) going into
+    the zone of a project repeater there (unticked). Apply goes through `OnlineImporter` (talkgroup names, zone talkgroup sets). Also
+    offers to download the caller list again when caller names are on. `Project.LastUpdateCheck`. Dev check:
+    `--check-updates project.cpb report.txt` (the walkthrough's 12 Texas repeaters: 1.3-2 s; a tampered copy found and fixed its
+    changed frequency and color code). Tests `UpdateTests` (4).
 
 ### Later
 

@@ -614,5 +614,81 @@ namespace CodeplugBuilder.App
             }
             catch { }
         }
+
+        /// <summary>What <see cref="CheckForUpdates"/> found.</summary>
+        public sealed class UpdateReport
+        {
+            public List<UpdateItem> Items = new List<UpdateItem>();
+            public List<string> Errors = new List<string>();
+            public Dictionary<int, string> BrandMeisterNames;
+            public int Tracked;
+        }
+
+        /// <summary>
+        /// Check for updates (roadmap item 12), on a worker thread: downloads RadioID.net's listings for the states (or countries)
+        /// the project's repeaters are in, looks up tracked IDs not found there one by one, asks BrandMeister when it last heard the
+        /// BrandMeister-only ones and for their static talkgroups, and compares (<see cref="UpdateCheck.Compare"/>).
+        /// </summary>
+        public static UpdateReport CheckForUpdates(Project p, IProgress<ReadProgress> progress, CancellationToken token)
+        {
+            var report = new UpdateReport();
+            var atlas = GeoAtlas.BuiltIn();
+            var tracked = UpdateCheck.Tracked(p);
+            report.Tracked = tracked.Count;
+            var bmTask = BrandMeisterNamesAsync();
+            var positions = RepeaterPositionsAsync();
+            var area = new List<OnlineRepeater>();
+            var areas = UpdateCheck.Areas(p);
+            for (int i = 0; i < areas.Count; i++)
+            {
+                token.ThrowIfCancellationRequested();
+                string name = areas[i];
+                bool usState = atlas.FindState(atlas.Find("US"), name) != null;
+                try
+                {
+                    int pages = 1;
+                    for (int page = 1; page <= pages && page <= 60; page++)
+                    {
+                        progress?.Report(new ReadProgress { Done = i, Total = areas.Count, What = "downloading " + name + " from RadioID.net" + (pages > 1 ? " (page " + page + " of " + pages + ")" : "") });
+                        var pg = RadioId.ParseRepeaters(Get(usState ? RadioId.RepeaterUrl(name, page) : RadioId.CountryRepeaterUrl(name, page)));
+                        pages = Math.Max(1, pg.Pages);
+                        area.AddRange(pg.Repeaters);
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { report.Errors.Add(name + ": " + ex.Message); }
+            }
+            foreach (var r in area) if (r.Location == null) r.Location = atlas.Locate(r.City, r.State, r.Country);
+            try { RadioId.ApplyMapPositions(area, positions.Result, atlas); } catch { }
+
+            // Current listing of every tracked repeater: from the area download, else asked by ID (null = RadioID doesn't list it).
+            var listings = new Dictionary<int, OnlineRepeater>();
+            foreach (var r in area) if (r.DmrId > 0 && !listings.ContainsKey(r.DmrId)) listings[r.DmrId] = r;
+            var missing = tracked.Select(r => r.SourceId).Where(id => !listings.ContainsKey(id)).Distinct().ToList();
+            int asked = 0;
+            Parallel.ForEach(missing, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = token }, id =>
+            {
+                try
+                {
+                    var hit = RadioId.ParseRepeaters(Get(RadioId.RepeaterIdUrl(id), 15000)).Repeaters.FirstOrDefault(x => x.DmrId == id);
+                    if (hit != null) hit.Location = atlas.Locate(hit.City, hit.State, hit.Country);
+                    lock (listings) listings[id] = hit;
+                }
+                catch (Exception ex) { lock (report.Errors) report.Errors.Add("repeater " + id + ": " + ex.Message); }
+                lock (listings) progress?.Report(new ReadProgress { Done = ++asked, Total = missing.Count, What = "looking up repeaters RadioID.net lists elsewhere" });
+            });
+
+            // BrandMeister: when it last heard the BrandMeister-only repeaters (tracked and new), and the tracked ones' static talkgroups.
+            var mine = tracked.Where(r => listings.TryGetValue(r.SourceId, out var l) && l != null).Select(r => listings[r.SourceId]).ToList();
+            var codes = new HashSet<string>(p.Repeaters.Select(r => r.AreaCode).Where(c => !string.IsNullOrEmpty(c)), StringComparer.OrdinalIgnoreCase);
+            var have = new HashSet<int>(p.Repeaters.Select(r => r.SourceId));
+            var candidates = area.Where(l => !have.Contains(l.DmrId) && codes.Contains(l.Location?.County?.Code ?? l.Location?.State?.Code ?? ""));
+            var devices = mine.Concat(candidates).Select(l => l.BrandMeisterDeviceId).Where(id => id > 0).Distinct().ToList();
+            var lastSeen = LastSeen(devices, true, progress, token);
+            var statics = StaticTalkgroups(mine.Select(l => l.BrandMeisterDeviceId).Where(id => id > 0), progress, token);
+            try { report.BrandMeisterNames = bmTask.Result; } catch { report.BrandMeisterNames = new Dictionary<int, string>(); }
+            report.Items = UpdateCheck.Compare(p, listings, lastSeen, statics, area, report.BrandMeisterNames, DateTime.UtcNow);
+            return report;
+        }
     }
 }
