@@ -93,7 +93,7 @@ namespace CodeplugBuilder.Core
                     if (!Tones.IsValid(r.ToneEncode)) Error(label + ": \"" + r.ToneEncode + "\" isn't a CTCSS tone or DCS code.");
                     if (!Tones.IsValid(r.ToneDecode)) Error(label + ": \"" + r.ToneDecode + "\" isn't a CTCSS tone or DCS code.");
                 }
-                if (string.IsNullOrWhiteSpace(r.Zone))
+                if (string.IsNullOrWhiteSpace(r.Zone) && !Project.ChannelsOf(r).Any(c => p.OtherZonesOf(c).Count > 0))
                     Warn(label + " isn't in a zone, so you can only reach its channels in channel mode.");
                 if (!string.IsNullOrWhiteSpace(r.OffAirSince))
                     Warn(label + " may be off the air: BrandMeister last heard it on " + r.OffAirSince.Trim() + ". Untick it, or if you know it works, " +

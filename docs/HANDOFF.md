@@ -170,6 +170,11 @@ Export All of the codeplug and writes back what the program doesn't manage:
 
 **Zone.CSV:** No., Zone Name, Zone Channel Member (`a|b|c`), A Channel, B Channel. Names only, no
 frequencies (AnyTone 878 CPS versions add member frequency columns; the generator fills them if present).
+Since members are names, one channel can be listed in several zones (1.5, "zones as views"). The user's own export has no
+such channel; a generated test (`CPSnow\multizone-src` = the user's export with KC5EZZ also in "Hwy 183", the Home zone in
+reverse order and a "Favorites" zone of Texas|KC5EZZ|K5BWD VHF|NOAA CH3; imported and generated to `CPSnow\multizonegen`)
+reproduces that Zone.CSV byte for byte. **Not yet checked in the CPS** that it imports and exports back unchanged (the radio's
+encoder already handles it: a scan-list member's zone index is "the first zone holding it", 4d).
 
 **TalkGroups.CSV:** No., Radio ID (the talkgroup number), Name, Call Type, Call Alert (`None`). The 6X2
 guide warns that duplicate entries make the write to the radio fail.
@@ -736,6 +741,21 @@ before it's called done.
    `CpsImporter` now keeps a channel only in its first zone ("is in more than one zone"): keep the rest as Favorites
    membership, and extend the round trip to multi-zone Zone.CSV. UI: "Add to favorites" on channels; new-zone kinds on
    the Zones tab.
+   *Built 2026-10-08 (Core, Windows, Mac; CPS check pending, below).* `Repeater.Zone` stays each channel's own zone. `ZoneInfo`
+   gained `Kind` (`ZoneKinds`; null = worked out by `Project.ZoneKindOf`: a rule = Talkgroup, only presets = Utility, only listed
+   channels = Favorites, else Area), `Members` (`ZoneMember`: repeater `Id` + talkgroup + slot + `Nth`; `Repeater.Id` "R1"... is
+   given only when something refers to it, `Clone` clears it), `RuleTalkgroups` and `RuleZones`. `Project.ZoneChannels(zone)` =
+   listed members in order, then the zone's own repeaters' channels, then rule matches; each once, only switched-on repeaters.
+   With no members and no rule it is exactly the old list, so older projects' output is unchanged. The generator writes zones
+   from it; `SyncZones` keeps view zones and drops members whose repeater or talkgroup is gone (`PruneZoneMembers`); rename,
+   talkgroup ID change and delete follow. Importer: a channel's first zone is its own; for each zone whose CPS member list
+   differs from what `ZoneChannels` would give (shared channels, or a repeater's channels mixed with others), the whole list is
+   stored as `Members`; a zone of only shared channels is Favorites. Test `ZoneViewTests.RoundTripKeepsChannelsInSeveralZones`
+   (the user's export plus a shared channel, a reversed zone and a Favorites zone: Channel, Zone and TalkGroups byte for byte).
+   UI: Zones tab Kind column, *New favorites/talkgroup zone*, *Delete* (zones with no repeaters of their own), Channels tab
+   "In this zone because" + *Add channels... / Remove from zone / Move up / Move down* (moving pins the order), Rule tab for
+   talkgroup zones; Repeaters tab *Add to zone...* and the zone filter shows listed repeaters; `ZoneMembersDialog` /
+   `ZoneMembersWindow`. Validator doesn't warn "isn't in a zone" for a repeater whose channels are in another zone.
 8. **Order that matches use.** `Project.Home` (point + town). Zone order: home/hotspot/favorites, area zones by distance
    from home, utilities last; once the user reorders, keep their order. Within a repeater: local (8, 9, its own ID),
    state (31xx), regional, wide area (91, 93, 3100), private calls (RATS convention); optional. Distance and bearing in
@@ -798,6 +818,9 @@ before it's called done.
 - Send talker alias after an app write with the recommendation accepted: CPS *Read from radio* > Optional Setting > Talker
   Alias Settings shows Send Talker Alias on (and nothing else there changed).
 - Where the CPS writes satellite data and the caller database (USB captures).
+- Zones sharing channels (item 7): import `CPSnow\multizonegen\CodeplugBuilder.LST` into the CPS, Export All to a new folder, and
+  compare its Zone.CSV with the generated one (expected: identical, no conflict dialogs; KC5EZZ in San Angelo DMR, Hwy 183 and
+  Favorites). Optional: write it to the radio and check that the Favorites zone shows those four channels.
 
 ### Sources (2026-10-08)
 

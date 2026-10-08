@@ -81,6 +81,7 @@ namespace CodeplugBuilder.App
                 Ui.Button("Add DMR repeater", (s, e) => Add(Repeater.NewDigital("New repeater"))),
                 Ui.Button("Add analog", (s, e) => Add(Repeater.NewAnalog("New analog"))),
                 Ui.Button("Duplicate", (s, e) => Duplicate()),
+                Ui.Button("Add to zone...", (s, e) => AddToZone()),
                 Ui.Button("Delete", (s, e) => Delete()),
                 btnUp, btnDown,
                 Ui.Button("Add NOAA weather", (s, e) => AddWeather()),
@@ -146,13 +147,16 @@ namespace CodeplugBuilder.App
             {
                 RefillFilter();
                 string filter = Filter;
+                // A zone shows its own repeaters and the ones with channels listed in it (favourites, talkgroup zones).
+                var inZone = new HashSet<Repeater>(filter == null ? Enumerable.Empty<Repeater>()
+                    : session.Project.Repeaters.Where(r => Project.SameZone(r.Zone, filter)).Concat(session.Project.ZoneChannels(filter).Select(c => c.Repeater)));
 
                 list.BeginUpdate();
                 list.Items.Clear();
                 foreach (var r in session.Project.Repeaters)
                 {
                     if (filter == "(no zone)" && !string.IsNullOrWhiteSpace(r.Zone)) continue;
-                    if (filter != null && filter != "(no zone)" && !Project.SameZone(r.Zone, filter)) continue;
+                    if (filter != null && filter != "(no zone)" && !inZone.Contains(r)) continue;
                     var item = new ListViewItem { Tag = r };
                     item.SubItems.Add("");
                     item.SubItems.Add("");
@@ -274,6 +278,20 @@ namespace CodeplugBuilder.App
             session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new
             cboFilter.SelectedIndex = 0;
             Reload(added[0]);
+        }
+
+        /// <summary>Puts the selected repeater's channels into another zone too (favourites).</summary>
+        void AddToZone()
+        {
+            var r = Selected;
+            if (r == null) return;
+            if (r.IsDigital && r.Talkgroups.Count == 0) { Ui.Info(FindForm(), "Add talkgroups to " + r.Name + " first: each one is a channel."); return; }
+            using (var d = new ZoneMembersDialog(session, null, r))
+            {
+                if (d.ShowDialog(FindForm()) != DialogResult.OK || d.Added == 0) return;
+                session.MarkDirty();
+                Ui.Info(FindForm(), d.Added + " channel(s) of " + r.Name + " are now also in zone \"" + d.Zone + "\" (Zones tab).");
+            }
         }
 
         void Duplicate()

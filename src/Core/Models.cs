@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.Serialization;
 
@@ -159,6 +160,11 @@ namespace CodeplugBuilder.Core
         /// Null when it was on the air, on other networks or typed in. The Validator warns; the editor can clear it.
         /// </summary>
         [DataMember(Order = 26, EmitDefaultValue = false)] public string OffAirSince { get; set; }
+        /// <summary>
+        /// Short id ("R12") that zone members (<see cref="ZoneMember"/>) use to point at this repeater. Null until something
+        /// refers to it (<see cref="Project.EnsureRepeaterId"/>), so older files don't change.
+        /// </summary>
+        [DataMember(Order = 27, EmitDefaultValue = false)] public string Id { get; set; }
 
         public Repeater() { Init(); }
 
@@ -230,6 +236,7 @@ namespace CodeplugBuilder.Core
         {
             var r = (Repeater)MemberwiseClone();
             r.Talkgroups = Talkgroups.Select(t => t.Clone()).ToList();
+            r.Id = null; // a copy is another repeater: zone members keep pointing at the original
             return r;
         }
 
@@ -249,6 +256,17 @@ namespace CodeplugBuilder.Core
         /// ever reads the repeaters' own lists.
         /// </summary>
         [DataMember(Order = 4, EmitDefaultValue = false)] public List<ZoneTalkgroup> Talkgroups { get; set; }
+        /// <summary><see cref="ZoneKinds"/>; null = worked out from what the zone holds (<see cref="Project.ZoneKindOf"/>).</summary>
+        [DataMember(Order = 5, EmitDefaultValue = false)] public string Kind { get; set; }
+        /// <summary>
+        /// Channels in this zone besides the repeaters whose own zone it is: favourites, or channels a CPS zone shared with
+        /// another zone. They come first, in this order, then the zone's own repeaters' channels that aren't listed. Null = none.
+        /// </summary>
+        [DataMember(Order = 6, EmitDefaultValue = false)] public List<ZoneMember> Members { get; set; }
+        /// <summary>Talkgroup zone: every channel carrying one of these talkgroups (<see cref="ZoneKinds.Talkgroup"/>). Null = no rule.</summary>
+        [DataMember(Order = 7, EmitDefaultValue = false)] public List<int> RuleTalkgroups { get; set; }
+        /// <summary>Talkgroup zone: only repeaters whose own zone is one of these. Null = every repeater.</summary>
+        [DataMember(Order = 8, EmitDefaultValue = false)] public List<string> RuleZones { get; set; }
 
         public ZoneInfo() { Name = ""; }
         public ZoneInfo(string name) { Name = name; }
@@ -256,11 +274,61 @@ namespace CodeplugBuilder.Core
         [OnDeserializing] void OnDeserializing(StreamingContext c) { Name = ""; }
 
         public bool HasTalkgroups => Talkgroups != null && Talkgroups.Count > 0;
+        public bool HasMembers => Members != null && Members.Count > 0;
+        public bool HasRule => RuleTalkgroups != null && RuleTalkgroups.Count > 0;
+
+        /// <summary>A zone that stays even when no repeater has it as its own zone.</summary>
+        public bool IsView => HasMembers || HasRule || Kind == ZoneKinds.Favorites || Kind == ZoneKinds.Talkgroup;
 
         public ZoneTalkgroup FindTalkgroup(int id)
         {
             return Talkgroups?.FirstOrDefault(t => t.TalkgroupId == id);
         }
+    }
+
+    /// <summary>What a zone is for. Every kind can also hold repeaters that have it as their own zone.</summary>
+    public static class ZoneKinds
+    {
+        /// <summary>Repeaters of a place (county, city, band...): the zone named on each repeater.</summary>
+        public const string Area = "Area";
+        /// <summary>Hand-picked channels from anywhere (<see cref="ZoneInfo.Members"/>).</summary>
+        public const string Favorites = "Favorites";
+        /// <summary>A rule: one or more talkgroups on the repeaters of some zones (<see cref="ZoneInfo.RuleTalkgroups"/>).</summary>
+        public const string Talkgroup = "Talkgroup";
+        /// <summary>Simplex, weather, APRS, satellites.</summary>
+        public const string Utility = "Utility";
+        public static readonly string[] Values = { Area, Favorites, Talkgroup, Utility };
+    }
+
+    /// <summary>
+    /// One channel in a zone's <see cref="ZoneInfo.Members"/>: a repeater (by <see cref="Repeater.Id"/>) and, for DMR, the
+    /// talkgroup and slot. Names aren't used because automatic channel names change with prefixes and talkgroup names.
+    /// </summary>
+    [DataContract(Namespace = "")]
+    public sealed class ZoneMember
+    {
+        [DataMember(Order = 1)] public string Repeater { get; set; }
+        /// <summary>0 for an analog channel.</summary>
+        [DataMember(Order = 2, EmitDefaultValue = false)] public int TalkgroupId { get; set; }
+        [DataMember(Order = 3, EmitDefaultValue = false)] public int Slot { get; set; }
+        /// <summary>Which one, when the repeater has the same talkgroup on the same slot more than once (0 = the first).</summary>
+        [DataMember(Order = 4, EmitDefaultValue = false)] public int Nth { get; set; }
+
+        public ZoneMember() { }
+        public ZoneMember(string repeater, int talkgroupId, int slot) { Repeater = repeater; TalkgroupId = talkgroupId; Slot = slot; }
+    }
+
+    /// <summary>One channel of the project: an analog repeater (<see cref="Entry"/> null) or one talkgroup entry of a DMR repeater.</summary>
+    public struct ChannelRef : IEquatable<ChannelRef>
+    {
+        public readonly Repeater Repeater;
+        public readonly RepeaterTalkgroup Entry;
+        public ChannelRef(Repeater r, RepeaterTalkgroup e) { Repeater = r; Entry = e; }
+        /// <summary>The object that stands for the channel: the entry, or the analog repeater.</summary>
+        public object Key => (object)Entry ?? Repeater;
+        public bool Equals(ChannelRef o) { return ReferenceEquals(Key, o.Key); }
+        public override bool Equals(object o) { return o is ChannelRef c && Equals(c); }
+        public override int GetHashCode() { return Key == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Key); }
     }
 
     /// <summary>A talkgroup in a zone's set, with the slot it goes on for repeaters that don't already carry it.</summary>
@@ -427,6 +495,15 @@ namespace CodeplugBuilder.Core
                 foreach (var t in z.Talkgroups) if (t.Slot != 2) t.Slot = 1;
                 if (z.Talkgroups.Count == 0) z.Talkgroups = null;
             }
+            foreach (var z in Zones)
+            {
+                if (z.Kind != null && !ZoneKinds.Values.Contains(z.Kind)) z.Kind = null;
+                z.Members?.RemoveAll(m => m == null || string.IsNullOrEmpty(m.Repeater));
+                z.RuleTalkgroups?.RemoveAll(id => id <= 0);
+                z.RuleZones?.RemoveAll(string.IsNullOrWhiteSpace);
+                if (z.RuleTalkgroups?.Count == 0) z.RuleTalkgroups = null;
+                if (z.RuleZones?.Count == 0) z.RuleZones = null;
+            }
             SyncZones();
             if (FileVersion < 2) KeepOldChannelNames();
             Presets.SortNoaaWeather(this);
@@ -490,7 +567,8 @@ namespace CodeplugBuilder.Core
 
         /// <summary>
         /// Keeps <see cref="Zones"/> in step with the repeaters: adds an entry for every zone name a repeater
-        /// (or the hotspot) uses, keeping the existing order, and drops zones nothing uses any more.
+        /// (or the hotspot) uses, keeping the existing order, and drops zones nothing uses any more. Favorites and
+        /// talkgroup zones (<see cref="ZoneInfo.IsView"/>) stay; their members that point at deleted channels go.
         /// </summary>
         public void SyncZones()
         {
@@ -502,7 +580,8 @@ namespace CodeplugBuilder.Core
                 used.Add(z);
                 if (FindZone(z) == null) Zones.Add(new ZoneInfo(z));
             }
-            Zones.RemoveAll(z => !used.Contains((z.Name ?? "").Trim()));
+            PruneZoneMembers();
+            Zones.RemoveAll(z => !used.Contains((z.Name ?? "").Trim()) && !(z.IsView && (z.Name ?? "").Trim().Length > 0));
         }
 
         /// <summary>Renames a zone everywhere it is used.</summary>
@@ -511,19 +590,182 @@ namespace CodeplugBuilder.Core
             newName = (newName ?? "").Trim();
             foreach (var r in AllRepeaters())
                 if (SameZone(r.Zone, oldName)) r.Zone = newName;
+            foreach (var z in Zones)
+                if (z.RuleZones != null)
+                    z.RuleZones = z.RuleZones.Select(n => SameZone(n, oldName) ? newName : n).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var existing = FindZone(newName);
             var info = FindZone(oldName);
             if (info != null && existing != null && existing != info)
             {
-                // Merging: the combined zone keeps both talkgroup sets.
+                // Merging: the combined zone keeps both talkgroup sets, both member lists and both rules.
                 foreach (var t in info.Talkgroups ?? new List<ZoneTalkgroup>())
                     if (existing.FindTalkgroup(t.TalkgroupId) == null)
                         (existing.Talkgroups ?? (existing.Talkgroups = new List<ZoneTalkgroup>())).Add(new ZoneTalkgroup(t.TalkgroupId, t.Slot));
+                foreach (var m in info.Members ?? new List<ZoneMember>())
+                    if (!(existing.Members ?? new List<ZoneMember>()).Any(x => SameMember(x, m)))
+                        (existing.Members ?? (existing.Members = new List<ZoneMember>())).Add(m);
+                foreach (int id in info.RuleTalkgroups ?? new List<int>())
+                    if (!(existing.RuleTalkgroups ?? new List<int>()).Contains(id))
+                        (existing.RuleTalkgroups ?? (existing.RuleTalkgroups = new List<int>())).Add(id);
+                if (existing.Kind == null) existing.Kind = info.Kind;
                 Zones.Remove(info);
                 foreach (var r in ZoneRepeaters(newName)) ApplyZoneTalkgroups(r);
             }
             else if (info != null) info.Name = newName;
             SyncZones();
+        }
+
+        // ------------------------------------------------------------------
+        // Zones as views: favourites, talkgroup zones, a channel in several zones
+        // ------------------------------------------------------------------
+
+        /// <summary>What a zone is for: its stored <see cref="ZoneInfo.Kind"/>, or worked out from what it holds.</summary>
+        public string ZoneKindOf(ZoneInfo z)
+        {
+            if (z == null) return ZoneKinds.Area;
+            if (z.Kind != null) return z.Kind;
+            if (z.HasRule) return ZoneKinds.Talkgroup;
+            var own = AllRepeaters().Where(r => (r != Hotspot || HotspotEnabled) && SameZone(r.Zone, z.Name)).ToList();
+            if (own.Count == 0) return z.HasMembers ? ZoneKinds.Favorites : ZoneKinds.Area;
+            return own.All(Presets.IsPreset) ? ZoneKinds.Utility : ZoneKinds.Area;
+        }
+
+        /// <summary>Gives a repeater an <see cref="Repeater.Id"/> if it has none ("R1", "R2"...), so zone members can point at it.</summary>
+        public string EnsureRepeaterId(Repeater r)
+        {
+            if (!string.IsNullOrEmpty(r.Id) && AllRepeaters().Count(x => x.Id == r.Id) == 1) return r.Id;
+            int n = 1;
+            var taken = new HashSet<string>(AllRepeaters().Where(x => x != r).Select(x => x.Id).Where(x => x != null), StringComparer.OrdinalIgnoreCase);
+            while (taken.Contains("R" + n.ToString(CultureInfo.InvariantCulture))) n++;
+            return r.Id = "R" + n.ToString(CultureInfo.InvariantCulture);
+        }
+
+        public Repeater FindRepeaterById(string id)
+        {
+            return string.IsNullOrEmpty(id) ? null : AllRepeaters().FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        static bool SameMember(ZoneMember a, ZoneMember b)
+        {
+            return string.Equals(a.Repeater, b.Repeater, StringComparison.OrdinalIgnoreCase) && a.TalkgroupId == b.TalkgroupId && a.Slot == b.Slot && a.Nth == b.Nth;
+        }
+
+        /// <summary>The zone member that stands for a channel (gives the repeater an id).</summary>
+        public ZoneMember MemberFor(ChannelRef c)
+        {
+            string id = EnsureRepeaterId(c.Repeater);
+            if (c.Entry == null) return new ZoneMember(id, 0, 0);
+            var e = c.Entry;
+            int nth = c.Repeater.Talkgroups.Where(x => x.TalkgroupId == e.TalkgroupId && x.Slot == e.Slot).ToList().IndexOf(e);
+            return new ZoneMember(id, e.TalkgroupId, e.Slot == 2 ? 2 : 1) { Nth = Math.Max(0, nth) };
+        }
+
+        /// <summary>The channel a zone member points at: same repeater, talkgroup and slot, else the talkgroup on the other slot. Null when gone.</summary>
+        public ChannelRef? Resolve(ZoneMember m)
+        {
+            var r = FindRepeaterById(m?.Repeater);
+            if (r == null) return null;
+            if (!r.IsDigital) return m.TalkgroupId == 0 ? new ChannelRef(r, null) : (ChannelRef?)null;
+            var same = r.Talkgroups.Where(x => x.TalkgroupId == m.TalkgroupId && x.Slot == m.Slot).ToList();
+            var e = (m.Nth >= 0 && m.Nth < same.Count ? same[m.Nth] : same.FirstOrDefault()) ?? r.Talkgroups.FirstOrDefault(x => x.TalkgroupId == m.TalkgroupId);
+            return e == null ? (ChannelRef?)null : new ChannelRef(r, e);
+        }
+
+        /// <summary>Drops zone members whose repeater or talkgroup entry is gone.</summary>
+        public void PruneZoneMembers()
+        {
+            foreach (var z in Zones)
+            {
+                if (z.Members == null) continue;
+                z.Members.RemoveAll(m => Resolve(m) == null);
+                if (z.Members.Count == 0) z.Members = null;
+            }
+        }
+
+        /// <summary>The channels of one repeater that go into the codeplug, in output order (one for analog).</summary>
+        public static IEnumerable<ChannelRef> ChannelsOf(Repeater r)
+        {
+            if (!r.IsDigital) { yield return new ChannelRef(r, null); yield break; }
+            foreach (var e in r.Talkgroups) yield return new ChannelRef(r, e);
+        }
+
+        /// <summary>
+        /// The channels a zone holds, in zone order: its <see cref="ZoneInfo.Members"/> first, then the channels of the repeaters
+        /// whose own zone it is, then (talkgroup zones) every channel matching the rule. Each channel once; only repeaters that
+        /// go into the codeplug. A zone with no members and no rule is exactly its repeaters' channels, as before 1.5.
+        /// </summary>
+        public List<ChannelRef> ZoneChannels(string zone)
+        {
+            var info = FindZone(zone);
+            var active = new HashSet<Repeater>(ActiveRepeaters());
+            var list = new List<ChannelRef>();
+            var seen = new HashSet<ChannelRef>();
+            void Add(ChannelRef c) { if (active.Contains(c.Repeater) && seen.Add(c)) list.Add(c); }
+            foreach (var m in info?.Members ?? new List<ZoneMember>())
+            {
+                var c = Resolve(m);
+                if (c != null) Add(c.Value);
+            }
+            foreach (var r in ActiveRepeaters().Where(r => SameZone(r.Zone, zone)))
+                foreach (var c in ChannelsOf(r)) Add(c);
+            if (info != null && info.HasRule)
+            {
+                var ids = new HashSet<int>(info.RuleTalkgroups);
+                foreach (var r in ActiveRepeaters().Where(r => r.IsDigital))
+                {
+                    if (info.RuleZones != null && !info.RuleZones.Any(n => SameZone(n, r.Zone))) continue;
+                    foreach (var e in r.Talkgroups.Where(e => ids.Contains(e.TalkgroupId))) Add(new ChannelRef(r, e));
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Puts a channel into a zone (made as a Favorites zone if it doesn't exist). A channel already in the zone stays
+        /// where it is. Returns false when it was there already.
+        /// </summary>
+        public bool AddToZone(string zone, ChannelRef c)
+        {
+            zone = (zone ?? "").Trim();
+            if (zone.Length == 0 || c.Repeater == null) return false;
+            var info = FindZone(zone);
+            if (info == null) Zones.Add(info = new ZoneInfo(zone) { Kind = ZoneKinds.Favorites });
+            if (ZoneChannels(info.Name).Contains(c)) return false;
+            (info.Members ?? (info.Members = new List<ZoneMember>())).Add(MemberFor(c));
+            return true;
+        }
+
+        /// <summary>
+        /// Takes a listed channel out of a zone's <see cref="ZoneInfo.Members"/>. A channel that is there because its repeater's
+        /// zone is this one (or a talkgroup rule) stays: change the repeater's zone or the rule instead. Returns true when removed.
+        /// </summary>
+        public bool RemoveFromZone(string zone, ChannelRef c)
+        {
+            var info = FindZone(zone);
+            if (info?.Members == null) return false;
+            int n = info.Members.RemoveAll(m => { var x = Resolve(m); return x != null && x.Value.Equals(c); });
+            if (info.Members.Count == 0) info.Members = null;
+            return n > 0;
+        }
+
+        /// <summary>Moves a listed member up or down within the zone's <see cref="ZoneInfo.Members"/>. Returns true when it moved.</summary>
+        public bool MoveZoneMember(string zone, ChannelRef c, int delta)
+        {
+            var info = FindZone(zone);
+            if (info?.Members == null) return false;
+            int i = info.Members.FindIndex(m => { var x = Resolve(m); return x != null && x.Value.Equals(c); });
+            int j = i + delta;
+            if (i < 0 || j < 0 || j >= info.Members.Count) return false;
+            var m0 = info.Members[i];
+            info.Members.RemoveAt(i);
+            info.Members.Insert(j, m0);
+            return true;
+        }
+
+        /// <summary>Zones other than the repeater's own that hold this channel.</summary>
+        public List<string> OtherZonesOf(ChannelRef c)
+        {
+            return Zones.Where(z => !SameZone(z.Name, c.Repeater.Zone) && (z.IsView) && ZoneChannels(z.Name).Contains(c)).Select(z => z.Name).ToList();
         }
 
         // ------------------------------------------------------------------
@@ -545,10 +787,10 @@ namespace CodeplugBuilder.Core
             return ZoneRepeaters(zone).Any(r => !Presets.IsSimplex(r));
         }
 
-        /// <summary>Channels a zone will hold: one per talkgroup on its included DMR repeaters, one per analog channel.</summary>
+        /// <summary>Channels a zone will hold: one per talkgroup on its included DMR repeaters, one per analog channel, plus its listed members and rule.</summary>
         public int ZoneChannelCount(string zone)
         {
-            return ActiveRepeaters().Where(r => SameZone(r.Zone, zone)).Sum(r => r.IsDigital ? r.Talkgroups.Count : 1);
+            return ZoneChannels(zone).Count;
         }
 
         /// <summary>Channels in the whole codeplug (before the generator drops duplicates or splits zones).</summary>
@@ -688,7 +930,7 @@ namespace CodeplugBuilder.Core
             return used;
         }
 
-        /// <summary>Zone names that at least one repeater (or the enabled hotspot) uses.</summary>
+        /// <summary>Zone names that at least one repeater (or the enabled hotspot) uses, and favourites/talkgroup zones that hold channels.</summary>
         public HashSet<string> UsedZoneNames()
         {
             var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -697,6 +939,8 @@ namespace CodeplugBuilder.Core
                 string z = (r.Zone ?? "").Trim();
                 if (z.Length > 0) used.Add(z);
             }
+            foreach (var z in Zones)
+                if (z.IsView && !used.Contains(z.Name.Trim()) && ZoneChannels(z.Name).Count > 0) used.Add(z.Name.Trim());
             return used;
         }
 
@@ -712,8 +956,13 @@ namespace CodeplugBuilder.Core
             foreach (var r in AllRepeaters())
                 foreach (var e in r.Talkgroups.Where(x => x.TalkgroupId == oldId)) e.TalkgroupId = newId;
             foreach (var z in Zones)
+            {
                 foreach (var t in z.Talkgroups ?? new List<ZoneTalkgroup>())
                     if (t.TalkgroupId == oldId) t.TalkgroupId = newId;
+                foreach (var m in z.Members ?? new List<ZoneMember>())
+                    if (m.TalkgroupId == oldId) m.TalkgroupId = newId;
+                if (z.RuleTalkgroups != null) z.RuleTalkgroups = z.RuleTalkgroups.Select(id => id == oldId ? newId : id).Distinct().ToList();
+            }
         }
 
         /// <summary>Deletes talkgroups along with their channels on every repeater and their place in zone sets.</summary>
@@ -728,6 +977,12 @@ namespace CodeplugBuilder.Core
                 z.Talkgroups.RemoveAll(t => set.Contains(t.TalkgroupId));
                 if (z.Talkgroups.Count == 0) z.Talkgroups = null;
             }
+            foreach (var z in Zones)
+            {
+                z.RuleTalkgroups?.RemoveAll(set.Contains);
+                if (z.RuleTalkgroups?.Count == 0) z.RuleTalkgroups = null;
+            }
+            PruneZoneMembers();
             foreach (var t in doomed) Talkgroups.Remove(t);
         }
     }

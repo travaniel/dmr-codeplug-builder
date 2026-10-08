@@ -257,10 +257,14 @@ namespace CodeplugBuilder.Core
             foreach (var c in g.ChannelList)
                 if (!string.IsNullOrWhiteSpace(c.Zone) && !order.Any(x => Project.SameZone(x, c.Zone))) order.Add(c.Zone.Trim());
 
+            // A zone holds its listed members, its own repeaters' channels and its rule's (Project.ZoneChannels); one channel
+            // can be in several zones, since the CPS links zones by channel name.
+            var byKey = new Dictionary<object, GeneratedChannel>();
+            foreach (var c in g.ChannelList) byKey[(object)c.Entry ?? c.Repeater] = c;
             var zoneNamer = new UniqueNamer(max, "Zone");
             foreach (string zone in order)
             {
-                var members = g.ChannelList.Where(c => Project.SameZone(c.Zone, zone)).ToList();
+                var members = p.ZoneChannels(zone).Select(c => byKey.TryGetValue(c.Key, out var gc) ? gc : null).Where(c => c != null).ToList();
                 if (members.Count == 0) continue;
                 var info = p.FindZone(zone);
                 int size = o.MaxZoneChannels > 0 ? o.MaxZoneChannels : members.Count;

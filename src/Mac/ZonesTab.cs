@@ -14,7 +14,10 @@ using CodeplugBuilder.Core;
 
 namespace CodeplugBuilder.Mac
 {
-    /// <summary>Zone order, renaming, the A/B channels each zone opens on, the channels in it and its talkgroup set.</summary>
+    /// <summary>
+    /// Zone order, renaming, the A/B channels each zone opens on, the channels in it and its talkgroup set; Favorites and
+    /// Talkgroup zones (a channel in several zones). Same as the Windows ZonesPage.
+    /// </summary>
     sealed class ZonesTab : UserControl
     {
         readonly Session session;
@@ -24,6 +27,10 @@ namespace CodeplugBuilder.Mac
         readonly TextBlock lblZone;
         readonly Control detail;
         readonly ZoneTalkgroupsView editor;
+        readonly TabControl tabs;
+        readonly TabItem tgTab, chTab, ruleTab;
+        readonly StackPanel ruleTalkgroups, ruleZones;
+        readonly Button btnDelete;
         bool loading, editing, bmLoaded;
         GeneratedCodeplug preview;
         List<ZoneRow> zoneRows = new List<ZoneRow>();
@@ -32,17 +39,20 @@ namespace CodeplugBuilder.Mac
         {
             public ZoneInfo Zone;
             public string Name => Zone.Name;
+            public string Kind { get; set; }
             public string Repeaters { get; set; }
             public string Channels { get; set; }
         }
 
         sealed class MemberRow
         {
+            public GeneratedChannel C;
             public string No { get; set; }
             public string Channel { get; set; }
             public string Talkgroup { get; set; }
             public string Slot { get; set; }
             public string Rx { get; set; }
+            public string Why { get; set; }
         }
 
         public ZonesTab(Session session, Window owner)
@@ -51,14 +61,22 @@ namespace CodeplugBuilder.Mac
             this.owner = owner;
 
             list = UiKit.Grid(false);
-            list.Columns.Add(UiKit.Col("Zone", "Name", true, 150));
-            list.Columns.Add(UiKit.Col("Repeaters", "Repeaters", true, 80));
-            list.Columns.Add(UiKit.Col("Channels", "Channels", true, 80));
-            var leftButtons = UiKit.Row(UiKit.Button("Up", () => MoveItem(-1)), UiKit.Button("Down", () => MoveItem(1)), UiKit.Button("Rename...", async () => await Rename()));
-            leftButtons.Margin = new Thickness(0, 6, 0, 0);
-            var left = new DockPanel { Width = 360, Margin = new Thickness(10, 8, 6, 8) };
+            list.Columns.Add(UiKit.Col("Zone", "Name", true, 140));
+            list.Columns.Add(UiKit.Col("Kind", "Kind", true, 80));
+            list.Columns.Add(UiKit.Col("Repeaters", "Repeaters", true, 70));
+            list.Columns.Add(UiKit.Col("Channels", "Channels", true, 70));
+            btnDelete = UiKit.Button("Delete", async () => await DeleteZone());
+            var leftButtons = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+            foreach (var b in new[]
+            {
+                UiKit.Button("Up", () => MoveItem(-1)), UiKit.Button("Down", () => MoveItem(1)), UiKit.Button("Rename...", async () => await Rename()),
+                UiKit.Button("New favorites zone...", async () => await NewZone(ZoneKinds.Favorites)),
+                UiKit.Button("New talkgroup zone...", async () => await NewZone(ZoneKinds.Talkgroup)), btnDelete,
+            })
+            { b.Margin = new Thickness(0, 0, 6, 6); leftButtons.Children.Add(b); }
+            var left = new DockPanel { Width = 400, Margin = new Thickness(10, 8, 6, 8) };
             var heading = UiKit.Heading("Zones");
-            var hint = UiKit.Hint("Zones are built from each repeater's Zone field, in the order of the Repeaters list. Set the order they appear on the radio, rename them, and pick talkgroups for a whole zone at once.");
+            var hint = UiKit.Hint("Zones are built from each repeater's Zone field, in the order of the Repeaters list. Set the order they appear on the radio, rename them, and pick talkgroups for a whole zone at once. A channel can also be in more zones: a Favorites zone holds channels you pick, a Talkgroup zone every channel of some talkgroups.");
             DockPanel.SetDock(heading, Dock.Top); DockPanel.SetDock(hint, Dock.Top); DockPanel.SetDock(leftButtons, Dock.Bottom);
             hint.Margin = new Thickness(0, 0, 0, 8);
             left.Children.Add(heading); left.Children.Add(hint); left.Children.Add(leftButtons); left.Children.Add(list);
@@ -73,11 +91,32 @@ namespace CodeplugBuilder.Mac
             members.Columns.Add(UiKit.Col("Talkgroup", "Talkgroup", true, 150));
             members.Columns.Add(UiKit.Col("Slot", "Slot", true, 50));
             members.Columns.Add(UiKit.Col("RX MHz", "Rx", true, 80));
+            members.Columns.Add(UiKit.Col("In this zone because", "Why", true, 200));
+            var memberButtons = UiKit.Row(UiKit.Button("Add channels...", async () => await AddChannels()), UiKit.Button("Remove from zone", async () => await RemoveMember()),
+                                          UiKit.Button("Move up", () => MoveMember(-1)), UiKit.Button("Move down", () => MoveMember(1)));
+            memberButtons.Margin = new Thickness(0, 6, 0, 0);
+            var chPanel = new DockPanel { Margin = new Thickness(4) };
+            DockPanel.SetDock(memberButtons, Dock.Bottom);
+            chPanel.Children.Add(memberButtons); chPanel.Children.Add(members);
             editor = new ZoneTalkgroupsView(owner);
 
-            var tabs = new TabControl();
-            tabs.Items.Add(new TabItem { Header = "Talkgroups", Content = editor });
-            tabs.Items.Add(new TabItem { Header = "Channels", Content = new Border { Padding = new Thickness(4), Child = members } });
+            ruleTalkgroups = new StackPanel { Spacing = 2 };
+            ruleZones = new StackPanel { Spacing = 2 };
+            var rule = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), ColumnSpacing = 12, RowSpacing = 6, Margin = new Thickness(4) };
+            var ruleHint = UiKit.Hint("Every channel that carries one of the ticked talkgroups goes into this zone, in the order of the Repeaters list. Tick zones on the right to take only those zones' repeaters.");
+            Grid.SetColumnSpan(ruleHint, 2);
+            var l1 = UiKit.Label("Talkgroups", true); Grid.SetRow(l1, 1);
+            var l2 = UiKit.Label("Only repeaters in these zones (none = all)", true); Grid.SetRow(l2, 1); Grid.SetColumn(l2, 1);
+            var s1 = new ScrollViewer { Content = ruleTalkgroups }; Grid.SetRow(s1, 2);
+            var s2 = new ScrollViewer { Content = ruleZones }; Grid.SetRow(s2, 2); Grid.SetColumn(s2, 1);
+            rule.Children.Add(ruleHint); rule.Children.Add(l1); rule.Children.Add(l2); rule.Children.Add(s1); rule.Children.Add(s2);
+
+            tabs = new TabControl();
+            tgTab = new TabItem { Header = "Talkgroups", Content = editor };
+            chTab = new TabItem { Header = "Channels", Content = chPanel };
+            ruleTab = new TabItem { Header = "Rule", Content = rule };
+            tabs.Items.Add(tgTab);
+            tabs.Items.Add(chTab);
 
             var ab = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), RowSpacing = 6, ColumnSpacing = 8, Margin = new Thickness(0, 0, 0, 8) };
             var la = UiKit.Label("A side opens on"); var lb = UiKit.Label("B side opens on");
@@ -115,6 +154,25 @@ namespace CodeplugBuilder.Mac
         public void Refresh() { Reload(SelectedZone?.Name); }
 
         ZoneInfo SelectedZone => (list.SelectedItem as ZoneRow)?.Zone;
+        GeneratedChannel SelectedMember => (members.SelectedItem as MemberRow)?.C;
+
+        /// <summary>The zone's channels as the generator writes them (own repeaters, listed members, rule).</summary>
+        List<GeneratedChannel> ZoneChannels(string zone)
+        {
+            if (preview == null) return new List<GeneratedChannel>();
+            var byKey = preview.ChannelList.ToDictionary(c => (object)c.Entry ?? c.Repeater);
+            return session.Project.ZoneChannels(zone).Select(c => byKey.TryGetValue(c.Key, out var gc) ? gc : null).Where(c => c != null).ToList();
+        }
+
+        /// <summary>Why a channel is in the zone: its repeater's zone, the zone's list, or the talkgroup rule.</summary>
+        string Reason(ZoneInfo z, GeneratedChannel c)
+        {
+            if (Project.SameZone(c.Repeater.Zone, z.Name)) return "its repeater's zone";
+            var key = new ChannelRef(c.Repeater, c.Entry);
+            if (z.Members != null && z.Members.Any(m => session.Project.Resolve(m)?.Equals(key) == true))
+                return "added here (its zone: " + (string.IsNullOrWhiteSpace(c.Repeater.Zone) ? "none" : c.Repeater.Zone) + ")";
+            return "talkgroup rule";
+        }
 
         public void Reload(string select)
         {
@@ -128,8 +186,12 @@ namespace CodeplugBuilder.Mac
                 foreach (var z in session.Project.Zones)
                 {
                     int reps = session.Project.ActiveRepeaters().Count(r => Project.SameZone(r.Zone, z.Name));
-                    int chans = preview?.ChannelList.Count(c => Project.SameZone(c.Zone, z.Name)) ?? 0;
-                    zoneRows.Add(new ZoneRow { Zone = z, Repeaters = reps.ToString(CultureInfo.InvariantCulture), Channels = chans == 0 ? "none" : chans.ToString(CultureInfo.InvariantCulture) });
+                    int chans = ZoneChannels(z.Name).Count;
+                    zoneRows.Add(new ZoneRow
+                    {
+                        Zone = z, Kind = session.Project.ZoneKindOf(z), Repeaters = reps.ToString(CultureInfo.InvariantCulture),
+                        Channels = chans == 0 ? "none" : chans.ToString(CultureInfo.InvariantCulture),
+                    });
                 }
                 list.ItemsSource = zoneRows;
                 var pick = select != null ? zoneRows.FirstOrDefault(r => Project.SameZone(r.Name, select)) : null;
@@ -144,11 +206,12 @@ namespace CodeplugBuilder.Mac
         {
             var z = SelectedZone;
             detail.IsVisible = z != null;
+            btnDelete.IsEnabled = z != null && !session.Project.AllRepeaters().Any(r => Project.SameZone(r.Zone, z.Name));
             if (z == null) return;
             loading = true;
             try
             {
-                var channels = preview?.ChannelList.Where(c => Project.SameZone(c.Zone, z.Name)).ToList() ?? new List<GeneratedChannel>();
+                var channels = ZoneChannels(z.Name);
                 var names = channels.Select(c => c.Name).ToList();
                 lblZone.Text = z.Name;
                 cboA.ItemsSource = names; cboB.ItemsSource = names;
@@ -157,16 +220,141 @@ namespace CodeplugBuilder.Mac
                 cboB.SelectedItem = gz?.BChannel;
                 members.ItemsSource = channels.Select(c => new MemberRow
                 {
+                    C = c,
                     No = c.Number.ToString(CultureInfo.InvariantCulture),
                     Channel = c.Name,
                     Talkgroup = c.IsDigital ? c.Talkgroup.Name : "FM" + (c.Repeater.RxOnly ? " (RX only)" : ""),
                     Slot = c.IsDigital ? c.Entry.Slot.ToString(CultureInfo.InvariantCulture) : "",
                     Rx = c.Repeater.RxMHz.ToString("0.000", CultureInfo.InvariantCulture),
+                    Why = Reason(z, c),
                 }).ToList();
+
+                // Talkgroup zones show their rule; zone talkgroup sets only make sense for zones with repeaters of their own.
+                string kind = session.Project.ZoneKindOf(z);
+                bool showRule = kind == ZoneKinds.Talkgroup;
+                bool showSet = session.Project.ZoneRepeaters(z.Name).Count > 0 || kind == ZoneKinds.Area;
+                if (showRule && !tabs.Items.Contains(ruleTab)) tabs.Items.Add(ruleTab);
+                if (!showRule && tabs.Items.Contains(ruleTab)) tabs.Items.Remove(ruleTab);
+                if (showSet && !tabs.Items.Contains(tgTab)) tabs.Items.Insert(0, tgTab);
+                if (!showSet && tabs.Items.Contains(tgTab)) tabs.Items.Remove(tgTab);
+                if (tabs.SelectedItem == null) tabs.SelectedIndex = 0;
+                if (showRule) FillRule(z);
                 // The editor refreshes itself after its own edits; rebinding then would lose its selection.
                 if (!editing || editor.Zone == null || !Project.SameZone(editor.Zone, z.Name)) editor.Bind(session.Project, z.Name);
             }
             finally { loading = false; }
+        }
+
+        void FillRule(ZoneInfo z)
+        {
+            ruleTalkgroups.Children.Clear();
+            foreach (var t in session.Project.Talkgroups.Where(t => t.IsGroupCall || (z.RuleTalkgroups?.Contains(t.Id) ?? false)))
+            {
+                var box = new CheckBox { Content = t.ToString(), IsChecked = z.RuleTalkgroups?.Contains(t.Id) ?? false, Tag = t.Id };
+                box.IsCheckedChanged += (s, e) => SaveRule();
+                ruleTalkgroups.Children.Add(box);
+            }
+            ruleZones.Children.Clear();
+            foreach (var other in session.Project.Zones.Where(x => x != z && session.Project.ZoneRepeaters(x.Name).Count > 0))
+            {
+                var box = new CheckBox { Content = other.Name, IsChecked = z.RuleZones?.Any(n => Project.SameZone(n, other.Name)) ?? false, Tag = other.Name };
+                box.IsCheckedChanged += (s, e) => SaveRule();
+                ruleZones.Children.Add(box);
+            }
+        }
+
+        void SaveRule()
+        {
+            var z = SelectedZone;
+            if (z == null || loading) return;
+            z.RuleTalkgroups = ruleTalkgroups.Children.OfType<CheckBox>().Where(b => b.IsChecked == true).Select(b => (int)b.Tag).ToList();
+            z.RuleZones = ruleZones.Children.OfType<CheckBox>().Where(b => b.IsChecked == true).Select(b => (string)b.Tag).ToList();
+            if (z.RuleTalkgroups.Count == 0) z.RuleTalkgroups = null;
+            if (z.RuleZones.Count == 0) z.RuleZones = null;
+            if (z.Kind == null) z.Kind = ZoneKinds.Talkgroup;
+            session.MarkDirty();
+            editing = true;
+            try { Reload(z.Name); } finally { editing = false; }
+        }
+
+        async Task NewZone(string kind)
+        {
+            string name = await Dialogs.Prompt(owner, "New " + kind.ToLowerInvariant() + " zone", "Name of the new zone (16 characters max):",
+                                               kind == ZoneKinds.Favorites ? "Favorites" : "", 16);
+            if (name == null) return;
+            name = Naming.Fit(name, 16);
+            if (name.Length == 0) return;
+            if (session.Project.FindZone(name) != null) { await Dialogs.Error(owner, "There is already a zone called \"" + name + "\"."); return; }
+            session.Project.Zones.Add(new ZoneInfo(name) { Kind = kind });
+            session.MarkDirty();
+            Reload(name);
+            if (kind == ZoneKinds.Favorites) { tabs.SelectedItem = chTab; await AddChannels(); }
+            else tabs.SelectedItem = ruleTab;
+        }
+
+        async Task DeleteZone()
+        {
+            var z = SelectedZone;
+            if (z == null) return;
+            int own = session.Project.AllRepeaters().Count(r => Project.SameZone(r.Zone, z.Name));
+            if (own > 0)
+            {
+                await Dialogs.Info(owner, own + " repeater(s) have \"" + z.Name + "\" as their zone. Give them another zone on the Repeaters tab (or rename this zone to merge it into another).");
+                return;
+            }
+            if (!await Dialogs.Ask(owner, "Delete zone \"" + z.Name + "\"? Its channels stay in their own zones.", "Delete")) return;
+            session.Project.Zones.Remove(z);
+            session.MarkDirty();
+            Reload(null);
+        }
+
+        async Task AddChannels()
+        {
+            var z = SelectedZone;
+            if (z == null) return;
+            var result = await ZoneMembersWindow.Run(owner, session, z.Name, null);
+            if (result.Value == 0) return;
+            session.MarkDirty();
+            Reload(z.Name);
+            tabs.SelectedItem = chTab;
+        }
+
+        async Task RemoveMember()
+        {
+            var z = SelectedZone;
+            var c = SelectedMember;
+            if (z == null || c == null) return;
+            if (Project.SameZone(c.Repeater.Zone, z.Name))
+            {
+                await Dialogs.Info(owner, "\"" + c.Name + "\" is in this zone because its repeater's zone is \"" + z.Name + "\". Change the repeater's zone on the Repeaters tab to take it out.");
+                return;
+            }
+            if (!session.Project.RemoveFromZone(z.Name, new ChannelRef(c.Repeater, c.Entry)))
+            {
+                await Dialogs.Info(owner, "\"" + c.Name + "\" is here because of the zone's talkgroup rule (Rule tab).");
+                return;
+            }
+            session.MarkDirty();
+            Reload(z.Name);
+        }
+
+        void MoveMember(int delta)
+        {
+            var z = SelectedZone;
+            var c = SelectedMember;
+            if (z == null || c == null) return;
+            var key = new ChannelRef(c.Repeater, c.Entry);
+            var p = session.Project;
+            // Pin the current order of the listed and own channels first, so moving works for the zone's own channels too.
+            // Channels there only by the talkgroup rule follow the rule and can't be moved.
+            var order = ZoneChannels(z.Name).Where(x => Reason(z, x) != "talkgroup rule").Select(x => new ChannelRef(x.Repeater, x.Entry)).ToList();
+            if (!order.Contains(key)) return;
+            z.Members = order.Select(p.MemberFor).ToList();
+            if (!p.MoveZoneMember(z.Name, key, delta)) return;
+            session.MarkDirty();
+            Reload(z.Name);
+            var row = (members.ItemsSource as IEnumerable<MemberRow>)?.FirstOrDefault(m => m.C.Repeater == c.Repeater && m.C.Entry == c.Entry);
+            if (row != null) { members.SelectedItem = row; members.ScrollIntoView(row, null); }
         }
 
         void SetSide(bool a)

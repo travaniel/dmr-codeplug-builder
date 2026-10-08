@@ -64,6 +64,7 @@ namespace CodeplugBuilder.Mac
             AddButton("Add DMR repeater", () => Add(Repeater.NewDigital("New repeater")));
             AddButton("Add analog", () => Add(Repeater.NewAnalog("New analog")));
             AddButton("Duplicate", Duplicate);
+            AddButton("Add to zone...", async () => await AddToZone());
             AddButton("Delete", async () => await Delete());
             buttons.Children.Add(btnUp); btnUp.Margin = new Thickness(0, 0, 6, 6);
             buttons.Children.Add(btnDown); btnDown.Margin = new Thickness(0, 0, 6, 6);
@@ -118,9 +119,12 @@ namespace CodeplugBuilder.Mac
             {
                 RefillFilter();
                 string filter = Filter;
+                // A zone shows its own repeaters and the ones with channels listed in it (favourites, talkgroup zones).
+                var inZone = new HashSet<Repeater>(filter == null ? Enumerable.Empty<Repeater>()
+                    : session.Project.Repeaters.Where(r => Project.SameZone(r.Zone, filter)).Concat(session.Project.ZoneChannels(filter).Select(c => c.Repeater)));
                 rows = session.Project.Repeaters
                     .Where(r => !(filter == "(no zone)" && !string.IsNullOrWhiteSpace(r.Zone)))
-                    .Where(r => filter == null || filter == "(no zone)" || Project.SameZone(r.Zone, filter))
+                    .Where(r => filter == null || filter == "(no zone)" || inZone.Contains(r))
                     .Select(r => new RepRow(r, row => { if (editor.Repeater == row.R) editor.Bind(session, row.R); session.MarkDirty(); }))
                     .ToList();
                 list.ItemsSource = rows;
@@ -194,6 +198,18 @@ namespace CodeplugBuilder.Mac
             session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new
             cboFilter.SelectedIndex = 0;
             Reload(added[0]);
+        }
+
+        /// <summary>Puts the selected repeater's channels into another zone too (favourites).</summary>
+        async System.Threading.Tasks.Task AddToZone()
+        {
+            var r = Selected;
+            if (r == null) return;
+            if (r.IsDigital && r.Talkgroups.Count == 0) { await Dialogs.Info(owner, "Add talkgroups to " + r.Name + " first: each one is a channel."); return; }
+            var result = await ZoneMembersWindow.Run(owner, session, null, r);
+            if (result.Value == 0) return;
+            session.MarkDirty();
+            await Dialogs.Info(owner, result.Value + " channel(s) of " + r.Name + " are now also in zone \"" + result.Key + "\" (Zones tab).");
         }
 
         void Duplicate()

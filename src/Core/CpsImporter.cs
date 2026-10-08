@@ -85,8 +85,10 @@ namespace CodeplugBuilder.Core
                 }
             }
 
-            // Zones: membership, order, A/B selections
+            // Zones: membership, order, A/B selections. A channel's first zone becomes its repeater's own zone; the other
+            // zones it is in list it as a member (see "Zones that share channels" below).
             var zoneOf = new Dictionary<string, Tuple<int, int, string>>(StringComparer.OrdinalIgnoreCase);
+            var zoneMembers = new List<KeyValuePair<ZoneInfo, List<string>>>();
             string znPath = CpsFormat.FindFile(folder, CpsFormat.ZoneFile);
             if (znPath != null)
             {
@@ -96,17 +98,13 @@ namespace CodeplugBuilder.Core
                 {
                     string zname = z.Get(row, "Zone Name").Trim();
                     if (zname.Length == 0) continue;
-                    var members = z.Get(row, "Zone Channel Member").Split('|').Select(m => m.Trim()).Where(m => m.Length > 0).ToList();
-                    p.Zones.Add(new ZoneInfo(zname) { AChannel = z.Get(row, "A Channel"), BChannel = z.Get(row, "B Channel") });
+                    var members = z.Get(row, "Zone Channel Member").Split('|').Select(m => m.Trim()).Where(m => m.Length > 0)
+                                   .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    var info = new ZoneInfo(zname) { AChannel = z.Get(row, "A Channel"), BChannel = z.Get(row, "B Channel") };
+                    p.Zones.Add(info);
+                    zoneMembers.Add(new KeyValuePair<ZoneInfo, List<string>>(info, members));
                     for (int i = 0; i < members.Count; i++)
-                    {
-                        if (zoneOf.ContainsKey(members[i]))
-                        {
-                            notes.Add("Channel \"" + members[i] + "\" is in more than one zone; it was kept in \"" + zoneOf[members[i]].Item3 + "\" only.");
-                            continue;
-                        }
-                        zoneOf[members[i]] = Tuple.Create(zi, i, zname);
-                    }
+                        if (!zoneOf.ContainsKey(members[i])) zoneOf[members[i]] = Tuple.Create(zi, i, zname);
                     zi++;
                 }
             }
@@ -153,6 +151,7 @@ namespace CodeplugBuilder.Core
             var repeaters = new List<Repeater>();
             var groups = new Dictionary<string, Repeater>();
             var groupChannels = new Dictionary<Repeater, List<Ch>>();
+            var channelByName = new Dictionary<string, ChannelRef>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in ordered)
             {
                 if (!c.Digital)
@@ -169,6 +168,7 @@ namespace CodeplugBuilder.Core
                     a.Zone = c.Zone;
                     a.ChannelNumber = c.No; // kept, so APRS and hot keys still point at the same channel
                     repeaters.Add(a);
+                    channelByName[c.Name] = new ChannelRef(a, null);
                     continue;
                 }
                 if (!tgByName.TryGetValue(c.Contact, out Talkgroup tg))
@@ -191,7 +191,9 @@ namespace CodeplugBuilder.Core
                     repeaters.Add(r);
                 }
                 groupChannels[r].Add(c);
-                r.Talkgroups.Add(new RepeaterTalkgroup(tg.Id, c.Slot, c.Name) { ChannelNumber = c.No });
+                var entry = new RepeaterTalkgroup(tg.Id, c.Slot, c.Name) { ChannelNumber = c.No };
+                r.Talkgroups.Add(entry);
+                channelByName[c.Name] = new ChannelRef(r, entry);
             }
 
             // Name each digital repeater and work out a prefix for future channels.
@@ -248,6 +250,21 @@ namespace CodeplugBuilder.Core
             }
 
             p.Repeaters.AddRange(repeaters);
+
+            // Zones that share channels, or list a repeater's channels out of the order the generator writes them: the zone
+            // keeps its whole member list, so it comes back exactly. A zone of only shared channels is a Favorites zone.
+            int shared = 0;
+            foreach (var kv in zoneMembers)
+            {
+                var info = kv.Key;
+                var wanted = kv.Value.Where(channelByName.ContainsKey).Select(n => channelByName[n]).ToList();
+                if (wanted.SequenceEqual(p.ZoneChannels(info.Name))) continue;
+                info.Members = wanted.Select(p.MemberFor).ToList();
+                if (!p.AllRepeaters().Any(r => Project.SameZone(r.Zone, info.Name))) info.Kind = ZoneKinds.Favorites;
+                shared += kv.Value.Count(n => zoneOf.TryGetValue(n, out var home) && !Project.SameZone(home.Item3, info.Name));
+            }
+            if (shared > 0)
+                notes.Add(shared + " channel(s) are in more than one zone. Each belongs to the first zone it is in; the other zones list it (Zones tab).");
 
             // Polite transmit stays off (the template's values, so the round trip holds) unless the codeplug already follows it.
             p.Options.PoliteTransmit = chans.Any(c => c.Digital && c.Rx != c.Tx) && chans.All(c =>
