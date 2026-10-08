@@ -97,6 +97,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `Geo.cs` | `GeoAtlas`: the embedded map (`Geo/atlas.gz`: countries, states/provinces, US counties, ~63k places). `Locate(city, state, country)` → `GeoLocation` (point + areas), `AreaAt`, `FindCountry/State/Place`, `Key()` name folding |
 | `RepeaterBook.cs` | RepeaterBook without the API: `ChirpCsv` reads a CHIRP export (Name = callsign, Comment = city, CHIRP tone modes), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, zone suggestion from the county, `Add`). `StateFromName` (state from the file/folder name), `ToListings` (CHIRP lines as `OnlineRepeater`s with `Analog` set, placed at their towns, so the map picker and `OnlineImporter.AddRepeaters` take them like DMR listings) |
 | `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
+| `Home.cs` | `HomeLocation` (Project.Home; `Parse` a typed town on the atlas), `Distances` (km, bearing, "148 mi NE"), `ZoneOrder.Sort` (hotspot, favorites, areas nearest first, talkgroup zones, utilities), `TalkgroupOrder` (local first) |
 | `Zoning.cs` | `ZonePlanner`: automatic zone names per county/city/state/country/band/single, `Apply`, one spelling per zone (`Canonical`) |
 | `Radio/*.cs` | Direct radio access (HANDOFF 4d): `AnytoneLink` (serial protocol over a Stream), `MemoryImage` (16-byte blocks, `radio.img`), `Dmr6x2Pro` (memory map, read plan, `RadioReader`, CPS write set), `RadioCodeplug` (decoder), `RadioCsv` (→ CPS CSVs, `Compare`), `RadioEncoder` (CPS tables → image, the reverse), `RadioWriter` (full CPS-style write, guards), `RadioSettings` (table of optional settings: read/write/report; App `RadioSettingsForm` is the dev editor), `RecommendedSettings` (settings Write codeplug to radio offers to change: send talker alias) |
 | (`Models.cs`, 1.5) | Zones as views: `ZoneInfo.Kind` (`ZoneKinds`), `Members` (`ZoneMember` → `Repeater.Id`), `RuleTalkgroups/RuleZones`; `Project.ZoneChannels` (what the generator writes per zone), `AddToZone / RemoveFromZone / MoveZoneMember`, `ZoneKindOf`, `ChannelRef`. UI: `ZoneMembersDialog` (Windows), `ZoneMembersWindow` (Mac) |
@@ -161,7 +162,10 @@ programmatic changes don't fire edits.
 - **1.5 (in progress, from 2026-10-08):** roadmap HANDOFF 7, items 7-12 in the order 7, 8, 9, 12, 10, 11. Done: **zones as views**
   (item 7): zone kinds (Area, Favorites, Talkgroup, Utility), a channel in several zones (`ZoneInfo.Members`, `Project.ZoneChannels`),
   talkgroup zones (`RuleTalkgroups` / `RuleZones`), the importer keeps every zone a CPS channel is in, Zones tab and *Add to zone...* on
-  Windows and Mac. Older projects' output unchanged. Still to check in the CPS: a multi-zone Zone.CSV import (HANDOFF 7, "To check"). 98 tests.
+  Windows and Mac. Older projects' output unchanged. Still to check in the CPS: a multi-zone Zone.CSV import (HANDOFF 7, "To check").
+  **Order that matches use** (item 8): `Project.Home` (Settings > Home town, callsign lookup, wizard), distance and direction on the
+  Repeaters list, Zones > *Sort by distance* (`ZoneOrder`), *Local first* talkgroup order (`TalkgroupOrder`), talkgroup zones nearest first
+  with an optional radius. Nothing reorders an existing project unless the user clicks. 104 tests.
 - **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
   amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
   and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the

@@ -21,6 +21,7 @@ namespace CodeplugBuilder.App
         readonly TabControl detailTabs;
         readonly TabPage tgPage, rulePage;
         readonly CheckedListBox lstRuleTalkgroups, lstRuleZones;
+        readonly NumericUpDown numRuleMiles;
         readonly Button btnDelete;
         bool loading, editing, bmLoaded;
         GeneratedCodeplug preview;
@@ -55,7 +56,8 @@ namespace CodeplugBuilder.App
                 Ui.Button("Up", (s, e) => MoveItem(-1)),
                 Ui.Button("Down", (s, e) => MoveItem(1)),
                 Ui.Button("Rename...", (s, e) => Rename()),
-                btnNew, btnDelete);
+                btnNew, btnDelete,
+                Ui.Button("Sort by distance", (s, e) => SortZones()));
             leftButtons.Dock = DockStyle.Bottom;
             split.Panel1.Controls.Add(list);
             split.Panel1.Controls.Add(leftButtons);
@@ -92,12 +94,19 @@ namespace CodeplugBuilder.App
             chPage.Controls.Add(memberButtons);
             lstMembers.BringToFront();
             rulePage = new TabPage("Rule") { UseVisualStyleBackColor = true, Padding = new Padding(Ui.S(4)) };
-            var rule = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3 };
+            var rule = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4 };
             rule.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             rule.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            rule.Controls.Add(Ui.Hint("Every channel that carries one of the ticked talkgroups goes into this zone, in the order " +
-                                      "of the Repeaters list. Tick zones on the right to take only those zones' repeaters.", Ui.S(560)), 0, 0);
+            rule.Controls.Add(Ui.Hint("Every channel that carries one of the ticked talkgroups goes into this zone, nearest repeaters first " +
+                                      "when a home town is set (Settings), else in the order of the Repeaters list. Tick zones on the right " +
+                                      "to take only those zones' repeaters.", Ui.S(560)), 0, 0);
             rule.SetColumnSpan(rule.GetControlFromPosition(0, 0), 2);
+            numRuleMiles = new NumericUpDown { Minimum = 0, Maximum = 2000, Increment = 10, Width = Ui.S(70) };
+            var milesRow = Ui.Row(Ui.Label("Only repeaters within"), numRuleMiles, Ui.Label("miles of home (0 = any distance)"));
+            milesRow.WrapContents = false;
+            rule.Controls.Add(milesRow, 0, 3);
+            rule.SetColumnSpan(milesRow, 2);
+            numRuleMiles.ValueChanged += (s, e) => { if (!loading) SaveRule(); };
             rule.Controls.Add(Ui.Label("Talkgroups", true), 0, 1);
             rule.Controls.Add(Ui.Label("Only repeaters in these zones (none = all)", true), 1, 1);
             lstRuleTalkgroups = new CheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
@@ -107,6 +116,7 @@ namespace CodeplugBuilder.App
             rule.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rule.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rule.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            rule.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             rulePage.Controls.Add(rule);
             detailTabs.TabPages.Add(tgPage);
             detailTabs.TabPages.Add(chPage);
@@ -214,6 +224,19 @@ namespace CodeplugBuilder.App
             else detailTabs.SelectedTab = rulePage;
         }
 
+        /// <summary>Hotspot zone, favourites, area zones nearest first, talkgroup zones, then utilities (ZoneOrder).</summary>
+        void SortZones()
+        {
+            var p = session.Project;
+            if (p.Home == null &&
+                !Ui.Confirm(FindForm(), "No home town is set (Settings tab), so area zones keep their order; only the groups move: hotspot, favorites, " +
+                                        "areas, talkgroup zones, then simplex and weather.\n\nSort anyway?"))
+                return;
+            if (!ZoneOrder.Sort(p)) { Ui.Info(FindForm(), "The zones are already in that order."); return; }
+            session.MarkDirty();
+            Reload(SelectedZone?.Name);
+        }
+
         void DeleteZone()
         {
             var z = SelectedZone;
@@ -291,6 +314,7 @@ namespace CodeplugBuilder.App
             z.RuleZones = lstRuleZones.CheckedItems.Cast<string>().ToList();
             if (z.RuleTalkgroups.Count == 0) z.RuleTalkgroups = null;
             if (z.RuleZones.Count == 0) z.RuleZones = null;
+            z.RuleMiles = (double)numRuleMiles.Value;
             if (z.Kind == null) z.Kind = ZoneKinds.Talkgroup;
             session.MarkDirty();
             editing = true;
@@ -354,6 +378,7 @@ namespace CodeplugBuilder.App
                     foreach (var other in session.Project.Zones.Where(x => x != z && session.Project.ZoneRepeaters(x.Name).Count > 0))
                         lstRuleZones.Items.Add(other.Name, z.RuleZones?.Any(n => Project.SameZone(n, other.Name)) ?? false);
                     lstRuleZones.EndUpdate();
+                    numRuleMiles.Value = (decimal)Math.Max(0, Math.Min(2000, z.RuleMiles));
                 }
                 // The editor refreshes itself after its own edits; rebinding then would lose the grid's selection.
                 if (!editing || editor.Zone == null || !Project.SameZone(editor.Zone, z.Name)) editor.Bind(session.Project, z.Name);

@@ -60,6 +60,11 @@ namespace CodeplugBuilder.App
                 return false;
             p.RadioId = u.Id;
             p.RadioIdName = name;
+            if (p.Home == null) // the town RadioID lists becomes home, when the map knows it
+            {
+                try { p.Home = HomeLocation.Find(GeoAtlas.BuiltIn(), u.City, u.State, u.Country); }
+                catch (Exception) { }
+            }
             session.MarkDirty();
             return true;
         }

@@ -760,6 +760,17 @@ before it's called done.
    from home, utilities last; once the user reorders, keep their order. Within a repeater: local (8, 9, its own ID),
    state (31xx), regional, wide area (91, 93, 3100), private calls (RATS convention); optional. Distance and bearing in
    the repeater list.
+   *Built 2026-10-08 (`src/Core/Home.cs`; Windows and Mac).* `Project.Home` (`HomeLocation`: place, lat/lon, country code; optional,
+   no effect on output by itself). Set from Settings > Home town (typed town found on the built-in map, `HomeLocation.Parse`, looked
+   for first in the country most repeaters are in), from *Look up by callsign* when no home is set, and by the wizard from the RadioID
+   lookup (note: RadioID lists W6OZZ in Los Angeles, so the walkthrough's home is LA; the user can type Brownwood in Settings).
+   `Distances` (great circle, bearing, "148 mi NE"; miles in US/UK/territories, km elsewhere): "From home" column on the Repeaters
+   list. `ZoneOrder.Sort`: hotspot zone, Favorites, area zones by the nearest repeater (own repeaters count even without talkgroups;
+   unplaced ones keep their order after the placed), Talkgroup zones, Utility zones; stable. Runs only on Zones > *Sort by distance* and
+   in the wizard (after its by-name sort, when there is a home), so a user's own order stays and imported projects don't change.
+   `TalkgroupOrder` (local 2/8/9/99/own ID, state 3101-3199 and 31000-31999, regional, wide area 91/93/3100/<100, private calls) on the
+   repeater editor's *Local first* (this repeater or all). Talkgroup zones: nearest repeaters first when there is a home, and
+   `ZoneInfo.RuleMiles` (Rule tab "within N miles", 0 = any). Tests: `HomeTests` (6).
 9. **Scan lists 2-8.** Channel.CSV has Scan List 1-8; the generator writes only 1. Add a Favorites scan list with the
    home repeater or hotspot as priority channel (ScanList.CSV `Priority Channel Select`/`Priority Channel 1`) and a
    local-analog list. 250 lists of 50 channels.

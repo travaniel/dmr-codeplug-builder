@@ -30,6 +30,7 @@ namespace CodeplugBuilder.Mac
         readonly TabControl tabs;
         readonly TabItem tgTab, chTab, ruleTab;
         readonly StackPanel ruleTalkgroups, ruleZones;
+        readonly NumericUpDown ruleMiles;
         readonly Button btnDelete;
         bool loading, editing, bmLoaded;
         GeneratedCodeplug preview;
@@ -72,6 +73,7 @@ namespace CodeplugBuilder.Mac
                 UiKit.Button("Up", () => MoveItem(-1)), UiKit.Button("Down", () => MoveItem(1)), UiKit.Button("Rename...", async () => await Rename()),
                 UiKit.Button("New favorites zone...", async () => await NewZone(ZoneKinds.Favorites)),
                 UiKit.Button("New talkgroup zone...", async () => await NewZone(ZoneKinds.Talkgroup)), btnDelete,
+                UiKit.Button("Sort by distance", async () => await SortZones()),
             })
             { b.Margin = new Thickness(0, 0, 6, 6); leftButtons.Children.Add(b); }
             var left = new DockPanel { Width = 400, Margin = new Thickness(10, 8, 6, 8) };
@@ -102,14 +104,19 @@ namespace CodeplugBuilder.Mac
 
             ruleTalkgroups = new StackPanel { Spacing = 2 };
             ruleZones = new StackPanel { Spacing = 2 };
-            var rule = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto,*"), ColumnSpacing = 12, RowSpacing = 6, Margin = new Thickness(4) };
-            var ruleHint = UiKit.Hint("Every channel that carries one of the ticked talkgroups goes into this zone, in the order of the Repeaters list. Tick zones on the right to take only those zones' repeaters.");
+            var rule = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 12, RowSpacing = 6, Margin = new Thickness(4) };
+            var ruleHint = UiKit.Hint("Every channel that carries one of the ticked talkgroups goes into this zone, nearest repeaters first when a home town is set (Settings), else in the order of the Repeaters list. Tick zones on the right to take only those zones' repeaters.");
             Grid.SetColumnSpan(ruleHint, 2);
             var l1 = UiKit.Label("Talkgroups", true); Grid.SetRow(l1, 1);
             var l2 = UiKit.Label("Only repeaters in these zones (none = all)", true); Grid.SetRow(l2, 1); Grid.SetColumn(l2, 1);
             var s1 = new ScrollViewer { Content = ruleTalkgroups }; Grid.SetRow(s1, 2);
             var s2 = new ScrollViewer { Content = ruleZones }; Grid.SetRow(s2, 2); Grid.SetColumn(s2, 1);
             rule.Children.Add(ruleHint); rule.Children.Add(l1); rule.Children.Add(l2); rule.Children.Add(s1); rule.Children.Add(s2);
+            ruleMiles = new NumericUpDown { Minimum = 0, Maximum = 2000, Increment = 10, Width = 130, FormatString = "0" };
+            ruleMiles.ValueChanged += (s, e) => { if (!loading) SaveRule(); };
+            var milesRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { UiKit.Label("Only repeaters within"), ruleMiles, UiKit.Label("miles of home (0 = any distance)") } };
+            Grid.SetRow(milesRow, 3); Grid.SetColumnSpan(milesRow, 2);
+            rule.Children.Add(milesRow);
 
             tabs = new TabControl();
             tgTab = new TabItem { Header = "Talkgroups", Content = editor };
@@ -247,6 +254,7 @@ namespace CodeplugBuilder.Mac
 
         void FillRule(ZoneInfo z)
         {
+            ruleMiles.Value = (decimal)Math.Max(0, Math.Min(2000, z.RuleMiles));
             ruleTalkgroups.Children.Clear();
             foreach (var t in session.Project.Talkgroups.Where(t => t.IsGroupCall || (z.RuleTalkgroups?.Contains(t.Id) ?? false)))
             {
@@ -271,6 +279,7 @@ namespace CodeplugBuilder.Mac
             z.RuleZones = ruleZones.Children.OfType<CheckBox>().Where(b => b.IsChecked == true).Select(b => (string)b.Tag).ToList();
             if (z.RuleTalkgroups.Count == 0) z.RuleTalkgroups = null;
             if (z.RuleZones.Count == 0) z.RuleZones = null;
+            z.RuleMiles = (double)(ruleMiles.Value ?? 0);
             if (z.Kind == null) z.Kind = ZoneKinds.Talkgroup;
             session.MarkDirty();
             editing = true;
@@ -290,6 +299,19 @@ namespace CodeplugBuilder.Mac
             Reload(name);
             if (kind == ZoneKinds.Favorites) { tabs.SelectedItem = chTab; await AddChannels(); }
             else tabs.SelectedItem = ruleTab;
+        }
+
+        /// <summary>Hotspot zone, favourites, area zones nearest first, talkgroup zones, then utilities (ZoneOrder).</summary>
+        async Task SortZones()
+        {
+            var p = session.Project;
+            if (p.Home == null &&
+                !await Dialogs.Ask(owner, "No home town is set (Settings tab), so area zones keep their order; only the groups move: hotspot, favorites, " +
+                                          "areas, talkgroup zones, then simplex and weather.\n\nSort anyway?", "Sort"))
+                return;
+            if (!ZoneOrder.Sort(p)) { await Dialogs.Info(owner, "The zones are already in that order."); return; }
+            session.MarkDirty();
+            Reload(SelectedZone?.Name);
         }
 
         async Task DeleteZone()

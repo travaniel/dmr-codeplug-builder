@@ -11,7 +11,8 @@ namespace CodeplugBuilder.App
     sealed class SettingsPage : UserControl
     {
         readonly Session session;
-        readonly TextBox txtRadioName, txtRadioId;
+        readonly TextBox txtRadioName, txtRadioId, txtHome;
+        readonly Label lblHome;
         readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkPolite, chkKeep;
         readonly ComboBox cboCallers;
         readonly TextBox txtCallerAreas;
@@ -51,6 +52,20 @@ namespace CodeplugBuilder.App
             Pair("DMR ID", idRow);
             Span(Ui.Hint("Every channel points at this Radio ID name, so it must match the name in the CPS's Radio ID List (yours is imported from your codeplug).", wrap));
             chkRadioIdList = Check("Also write RadioIDList.CSV with this name and DMR ID (replaces the CPS's Radio ID List)");
+
+            Section("Home");
+            txtHome = Ui.Text("e.g. Brownwood, TX");
+            txtHome.Width = Ui.S(260);
+            txtHome.Margin = new Padding(3, 5, 6, 3);
+            lblHome = Ui.Label("");
+            var homeRow = Ui.Row(txtHome, Ui.Button("Find on the map", (s, e) => FindHome()), Ui.Button("Clear", (s, e) => SetHome(null)), lblHome);
+            homeRow.Dock = DockStyle.None;
+            homeRow.WrapContents = false;
+            txtHome.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; FindHome(); } };
+            homeRow.Anchor = AnchorStyles.Left;
+            Pair("Home town", homeRow);
+            Span(Ui.Hint("Your home town: the Repeaters list shows each repeater's distance and direction from it, Zones > Sort by distance puts the " +
+                         "nearest zones first, and talkgroup zones list the nearest repeaters first. Look up by callsign fills it from RadioID.net.", wrap));
 
             Section("Generated lists");
             chkRxLists = Check("Make a receive group list for each DMR repeater");
@@ -193,6 +208,38 @@ namespace CodeplugBuilder.App
             Reload();
         }
 
+        void FindHome()
+        {
+            HomeLocation home;
+            Cursor.Current = Cursors.WaitCursor;
+            try { home = HomeLocation.Parse(GeoAtlas.BuiltIn(), txtHome.Text, HomeLocation.DefaultCountry(session.Project)); }
+            finally { Cursor.Current = Cursors.Default; }
+            if (home == null)
+            {
+                lblHome.Text = "Not found. Try \"Town, State\" or \"Town, Country\".";
+                lblHome.ForeColor = System.Drawing.Color.Firebrick;
+                return;
+            }
+            SetHome(home);
+        }
+
+        void SetHome(HomeLocation home)
+        {
+            session.Project.Home = home;
+            loading = true;
+            txtHome.Text = home?.Place ?? "";
+            loading = false;
+            ShowHome();
+            session.MarkDirty();
+        }
+
+        void ShowHome()
+        {
+            var h = session.Project.Home;
+            lblHome.ForeColor = Ui.HintColor;
+            lblHome.Text = h == null ? "Not set" : h.Latitude.ToString("0.000", CultureInfo.InvariantCulture) + ", " + h.Longitude.ToString("0.000", CultureInfo.InvariantCulture);
+        }
+
         /// <summary>The APRS settings as typed: the suggestion (symbol, path, gateway) with the user's callsign, SSID and frequency.</summary>
         AprsPlan ReadAprs()
         {
@@ -268,6 +315,8 @@ namespace CodeplugBuilder.App
             txtRadioName.Text = p.RadioIdName;
             txtRadioId.Text = p.RadioId > 0 ? p.RadioId.ToString(CultureInfo.InvariantCulture) : "";
             chkRadioIdList.Checked = p.Options.WriteRadioIdList;
+            txtHome.Text = p.Home?.Place ?? "";
+            ShowHome();
             chkRxLists.Checked = p.Options.RxGroupListPerRepeater;
             chkScanLists.Checked = p.Options.ScanListPerZone;
             chkPolite.Checked = p.Options.PoliteTransmit;

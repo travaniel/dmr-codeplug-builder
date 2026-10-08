@@ -174,7 +174,8 @@ namespace CodeplugBuilder.Mac
             });
             grid.Columns.Add(UiKit.Col("Channel name", "ChannelName", false, 220));
             grid.KeyDown += (s, e) => { if (e.Key == Key.Delete) { RemoveSelected(); e.Handled = true; } };
-            var gridButtons = UiKit.Row(UiKit.Button("Move up", () => MoveSelected(-1)), UiKit.Button("Move down", () => MoveSelected(1)), UiKit.Button("Switch slot", SwitchSlot));
+            var gridButtons = UiKit.Row(UiKit.Button("Move up", () => MoveSelected(-1)), UiKit.Button("Move down", () => MoveSelected(1)), UiKit.Button("Switch slot", SwitchSlot),
+                                        UiKit.Button("Local first", async () => await SortTalkgroups()));
             gridButtons.Margin = new Thickness(0, 6, 0, 0);
 
             var right = new DockPanel();
@@ -572,6 +573,22 @@ namespace CodeplugBuilder.Mac
             }
             RefreshGrid(sel);
             UpdateExample();
+            Raise();
+        }
+
+        /// <summary>Talkgroups in the usual order (local, state, regional, wide area, private calls): this repeater or all of them.</summary>
+        async System.Threading.Tasks.Task SortTalkgroups()
+        {
+            if (rep == null || !rep.IsDigital || !(TopLevel.GetTopLevel(this) is Window owner)) return;
+            var p = session.Project;
+            bool? all = await Dialogs.YesNo(owner,
+                "Put talkgroups in the usual order: local (9, 8, 2, the repeater's own), state (31xx), regional, wide area (91, 93, 3100), private calls last. " +
+                "The order is the channel order in the zone.", "Every DMR repeater", "Only " + (string.IsNullOrWhiteSpace(rep.Name) ? "this repeater" : rep.Name));
+            if (all == null) return;
+            var targets = all == true ? p.AllRepeaters().Where(r => r.IsDigital).ToList() : new List<Repeater> { rep };
+            int changed = targets.Count(r => TalkgroupOrder.Sort(p, r));
+            if (changed == 0) { await Dialogs.Info(owner, "Already in that order."); return; }
+            RefreshGrid(SelectedEntries());
             Raise();
         }
 

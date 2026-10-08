@@ -408,6 +408,7 @@ namespace CodeplugBuilder.App
                     return;
                 }
                 var u = users[0];
+                State.User = u;
                 AppSettings.Set("Callsign", call);
                 loading = true;
                 txtId.Text = u.Id.ToString(CultureInfo.InvariantCulture);

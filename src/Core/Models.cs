@@ -267,6 +267,8 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 7, EmitDefaultValue = false)] public List<int> RuleTalkgroups { get; set; }
         /// <summary>Talkgroup zone: only repeaters whose own zone is one of these. Null = every repeater.</summary>
         [DataMember(Order = 8, EmitDefaultValue = false)] public List<string> RuleZones { get; set; }
+        /// <summary>Talkgroup zone: only repeaters within this many miles of <see cref="Project.Home"/> (0 = no limit).</summary>
+        [DataMember(Order = 9, EmitDefaultValue = false)] public double RuleMiles { get; set; }
 
         public ZoneInfo() { Name = ""; }
         public ZoneInfo(string name) { Name = name; }
@@ -438,6 +440,8 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 12, EmitDefaultValue = false)] public List<int> KnownTalkgroups { get; set; }
         /// <summary>APRS identity for APRS.CSV (<see cref="Core.Aprs"/>); null = APRS.CSV isn't written and the CPS's APRS settings stay.</summary>
         [DataMember(Order = 13, EmitDefaultValue = false)] public AprsPlan Aprs { get; set; }
+        /// <summary>Where the user lives (distances, zone order, nearest-first talkgroup zones). Null = not set; nothing changes.</summary>
+        [DataMember(Order = 14, EmitDefaultValue = false)] public HomeLocation Home { get; set; }
 
         public Project() { Init(); }
 
@@ -534,6 +538,21 @@ namespace CodeplugBuilder.Core
                     if (old != r.AutoChannelName(e, tg.Name, max)) e.ChannelName = old;
                 }
             }
+        }
+
+        /// <summary>Kilometres from <see cref="Home"/> to a repeater; null when either has no position.</summary>
+        public double? DistanceKm(Repeater r)
+        {
+            if (Home == null || r?.Latitude == null || r.Longitude == null) return null;
+            return Distances.Km(Home.Latitude, Home.Longitude, r.Latitude.Value, r.Longitude.Value);
+        }
+
+        /// <summary>"12 mi NE" from home, or "" when either has no position.</summary>
+        public string DistanceText(Repeater r)
+        {
+            double? km = DistanceKm(r);
+            if (km == null) return "";
+            return Distances.Describe(km.Value, Distances.Bearing(Home.Latitude, Home.Longitude, r.Latitude.Value, r.Longitude.Value), Home.UsesMiles);
         }
 
         public Talkgroup FindTalkgroup(int id)
@@ -710,12 +729,14 @@ namespace CodeplugBuilder.Core
                 foreach (var c in ChannelsOf(r)) Add(c);
             if (info != null && info.HasRule)
             {
+                // Nearest repeaters first when there is a home (unplaced ones after, in list order); a radius leaves out
+                // repeaters farther away and those with no position.
                 var ids = new HashSet<int>(info.RuleTalkgroups);
-                foreach (var r in ActiveRepeaters().Where(r => r.IsDigital))
-                {
-                    if (info.RuleZones != null && !info.RuleZones.Any(n => SameZone(n, r.Zone))) continue;
-                    foreach (var e in r.Talkgroups.Where(e => ids.Contains(e.TalkgroupId))) Add(new ChannelRef(r, e));
-                }
+                var reps = ActiveRepeaters().Where(r => r.IsDigital && (info.RuleZones == null || info.RuleZones.Any(n => SameZone(n, r.Zone))))
+                                            .Select((r, i) => new { r, i, d = DistanceKm(r) }).ToList();
+                if (info.RuleMiles > 0 && Home != null) reps = reps.Where(x => x.d != null && x.d <= info.RuleMiles * Distances.KmPerMile).ToList();
+                foreach (var x in reps.OrderBy(x => x.d == null ? 1 : 0).ThenBy(x => x.d ?? 0).ThenBy(x => x.i))
+                    foreach (var e in x.r.Talkgroups.Where(e => ids.Contains(e.TalkgroupId))) Add(new ChannelRef(x.r, e));
             }
             return list;
         }

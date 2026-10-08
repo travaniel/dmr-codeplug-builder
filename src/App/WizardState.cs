@@ -12,6 +12,8 @@ namespace CodeplugBuilder.App
         public RegionDownload Download;
         public string Callsign = "", RadioIdName = "", Power = "High";
         public int RadioId;
+        /// <summary>The RadioID.net entry the callsign lookup found (its town becomes the project's home); null when typed by hand.</summary>
+        public RadioIdUser User;
         public bool Hotspot, Noaa, Simplex;
 
         /// <summary>The wizard's simplex checkbox (North America only).</summary>
@@ -78,6 +80,11 @@ namespace CodeplugBuilder.App
             if (SingleZone.Length == 0 || Region.Count > 2) SingleZone = "DMR";
 
             var p = new Project { RadioId = RadioId, RadioIdName = RadioIdName };
+            if (User != null && User.Id == RadioId)
+            {
+                try { p.Home = HomeLocation.Find(GeoAtlas.BuiltIn(), User.City, User.State, User.Country); }
+                catch (Exception) { p.Home = null; } // no map: no home, zones by name
+            }
             p.HotspotEnabled = Hotspot;
             if (Hotspot)
             {
@@ -94,7 +101,7 @@ namespace CodeplugBuilder.App
             Project = p;
         }
 
-        /// <summary>Hotspot first, then the rest by name, then simplex and weather.</summary>
+        /// <summary>Hotspot first, then the rest by name (nearest first when the project has a home), then simplex and weather.</summary>
         public static void SortZones(Project p)
         {
             p.SyncZones();
@@ -102,6 +109,7 @@ namespace CodeplugBuilder.App
                                 .ThenBy(z => z.Name, StringComparer.OrdinalIgnoreCase).ToList();
             p.Zones.Clear();
             p.Zones.AddRange(sorted);
+            if (p.Home != null) ZoneOrder.Sort(p); // stable: names stay the tie-break
         }
     }
 }

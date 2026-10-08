@@ -33,7 +33,8 @@ namespace CodeplugBuilder.Mac
         Control startPage, workspace;
         DataGrid talkgroupGrid;
         ZonesTab zonesTab;
-        TextBox radioIdName, radioId;
+        TextBox radioIdName, radioId, homeTown;
+        TextBlock homeStatus;
         CheckBox politeTransmit;
         ComboBox callerScope;
         TextBox callerAreas;
@@ -127,6 +128,12 @@ namespace CodeplugBuilder.Mac
             menu.Items.Add(help);
             UpdateMenus();
             return menu;
+        }
+
+        void ShowHome()
+        {
+            var h = session.Project.Home;
+            homeStatus.Text = h == null ? "Not set" : h.Latitude.ToString("0.000", CultureInfo.InvariantCulture) + ", " + h.Longitude.ToString("0.000", CultureInfo.InvariantCulture);
         }
 
         void UpdateMenus()
@@ -224,6 +231,34 @@ namespace CodeplugBuilder.Mac
             settings.Children.Add(new TextBlock { Text = "Your radio ID (the CPS's Radio ID list)", FontWeight = Avalonia.Media.FontWeight.SemiBold });
             settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Name", Width = 60, VerticalAlignment = VerticalAlignment.Center }, radioIdName } });
             settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "DMR ID", Width = 60, VerticalAlignment = VerticalAlignment.Center }, radioId } });
+            // Home town (same text as the Windows SettingsPage).
+            homeTown = new TextBox { Width = 260, Watermark = "e.g. Brownwood, TX" };
+            homeStatus = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+            var findHome = new Button { Content = "Find on the map" };
+            var clearHome = new Button { Content = "Clear" };
+            void SetHome(HomeLocation h)
+            {
+                session.Project.Home = h;
+                homeTown.Text = h?.Place ?? "";
+                ShowHome();
+                session.MarkDirty();
+            }
+            void FindHome()
+            {
+                var h = HomeLocation.Parse(GeoAtlas.BuiltIn(), homeTown.Text, HomeLocation.DefaultCountry(session.Project));
+                if (h == null) { homeStatus.Text = "Not found. Try \"Town, State\" or \"Town, Country\"."; return; }
+                SetHome(h);
+            }
+            findHome.Click += (s, e) => FindHome();
+            clearHome.Click += (s, e) => SetHome(null);
+            homeTown.KeyDown += (s, e) => { if (e.Key == Avalonia.Input.Key.Enter) { e.Handled = true; FindHome(); } };
+            settings.Children.Add(new TextBlock { Text = "Home", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Home town", Width = 80, VerticalAlignment = VerticalAlignment.Center }, homeTown, findHome, clearHome, homeStatus } });
+            var homeHint = UiKit.Hint("Your home town: the Repeaters list shows each repeater's distance and direction from it, Zones > Sort by distance puts the " +
+                                      "nearest zones first, and talkgroup zones list the nearest repeaters first. The wizard's callsign lookup fills it from RadioID.net.");
+            homeHint.MaxWidth = 720;
+            homeHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(homeHint);
             politeTransmit = new CheckBox { Content = "Polite transmit: on a repeater, key up only when its slot is free" };
             politeTransmit.IsCheckedChanged += (s, e) => { if (loading) return; session.Project.Options.PoliteTransmit = politeTransmit.IsChecked == true; session.MarkDirty(); };
             settings.Children.Add(new TextBlock { Text = "Transmitting", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
@@ -371,6 +406,8 @@ namespace CodeplugBuilder.Mac
             foreach (var t in p.Talkgroups) lastGoodId[t] = t.Id;
             talkgroupGrid.ItemsSource = p.Talkgroups.ToList();
             radioIdName.Text = p.RadioIdName;
+            homeTown.Text = p.Home?.Place ?? "";
+            ShowHome();
             radioId.Text = p.RadioId.ToString(CultureInfo.InvariantCulture);
             politeTransmit.IsChecked = p.Options.PoliteTransmit;
             callerScope.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates }, p.Options.CallerScope ?? ""));

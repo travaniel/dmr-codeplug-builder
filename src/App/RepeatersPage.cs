@@ -68,6 +68,7 @@ namespace CodeplugBuilder.App
             list.Columns.Add("Zone", Ui.S(92));
             list.Columns.Add("Type", Ui.S(84));
             list.Columns.Add("RX MHz", Ui.S(68), HorizontalAlignment.Right);
+            list.Columns.Add("From home", Ui.S(78));
             left.Controls.Add(list, 0, 2);
 
             btnUp = Ui.Button("Up", (s, e) => MoveItem(-1));
@@ -103,7 +104,7 @@ namespace CodeplugBuilder.App
             split.Panel2.Controls.Add(lblEmpty);
             Controls.Add(split);
 
-            Ui.InitSplitter(split, Ui.S(430), Ui.S(320), Ui.S(480));
+            Ui.InitSplitter(split, Ui.S(520), Ui.S(320), Ui.S(480));
 
             list.SelectedIndexChanged += (s, e) => { if (!loading) BindSelected(); };
             // On Windows the ListView raises ItemChecked for every item while it (re)creates its handle,
@@ -161,6 +162,7 @@ namespace CodeplugBuilder.App
                     item.SubItems.Add("");
                     item.SubItems.Add("");
                     item.SubItems.Add("");
+                    item.SubItems.Add("");
                     Fill(item, r);
                     list.Items.Add(item);
                     if (r == select) { item.Selected = true; item.Focused = true; }
@@ -203,6 +205,7 @@ namespace CodeplugBuilder.App
                 ? "DMR " + r.Talkgroups.Count + " TG" + (r.Talkgroups.Count == 1 ? "" : "s")
                 : "FM" + (Tones.Normalize(r.ToneEncode) != "Off" ? " " + Tones.Normalize(r.ToneEncode) : "");
             item.SubItems[3].Text = r.RxMHz > 0 ? r.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) : "";
+            item.SubItems[4].Text = session.Project.DistanceText(r);
             StyleItem(item);
             loading = l;
         }

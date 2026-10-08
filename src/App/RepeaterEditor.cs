@@ -156,7 +156,8 @@ namespace CodeplugBuilder.App
             var gridButtons = Ui.Row(
                 Ui.Button("Move up", (s, e) => MoveSelected(-1)),
                 Ui.Button("Move down", (s, e) => MoveSelected(1)),
-                Ui.Button("Switch slot", (s, e) => SwitchSlot()));
+                Ui.Button("Switch slot", (s, e) => SwitchSlot()),
+                Ui.Button("Local first", (s, e) => SortTalkgroups()));
             tg.Controls.Add(gridButtons, 2, 2);
 
             grid = new DataGridView
@@ -711,6 +712,24 @@ namespace CodeplugBuilder.App
                 list.Insert(j, e);
             }
             RefreshGrid(sel);
+            UpdateExample();
+            Raise();
+        }
+
+        /// <summary>Talkgroups in the usual order (local, state, regional, wide area, private calls): this repeater or all of them.</summary>
+        void SortTalkgroups()
+        {
+            if (rep == null || !rep.IsDigital) return;
+            var p = session.Project;
+            var answer = MessageBox.Show(FindForm(),
+                "Put talkgroups in the usual order: local (9, 8, 2, the repeater's own), state (31xx), regional, wide area (91, 93, 3100), private calls last. " +
+                "The order is the channel order in the zone.\n\nYes: every DMR repeater (and the hotspot)\nNo: only " + (string.IsNullOrWhiteSpace(rep.Name) ? "this repeater" : rep.Name),
+                Ui.AppName, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (answer == DialogResult.Cancel) return;
+            var targets = answer == DialogResult.Yes ? p.AllRepeaters().Where(r => r.IsDigital).ToList() : new List<Repeater> { rep };
+            int changed = targets.Count(r => TalkgroupOrder.Sort(p, r));
+            if (changed == 0) { Ui.Info(FindForm(), "Already in that order."); return; }
+            RefreshGrid(SelectedEntries());
             UpdateExample();
             Raise();
         }

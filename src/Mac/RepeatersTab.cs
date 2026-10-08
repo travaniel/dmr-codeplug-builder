@@ -42,6 +42,7 @@ namespace CodeplugBuilder.Mac
                 ? "DMR " + R.Talkgroups.Count + " TG" + (R.Talkgroups.Count == 1 ? "" : "s")
                 : "FM" + (Tones.Normalize(R.ToneEncode) != "Off" ? " " + Tones.Normalize(R.ToneEncode) : "");
             public string Rx => R.RxMHz > 0 ? R.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) : "";
+            public string FromHome { get; set; }
         }
 
         public RepeatersTab(Session session, Window owner)
@@ -56,6 +57,7 @@ namespace CodeplugBuilder.Mac
             list.Columns.Add(UiKit.Col("Zone", "Zone", true, 100));
             list.Columns.Add(UiKit.Col("Type", "Type", true, 90));
             list.Columns.Add(UiKit.Col("RX MHz", "Rx", true, 70));
+            list.Columns.Add(UiKit.Col("From home", "FromHome", true, 80));
 
             btnUp = UiKit.Button("Up", () => MoveItem(-1));
             btnDown = UiKit.Button("Down", () => MoveItem(1));
@@ -78,7 +80,7 @@ namespace CodeplugBuilder.Mac
             filterRow.Children.Add(show);
             filterRow.Children.Add(cboFilter);
 
-            var left = new DockPanel { Width = 520, Margin = new Thickness(10, 8, 6, 8) };
+            var left = new DockPanel { Width = 600, Margin = new Thickness(10, 8, 6, 8) };
             var head = UiKit.Heading("Repeaters and channels");
             DockPanel.SetDock(head, Dock.Top); DockPanel.SetDock(filterRow, Dock.Top); DockPanel.SetDock(buttons, Dock.Bottom);
             left.Children.Add(head); left.Children.Add(filterRow); left.Children.Add(buttons); left.Children.Add(list);
@@ -125,7 +127,7 @@ namespace CodeplugBuilder.Mac
                 rows = session.Project.Repeaters
                     .Where(r => !(filter == "(no zone)" && !string.IsNullOrWhiteSpace(r.Zone)))
                     .Where(r => filter == null || filter == "(no zone)" || inZone.Contains(r))
-                    .Select(r => new RepRow(r, row => { if (editor.Repeater == row.R) editor.Bind(session, row.R); session.MarkDirty(); }))
+                    .Select(r => new RepRow(r, row => { if (editor.Repeater == row.R) editor.Bind(session, row.R); session.MarkDirty(); }) { FromHome = session.Project.DistanceText(r) })
                     .ToList();
                 list.ItemsSource = rows;
                 var pick = rows.FirstOrDefault(x => x.R == select) ?? (select == null && editor.Repeater == null ? rows.FirstOrDefault() : null);
