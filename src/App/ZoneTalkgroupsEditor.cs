@@ -21,17 +21,46 @@ namespace CodeplugBuilder.App
         readonly Dictionary<string, HashSet<int>> unticked = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
         Dictionary<int, string> bm = new Dictionary<int, string>();
         bool loading;
+        /// <summary>The next refresh highlights nothing (set by a tick, which is no reason to keep a row selected).</summary>
+        bool dropSelection;
 
         readonly Label lblTitle, lblCount;
         readonly TextBox txtSearch;
         readonly ListBox lstFound;
-        readonly DataGridView grid;
+        readonly DeselectableGrid grid;
         readonly DataGridViewCheckBoxColumn colIn;
         readonly DataGridViewTextBoxColumn colName, colId, colOn;
         readonly DataGridViewComboBoxColumn colSlot;
 
         /// <summary>The project changed (talkgroups added, channels added or removed).</summary>
         public event EventHandler Changed;
+
+        /// <summary>
+        /// A grid whose highlight can be taken off with the mouse: clicking the only highlighted row again (on a read-only
+        /// cell, not the tick box or slot) or the empty space below the rows clears it. Ctrl/Shift clicks work as usual.
+        /// </summary>
+        sealed class DeselectableGrid : DataGridView
+        {
+            protected override void OnCellMouseDown(DataGridViewCellMouseEventArgs e)
+            {
+                bool again = e.Button == MouseButtons.Left && ModifierKeys == Keys.None && e.RowIndex >= 0 && e.ColumnIndex >= 0 &&
+                             Columns[e.ColumnIndex].ReadOnly && Rows[e.RowIndex].Selected && SelectedRows.Count == 1;
+                base.OnCellMouseDown(e);
+                if (again) Clear();
+            }
+
+            protected override void OnMouseDown(MouseEventArgs e)
+            {
+                base.OnMouseDown(e);
+                if (e.Button == MouseButtons.Left && HitTest(e.X, e.Y).Type == DataGridViewHitTestType.None) Clear();
+            }
+
+            public void Clear()
+            {
+                ClearSelection();
+                try { CurrentCell = null; } catch (InvalidOperationException) { } // refused while a cell can't leave edit mode
+            }
+        }
 
         sealed class Found
         {
@@ -68,7 +97,7 @@ namespace CodeplugBuilder.App
             lstFound.BringToFront();
 
             // ---------- right: grid ----------
-            grid = new DataGridView
+            grid = new DeselectableGrid
             {
                 Dock = DockStyle.Fill,
                 AllowUserToAddRows = false,
@@ -143,7 +172,11 @@ namespace CodeplugBuilder.App
                 if (e.Control is ComboBox c && c.Items.Contains("1 + 2")) c.Items.Remove("1 + 2");
             };
             grid.DataError += (s, e) => { e.ThrowException = false; };
-            grid.KeyDown += (s, e) => { if (e.KeyCode == Keys.Delete && !grid.IsCurrentCellInEditMode) { RemoveSelected(); e.Handled = true; } };
+            grid.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Delete && !grid.IsCurrentCellInEditMode) { RemoveSelected(); e.Handled = true; }
+                else if (e.KeyCode == Keys.Escape && !grid.IsCurrentCellInEditMode) { ClearHighlight(); e.Handled = true; }
+            };
             Bind(null, null);
         }
 
@@ -186,7 +219,8 @@ namespace CodeplugBuilder.App
             loading = true;
             try
             {
-                var keep = new HashSet<int>(grid.SelectedRows.Cast<DataGridViewRow>().Select(r => (int)r.Tag));
+                var keep = dropSelection ? new HashSet<int>() : new HashSet<int>(grid.SelectedRows.Cast<DataGridViewRow>().Select(r => (int)r.Tag));
+                dropSelection = false;
                 grid.Rows.Clear();
                 var info = project?.FindZone(zone ?? "");
                 if (info == null) { lblCount.Text = ""; return; }
@@ -212,11 +246,14 @@ namespace CodeplugBuilder.App
                     if (zt == null) grid.Rows[i].Cells[colSlot.Index].Style.ForeColor = Ui.HintColor;
                     if (keep.Contains(id)) grid.Rows[i].Selected = true;
                 }
-                if (keep.Count == 0) grid.ClearSelection();
+                if (keep.Count == 0) ClearHighlight();
                 UpdateCount(info, reps);
             }
             finally { loading = false; }
         }
+
+        /// <summary>No row highlighted: the grid otherwise keeps row 0 as its current row, which shows as selected.</summary>
+        void ClearHighlight() { grid.Clear(); }
 
         void UpdateCount(ZoneInfo info, List<Repeater> reps)
         {
@@ -306,6 +343,7 @@ namespace CodeplugBuilder.App
             if (e.ColumnIndex == colIn.Index)
             {
                 bool on = row.Cells[colIn.Index].Value is bool b && b;
+                dropSelection = true;
                 if (on)
                 {
                     string shown = row.Cells[colSlot.Index].Value as string;
@@ -357,12 +395,22 @@ namespace CodeplugBuilder.App
             if (info == null || !info.HasTalkgroups) { Ui.Info(FindForm(), "Tick some talkgroups in this zone first."); return; }
             var others = project.Zones.Where(z => z != info && project.TakesZoneTalkgroups(z.Name)).ToList();
             if (others.Count == 0) { Ui.Info(FindForm(), "There are no other zones with DMR repeaters."); return; }
-            if (!Ui.Confirm(FindForm(), "Put this zone's " + info.Talkgroups.Count + " ticked talkgroup" + (info.Talkgroups.Count == 1 ? "" : "s") +
-                                        " on every repeater in the other " + others.Count + " zone" + (others.Count == 1 ? "" : "s") + " too?"))
+            int count = info.Talkgroups.Count;
+            if (!Ui.Confirm(FindForm(), "Tick this zone's " + count + " talkgroup" + (count == 1 ? "" : "s") + " (same slots) in the other " + others.Count +
+                                        " zone" + (others.Count == 1 ? "" : "s") + " too: " + string.Join(", ", others.Select(z => z.Name)) + "?"))
                 return;
-            foreach (var z in others)
-                foreach (var t in info.Talkgroups) project.AddZoneTalkgroup(z.Name, t.TalkgroupId, t.Slot);
+            int added = others.Sum(z => project.CopyZoneTalkgroups(zone, z.Name));
             AfterChange();
+            Ui.Info(FindForm(), CopyReport(count, others.Count, added));
+        }
+
+        /// <summary>What Copy ticked to all zones did (shared wording with the Mac).</summary>
+        internal static string CopyReport(int talkgroups, int zones, int channels)
+        {
+            return "Ticked " + talkgroups + " talkgroup" + (talkgroups == 1 ? "" : "s") + " in " + zones + " more zone" + (zones == 1 ? "" : "s") + ": " +
+                   (channels == 0 ? "no new channels, because the repeaters there already list them (their own lists keep their slots)."
+                                  : channels + " new channel" + (channels == 1 ? "" : "s") + ".") +
+                   " Pick another zone on the left to see its talkgroups.";
         }
 
         void AfterChange()

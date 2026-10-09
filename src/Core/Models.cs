@@ -936,6 +936,24 @@ namespace CodeplugBuilder.Core
         }
 
         /// <summary>
+        /// Copy ticked to all zones, for one target zone: every talkgroup in <paramref name="fromZone"/>'s set goes into
+        /// <paramref name="toZone"/>'s set on the same slot (the channels the set put there move with it), and onto its
+        /// repeaters that don't carry it yet. The target's other ticks stay. Returns the number of channels added.
+        /// </summary>
+        public int CopyZoneTalkgroups(string fromZone, string toZone)
+        {
+            var from = FindZone(fromZone);
+            if (from?.Talkgroups == null || FindZone(toZone) == null || SameZone(fromZone, toZone)) return 0;
+            int added = 0;
+            foreach (var t in from.Talkgroups.ToList())
+            {
+                added += AddZoneTalkgroup(toZone, t.TalkgroupId, t.Slot);
+                SetZoneTalkgroupSlot(toZone, t.TalkgroupId, t.Slot);
+            }
+            return added;
+        }
+
+        /// <summary>
         /// Brings one repeater in line with its zone: drops channels a previous zone's set put there, and adds the
         /// current zone's talkgroups it doesn't carry yet. Call after adding a repeater or changing its zone.
         /// </summary>

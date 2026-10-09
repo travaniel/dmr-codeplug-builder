@@ -724,12 +724,17 @@ namespace CodeplugBuilder.Mac
             if (info == null || !info.HasTalkgroups) { await Dialogs.Info(owner, "Tick some talkgroups in this zone first."); return; }
             var others = project.Zones.Where(z => z != info && project.TakesZoneTalkgroups(z.Name)).ToList();
             if (others.Count == 0) { await Dialogs.Info(owner, "There are no other zones with DMR repeaters."); return; }
-            if (!await Dialogs.Ask(owner, "Put this zone's " + info.Talkgroups.Count + " ticked talkgroup" + (info.Talkgroups.Count == 1 ? "" : "s") +
-                                          " on every repeater in the other " + others.Count + " zone" + (others.Count == 1 ? "" : "s") + " too?", "Copy"))
+            int count = info.Talkgroups.Count;
+            if (!await Dialogs.Ask(owner, "Tick this zone's " + count + " talkgroup" + (count == 1 ? "" : "s") + " (same slots) in the other " + others.Count +
+                                          " zone" + (others.Count == 1 ? "" : "s") + " too: " + string.Join(", ", others.Select(z => z.Name)) + "?", "Copy"))
                 return;
-            foreach (var z in others)
-                foreach (var t in info.Talkgroups) project.AddZoneTalkgroup(z.Name, t.TalkgroupId, t.Slot);
+            int added = others.Sum(z => project.CopyZoneTalkgroups(zone, z.Name));
             AfterChange();
+            // Same wording as Windows (ZoneTalkgroupsEditor.CopyReport).
+            await Dialogs.Info(owner, "Ticked " + count + " talkgroup" + (count == 1 ? "" : "s") + " in " + others.Count + " more zone" + (others.Count == 1 ? "" : "s") + ": " +
+                                      (added == 0 ? "no new channels, because the repeaters there already list them (their own lists keep their slots)."
+                                                  : added + " new channel" + (added == 1 ? "" : "s") + ".") +
+                                      " Pick another zone on the left to see its talkgroups.");
         }
 
         void AfterChange()
