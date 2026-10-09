@@ -16,7 +16,9 @@ namespace CodeplugBuilder.Core
         public Talkgroup Talkgroup;
         public string Zone;
         public string RxGroupList;
-        public string ScanList;
+        /// <summary>The scan lists this channel scans with, in order (Channel.CSV Scan List 1-8): its zone's, then Favorites and Local FM.</summary>
+        public List<string> ScanLists = new List<string>();
+        public string ScanList => ScanLists.Count > 0 ? ScanLists[0] : null;
         /// <summary>The CPS channel number ("No."): the stored one, or the lowest free one for a new channel.</summary>
         public int Number;
         public bool IsDigital => Entry != null;
@@ -34,6 +36,8 @@ namespace CodeplugBuilder.Core
         public List<GeneratedChannel> Members = new List<GeneratedChannel>();
         public string AChannel;
         public string BChannel;
+        /// <summary>The project's zone this was made from (null for zones kept from the CPS).</summary>
+        public ZoneInfo Info;
         /// <summary>A zone made in the CPS, kept in merge mode.</summary>
         public bool FromCps;
     }
@@ -277,6 +281,7 @@ namespace CodeplugBuilder.Core
                     {
                         Name = zoneNamer.Claim(k == 0 ? zone : zone + " " + (k + 1)),
                         Members = chunk,
+                        Info = info,
                     };
                     gz.AChannel = Pick(chunk, info?.AChannel, 0);
                     gz.BChannel = Pick(chunk, info?.BChannel, chunk.Count > 1 ? 1 : 0);
@@ -314,6 +319,17 @@ namespace CodeplugBuilder.Core
             {
                 g.ScanLists = f.ScanLists.CloneHeader();
                 var scanNamer = new UniqueNamer(max, "Scan List");
+                List<string> AddScanRow(string listName, List<GeneratedChannel> members)
+                {
+                    var row = f.ScanTemplate != null ? g.ScanLists.NewRow(f.ScanTemplate) : DefaultScanRow(g.ScanLists);
+                    g.ScanLists.Set(row, Num(g.ScanLists.Rows.Count + 1), "No.");
+                    g.ScanLists.Set(row, listName, "Scan List Name");
+                    g.ScanLists.Set(row, string.Join("|", members.Select(m => m.Name)), "Scan Channel Member");
+                    g.ScanLists.Set(row, string.Join("|", members.Select(m => f.FormatFrequency(m.Repeater.RxMHz))), "Scan Channel Member RX Frequency");
+                    g.ScanLists.Set(row, string.Join("|", members.Select(m => f.FormatFrequency(m.Repeater.TxMHz))), "Scan Channel Member TX Frequency");
+                    g.ScanLists.Rows.Add(row);
+                    return row;
+                }
                 foreach (var z in g.ZoneList)
                 {
                     var members = z.Members;
@@ -323,16 +339,36 @@ namespace CodeplugBuilder.Core
                         members = members.Take(o.MaxScanListChannels).ToList();
                     }
                     string name = scanNamer.Claim(z.Name);
-                    var row = f.ScanTemplate != null ? g.ScanLists.NewRow(f.ScanTemplate) : DefaultScanRow(g.ScanLists);
-                    g.ScanLists.Set(row, Num(g.ScanLists.Rows.Count + 1), "No.");
-                    g.ScanLists.Set(row, name, "Scan List Name");
-                    g.ScanLists.Set(row, string.Join("|", members.Select(m => m.Name)), "Scan Channel Member");
-                    g.ScanLists.Set(row, string.Join("|", members.Select(m => f.FormatFrequency(m.Repeater.RxMHz))), "Scan Channel Member RX Frequency");
-                    g.ScanLists.Set(row, string.Join("|", members.Select(m => f.FormatFrequency(m.Repeater.TxMHz))), "Scan Channel Member TX Frequency");
-                    g.ScanLists.Rows.Add(row);
-                    foreach (var m in members) if (m.ScanList == null) m.ScanList = name;
+                    var row = AddScanRow(name, members);
+                    // A Favorites zone's list watches the home channel (the hotspot, else the nearest repeater) while it scans,
+                    // and is also each member's next scan list (their first stays their own zone's).
+                    bool favorites = o.FavoritesScanPriority && z.Info != null && p.ZoneKindOf(z.Info) == ZoneKinds.Favorites;
+                    if (favorites && members.Count > 0)
+                    {
+                        var priority = ScanPriority(p, members);
+                        g.ScanLists.Set(row, ScanPriorityValues.Select1, "Priority Channel Select");
+                        g.ScanLists.Set(row, priority.Name, "Priority Channel 1");
+                    }
+                    foreach (var m in members)
+                        if (m.ScanLists.Count == 0 || (favorites && m.ScanLists.Count < MaxChannelScanLists && !m.ScanLists.Contains(name))) m.ScanLists.Add(name);
                 }
                 merge?.AddScanLists(scanNamer, t => f.ScanTemplate != null ? t.NewRow(f.ScanTemplate) : DefaultScanRow(t));
+
+                // Local FM: analog repeaters near home, nearest first; each member's next scan list.
+                if (o.LocalAnalogScanList)
+                {
+                    double miles = o.LocalAnalogMiles > 0 ? o.LocalAnalogMiles : GenerationOptions.DefaultLocalAnalogMiles;
+                    var near = g.ChannelList.Where(c => !c.IsDigital && !c.Repeater.RxOnly && !Presets.IsPreset(c.Repeater))
+                                            .Select(c => new { c, d = p.DistanceKm(c.Repeater) })
+                                            .Where(x => x.d != null && x.d <= miles * Distances.KmPerMile)
+                                            .OrderBy(x => x.d).Select(x => x.c).Take(o.MaxScanListChannels).ToList();
+                    if (near.Count > 0) // none without a home town
+                    {
+                        string name = scanNamer.Claim("Local FM");
+                        AddScanRow(name, near);
+                        foreach (var m in near) if (m.ScanLists.Count < MaxChannelScanLists && !m.ScanLists.Contains(name)) m.ScanLists.Add(name);
+                    }
+                }
             }
 
             // ---- Channel rows --------------------------------------------------------------
@@ -377,7 +413,11 @@ namespace CodeplugBuilder.Core
                     if (firstTg != null) g.Channels.Set(row, firstTg.Id.ToString(CultureInfo.InvariantCulture), "Contact TG/DMR ID");
                     g.Channels.Set(row, "None", "Receive Group List");
                 }
-                if (c.ScanList != null) g.Channels.Set(row, c.ScanList, "Scan List 1", "Scan List");
+                for (int k = 0; k < c.ScanLists.Count && k < MaxChannelScanLists; k++)
+                {
+                    if (k == 0) g.Channels.Set(row, c.ScanLists[k], "Scan List 1", "Scan List");
+                    else g.Channels.Set(row, c.ScanLists[k], "Scan List " + (k + 1).ToString(CultureInfo.InvariantCulture));
+                }
                 rows.Add(new KeyValuePair<int, List<string>>(c.Number, row));
             }
             merge?.AddChannelRows(rows);
@@ -473,6 +513,21 @@ namespace CodeplugBuilder.Core
             return p.Remember(g.ChannelList.Select(c => new KnownChannel(c.Number, c.Name)),
                               g.ZoneList.Where(z => !z.FromCps).Select(z => z.Name),
                               p.Talkgroups.Select(t => t.Id));
+        }
+
+        /// <summary>Channel.CSV has Scan List 1-8.</summary>
+        public const int MaxChannelScanLists = 8;
+
+        /// <summary>
+        /// The channel a Favorites scan list keeps watching (it must be one of the list's members, CPS 1.22e): a hotspot channel,
+        /// else the member nearest home, else the first.
+        /// </summary>
+        public static GeneratedChannel ScanPriority(Project p, List<GeneratedChannel> members)
+        {
+            var hotspot = members.FirstOrDefault(m => m.Repeater == p.Hotspot);
+            if (hotspot != null) return hotspot;
+            var nearest = members.Select(m => new { m, d = p.DistanceKm(m.Repeater) }).Where(x => x.d != null).OrderBy(x => x.d).FirstOrDefault();
+            return nearest?.m ?? members[0];
         }
 
         static string Pick(List<GeneratedChannel> chunk, string wanted, int fallbackIndex)

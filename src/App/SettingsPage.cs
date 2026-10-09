@@ -13,7 +13,8 @@ namespace CodeplugBuilder.App
         readonly Session session;
         readonly TextBox txtRadioName, txtRadioId, txtHome;
         readonly Label lblHome;
-        readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkPolite, chkKeep;
+        readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkPolite, chkKeep, chkFavScan, chkLocalFm;
+        readonly NumericUpDown numLocalMiles;
         readonly ComboBox cboCallers;
         readonly TextBox txtCallerAreas;
         readonly CheckBox chkAprs;
@@ -74,6 +75,15 @@ namespace CodeplugBuilder.App
             chkScanLists = Check("Make a scan list for each zone (up to 50 channels each)");
             Span(Ui.Hint("Each list copies the settings of a scan list made in the CPS (scan mode off, revert to the selected channel), " +
                          "and every channel in the zone scans its zone's list.", wrap));
+            chkFavScan = Check("Favorites zones: their scan list keeps checking your home channel (hotspot, else the nearest repeater)");
+            chkLocalFm = Check("Local FM scan list: analog repeaters near home, nearest first");
+            numLocalMiles = new NumericUpDown { Minimum = 5, Maximum = 500, Increment = 5, Width = Ui.S(70), Anchor = AnchorStyles.Left };
+            var milesRow = Ui.Row(Ui.Label("Local FM: within"), numLocalMiles, Ui.Label("miles of your home town"));
+            milesRow.Dock = DockStyle.None;
+            milesRow.WrapContents = false;
+            Span(milesRow);
+            Span(Ui.Hint("A channel can scan with several lists: its own zone's first, then Favorites and Local FM (Scan List 2, 3 in the CPS). " +
+                         "The priority channel is checked every few seconds while scanning, so you don't miss your home repeater or hotspot.", wrap));
 
             Section("Transmitting");
             chkPolite = Check("Polite transmit: on a repeater, key up only when its slot is free");
@@ -158,7 +168,10 @@ namespace CodeplugBuilder.App
             };
             chkRadioIdList.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.WriteRadioIdList = chkRadioIdList.Checked; session.MarkDirty(); };
             chkRxLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.RxGroupListPerRepeater = chkRxLists.Checked; session.MarkDirty(); };
-            chkScanLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.ScanListPerZone = chkScanLists.Checked; session.MarkDirty(); };
+            chkScanLists.CheckedChanged += (s, e) => { chkFavScan.Enabled = chkLocalFm.Enabled = numLocalMiles.Enabled = chkScanLists.Checked; if (loading) return; session.Project.Options.ScanListPerZone = chkScanLists.Checked; session.MarkDirty(); };
+            chkFavScan.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.FavoritesScanPriority = chkFavScan.Checked; session.MarkDirty(); };
+            chkLocalFm.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.LocalAnalogScanList = chkLocalFm.Checked; session.MarkDirty(); };
+            numLocalMiles.ValueChanged += (s, e) => { if (loading) return; session.Project.Options.LocalAnalogMiles = (int)numLocalMiles.Value; session.MarkDirty(); };
             chkPolite.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.PoliteTransmit = chkPolite.Checked; session.MarkDirty(); };
             cboCallers.SelectedIndexChanged += (s, e) =>
             {
@@ -319,6 +332,10 @@ namespace CodeplugBuilder.App
             ShowHome();
             chkRxLists.Checked = p.Options.RxGroupListPerRepeater;
             chkScanLists.Checked = p.Options.ScanListPerZone;
+            chkFavScan.Checked = p.Options.FavoritesScanPriority;
+            chkLocalFm.Checked = p.Options.LocalAnalogScanList;
+            numLocalMiles.Value = Math.Max(5, Math.Min(500, p.Options.LocalAnalogMiles > 0 ? p.Options.LocalAnalogMiles : GenerationOptions.DefaultLocalAnalogMiles));
+            chkFavScan.Enabled = chkLocalFm.Enabled = numLocalMiles.Enabled = p.Options.ScanListPerZone;
             chkPolite.Checked = p.Options.PoliteTransmit;
             cboCallers.SelectedIndex = Math.Max(0, Array.IndexOf(CallerScopeValues, p.Options.CallerScope ?? ""));
             txtCallerAreas.Text = string.Join(", ", p.Options.CallerAreas ?? new System.Collections.Generic.List<string>());

@@ -173,8 +173,34 @@ frequencies (AnyTone 878 CPS versions add member frequency columns; the generato
 Since members are names, one channel can be listed in several zones (1.5, "zones as views"). The user's own export has no
 such channel; a generated test (`CPSnow\multizone-src` = the user's export with KC5EZZ also in "Hwy 183", the Home zone in
 reverse order and a "Favorites" zone of Texas|KC5EZZ|K5BWD VHF|NOAA CH3; imported and generated to `CPSnow\multizonegen`)
-reproduces that Zone.CSV byte for byte. **Not yet checked in the CPS** that it imports and exports back unchanged (the radio's
-encoder already handles it: a scan-list member's zone index is "the first zone holding it", 4d).
+reproduces that Zone.CSV byte for byte. **Checked in CPS 1.22e (2026-10-08):** importing `multizonegen` gave no dialogs and Export All
+(`CPSnow\multizoneback`) gave back Channel, Zone, TalkGroups, RadioIDList and ReceiveGroupCallList byte for byte, KC5EZZ in three zones.
+
+**Scan list priority and a channel's scan lists (checked in CPS 1.22e, 2026-10-08, export `CPSnow\scanprio`):**
+- Scan list editor: *Priority Channel Select* Off / `Priority Channel Select1` / `Priority Channel Select2` /
+  `Priority Channel Select1 + Priority Channel Select2` (the CSV spells them exactly so). *Priority Channel 1/2*: Off, `Current Channel`,
+  or a **member** of the list (CSV: the channel name). *Revert Channel*: Selected, Selected + TalkBack, Priority Channel Select1,
+  Priority Channel Select2, Last Called, Last Used, Priority Channel Select1 + TalkBack, ... (RadioCsv's list is incomplete past Last Used).
+- Exported row: `"1","Scan List 1","...","Off","Priority Channel Select1 + Priority Channel Select2","K5BWD VHF","Current Channel","Selected",...`.
+- Channel editor: a *Scan List* box with *Edit*: the channel picks an **ordered** set of scan lists (up to 8) from the codeplug's lists;
+  Channel.CSV `Scan List 1`, `Scan List 2`... hold them in that order (K5BWD VHF: "Scan List 1", "Scan List 2"). What the radio does with a
+  channel that has two lists (scan both, or let you choose) is still to be seen on the radio.
+
+**GpsRoaming.CSV (GPS zone switching, checked in CPS 1.22e, 2026-10-08, export `CPSnow\gpsroam`):** no No. column, always 32 rows, header
+`OnOff, Zone, Latitude Degree, North or South, Longtitude Degree, East or West, Latitude Minute, Latitude Minute1, Longtitude Minute,
+Longtitude Minute1, Radius(Meter)`. Entry 2 set in the editor to On, zone "San Angelo DMR", 31° 27.83' N, 100° 26.22' W, radius 25000 exported
+as `"1","2","31","0","100","1","27.00","83.00","26.00","22.00","25000"`: OnOff 0/1; **Zone = 0-based index in the zone list** (San Angelo DMR
+is the third zone); N/S 0 = N, 1 = S; E/W 0 = E, 1 = W; **minutes split into whole minutes and hundredths**, each written "NN.00"; radius as
+typed. The editor's zone list ends with "Off". The help text: GPS must be on and Optional Setting > GPS/Ranging > *GPS Roaming* on, and the
+distance unit chosen there (meter or feet) is the radius unit, so the CSV header's "(Meter)" is only right with metric units. The
+editor's ddd.ddddd tab showed E for a W entry (the two tabs don't stay in step; the export followed the minutes tab).
+**Importing Zone.CSV leaves GpsRoaming's zone numbers alone**: after the favorites import below (other zones), entry 2 still said zone 2,
+which is now another zone. So a codeplug that uses GPS zone switching must write GpsRoaming.CSV every time it writes Zone.CSV.
+
+**Generated scan lists 2-8, checked in CPS 1.22e (2026-10-08):** a wizard project with a Favorites zone (Favorites scan list with
+`Priority Channel Select1` and Priority Channel 1 = "KC5CZX Texas", members' Scan List 1/2) generated to `CPSnow\favgen2`, imported with
+its 6-entry `.LST`: no dialogs, and Export All (`CPSnow\favback`) gave back Channel, Zone, ScanList, TalkGroups, RadioIDList and
+ReceiveGroupCallList byte for byte.
 
 **TalkGroups.CSV:** No., Radio ID (the talkgroup number), Name, Call Type, Call Alert (`None`). The 6X2
 guide warns that duplicate entries make the write to the radio fail.
@@ -774,6 +800,14 @@ before it's called done.
 9. **Scan lists 2-8.** Channel.CSV has Scan List 1-8; the generator writes only 1. Add a Favorites scan list with the
    home repeater or hotspot as priority channel (ScanList.CSV `Priority Channel Select`/`Priority Channel 1`) and a
    local-analog list. 250 lists of 50 channels.
+   *Built 2026-10-08, checked in the CPS (section 4).* `GeneratedChannel.ScanLists` (up to 8, written to Scan List 1-8): a channel's first
+   zone's list as before; with `GenerationOptions.FavoritesScanPriority` a Favorites zone's list (kind from `ZoneKindOf`) gets
+   `Priority Channel Select1` and Priority Channel 1 = `CodeplugGenerator.ScanPriority` (a hotspot member, else the member nearest home,
+   else the first; it must be a member) and is each member's next list; with `LocalAnalogScanList` a "Local FM" list of the analog
+   repeaters within `LocalAnalogMiles` (default 50) of home, nearest first, not RX-only, not presets, is each member's next list (none
+   without a home). Both need scan lists on; on for new projects, off for older files and CPS imports. Settings > Scan lists (Windows
+   and Mac; the Mac Settings tab gained the scan-list switch too). To see on the radio: what a channel with two scan lists does when you
+   scan, and that the priority channel is heard while scanning. Tests `ScanListTests` (3).
 10. **GPS zone switching (GpsRoaming.CSV, section 22).** Up to 32 entries from area zones: centre of the zone's repeaters
     (or the county's label point), radius = farthest repeater + margin; nearest 32 to home, or along a route. Learn the
     columns first (section 4). Users report it changes only the zone (not the nearest repeater), overrides manual zone
@@ -832,14 +866,15 @@ before it's called done.
 - A real DigitalContactList row; CPS import time for ~300,000 rows.
 - APRS.CSV `channel1-8`/`slot`/`Aprs Tg`/`Call Type` and Channel.CSV `APRS Report Channel` meanings; an APRS beacon heard
   on aprs.fi (analog, and BrandMeister digital).
-- GpsRoaming.CSV minute columns and zone index; how GPS zone switching behaves when driving.
+- ~~GpsRoaming.CSV minute columns and zone index~~ (section 4, 2026-10-08); how GPS zone switching behaves when driving.
+- Scan lists (item 9): a channel with two scan lists (what Scan does), and the Favorites priority channel heard while scanning.
 - `Same Color Code` refuses to key on a busy slot. Before that: a polite codeplug (new project) imports into the CPS and its
   Export All gives back the same Channel.CSV (proves the `Same Color Code` spelling), and a CPS write of it read back with
   `--radio-read` shows TX permit 1 on those channels (proves the byte).
 - Send talker alias after an app write with the recommendation accepted: CPS *Read from radio* > Optional Setting > Talker
   Alias Settings shows Send Talker Alias on (and nothing else there changed).
 - Where the CPS writes satellite data and the caller database (USB captures).
-- Zones sharing channels (item 7): import `CPSnow\multizonegen\CodeplugBuilder.LST` into the CPS, Export All to a new folder, and
+- ~~Zones sharing channels (item 7)~~: checked 2026-10-08 (section 4). Was: import `CPSnow\multizonegen\CodeplugBuilder.LST` into the CPS, Export All to a new folder, and
   compare its Zone.CSV with the generated one (expected: identical, no conflict dialogs; KC5EZZ in San Angelo DMR, Hwy 183 and
   Favorites). Optional: write it to the radio and check that the Favorites zone shows those four channels.
 

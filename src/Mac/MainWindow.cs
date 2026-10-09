@@ -35,7 +35,8 @@ namespace CodeplugBuilder.Mac
         ZonesTab zonesTab;
         TextBox radioIdName, radioId, homeTown;
         TextBlock homeStatus;
-        CheckBox politeTransmit;
+        CheckBox politeTransmit, scanLists, favScan, localFm;
+        NumericUpDown localMiles;
         ComboBox callerScope;
         TextBox callerAreas;
         CheckBox aprsOn;
@@ -272,6 +273,25 @@ namespace CodeplugBuilder.Mac
             politeHint.MaxWidth = 720;
             politeHint.HorizontalAlignment = HorizontalAlignment.Left;
             settings.Children.Add(politeHint);
+            // Scan lists (same text as the Windows SettingsPage).
+            scanLists = new CheckBox { Content = "Make a scan list for each zone (up to 50 channels each)" };
+            favScan = new CheckBox { Content = "Favorites zones: their scan list keeps checking your home channel (hotspot, else the nearest repeater)" };
+            localFm = new CheckBox { Content = "Local FM scan list: analog repeaters near home, nearest first" };
+            localMiles = new NumericUpDown { Minimum = 5, Maximum = 500, Increment = 5, Width = 130, FormatString = "0" };
+            scanLists.IsCheckedChanged += (s, e) => { favScan.IsEnabled = localFm.IsEnabled = localMiles.IsEnabled = scanLists.IsChecked == true; if (loading) return; session.Project.Options.ScanListPerZone = scanLists.IsChecked == true; session.MarkDirty(); };
+            favScan.IsCheckedChanged += (s, e) => { if (loading) return; session.Project.Options.FavoritesScanPriority = favScan.IsChecked == true; session.MarkDirty(); };
+            localFm.IsCheckedChanged += (s, e) => { if (loading) return; session.Project.Options.LocalAnalogScanList = localFm.IsChecked == true; session.MarkDirty(); };
+            localMiles.ValueChanged += (s, e) => { if (loading) return; session.Project.Options.LocalAnalogMiles = (int)(localMiles.Value ?? GenerationOptions.DefaultLocalAnalogMiles); session.MarkDirty(); };
+            settings.Children.Add(new TextBlock { Text = "Scan lists", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(scanLists);
+            settings.Children.Add(favScan);
+            settings.Children.Add(localFm);
+            settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Local FM: within", VerticalAlignment = VerticalAlignment.Center }, localMiles, new TextBlock { Text = "miles of your home town", VerticalAlignment = VerticalAlignment.Center } } });
+            var scanHint = UiKit.Hint("A channel can scan with several lists: its own zone's first, then Favorites and Local FM (Scan List 2, 3 in the CPS). " +
+                                      "The priority channel is checked every few seconds while scanning, so you don't miss your home repeater or hotspot.");
+            scanHint.MaxWidth = 720;
+            scanHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(scanHint);
             // Caller names (same choices and text as the Windows SettingsPage).
             var callerValues = new[] { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates };
             callerScope = new ComboBox { ItemsSource = new[] { "Off (keep the CPS's list)", "Whole world", "Countries", "US states" }, Width = 240 };
@@ -411,6 +431,11 @@ namespace CodeplugBuilder.Mac
             ShowHome();
             radioId.Text = p.RadioId.ToString(CultureInfo.InvariantCulture);
             politeTransmit.IsChecked = p.Options.PoliteTransmit;
+            scanLists.IsChecked = p.Options.ScanListPerZone;
+            favScan.IsChecked = p.Options.FavoritesScanPriority;
+            localFm.IsChecked = p.Options.LocalAnalogScanList;
+            localMiles.Value = Math.Max(5, Math.Min(500, p.Options.LocalAnalogMiles > 0 ? p.Options.LocalAnalogMiles : GenerationOptions.DefaultLocalAnalogMiles));
+            favScan.IsEnabled = localFm.IsEnabled = localMiles.IsEnabled = p.Options.ScanListPerZone;
             callerScope.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates }, p.Options.CallerScope ?? ""));
             callerAreas.Text = string.Join(", ", p.Options.CallerAreas ?? new List<string>());
             callerAreas.IsEnabled = callerScope.SelectedIndex >= 2;

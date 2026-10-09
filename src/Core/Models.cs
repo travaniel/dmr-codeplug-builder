@@ -50,6 +50,17 @@ namespace CodeplugBuilder.Core
         public const string Off = "Off";
     }
 
+    /// <summary>ScanList.CSV priority spellings (CPS 1.22e, checked 2026-10-08, HANDOFF 4).</summary>
+    public static class ScanPriorityValues
+    {
+        public const string Off = "Off";
+        public const string Select1 = "Priority Channel Select1";
+        public const string Select2 = "Priority Channel Select2";
+        public const string Both = "Priority Channel Select1 + Priority Channel Select2";
+        /// <summary>Priority Channel 1/2 = the channel the scan started on.</summary>
+        public const string CurrentChannel = "Current Channel";
+    }
+
     [DataContract(Namespace = "")]
     public sealed class Talkgroup
     {
@@ -378,11 +389,25 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 14, EmitDefaultValue = false)] public string CallerScope { get; set; }
         /// <summary>Countries or US states for <see cref="CallerScope"/> Countries / UsStates.</summary>
         [DataMember(Order = 15, EmitDefaultValue = false)] public List<string> CallerAreas { get; set; }
+        /// <summary>
+        /// A Favorites zone's scan list keeps watching the home channel (Priority Channel Select1 = the hotspot, else the member nearest
+        /// home) and is each member's second scan list. Needs <see cref="ScanListPerZone"/>. On for new projects, off for older files.
+        /// </summary>
+        [DataMember(Order = 16, EmitDefaultValue = false)] public bool FavoritesScanPriority { get; set; }
+        /// <summary>A "Local FM" scan list of the analog repeaters within <see cref="LocalAnalogMiles"/> of home, nearest first. Needs a home and <see cref="ScanListPerZone"/>.</summary>
+        [DataMember(Order = 17, EmitDefaultValue = false)] public bool LocalAnalogScanList { get; set; }
+        /// <summary>Radius of the Local FM list, miles (0 = <see cref="DefaultLocalAnalogMiles"/>).</summary>
+        [DataMember(Order = 18, EmitDefaultValue = false)] public int LocalAnalogMiles { get; set; }
+
+        public const int DefaultLocalAnalogMiles = 50;
 
         public GenerationOptions()
         {
             Init();
-            PoliteTransmit = true; // new projects only: Init (also run when a file loads) leaves it off
+            // New projects only: Init (also run when a file loads) leaves these off, so older projects keep their output.
+            PoliteTransmit = true;
+            FavoritesScanPriority = true;
+            LocalAnalogScanList = true;
         }
 
         [OnDeserializing] void OnDeserializing(StreamingContext c) { Init(); }

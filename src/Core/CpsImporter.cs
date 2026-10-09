@@ -39,6 +39,8 @@ namespace CodeplugBuilder.Core
             var p = new Project();
             // ScanList.CSV would replace the scan lists made in the CPS, so an imported codeplug starts with them off.
             p.Options.ScanListPerZone = false;
+            p.Options.FavoritesScanPriority = false;
+            p.Options.LocalAnalogScanList = false;
             result.Project = p;
 
             string channelPath = CpsFormat.FindFile(folder, CpsFormat.ChannelFile);

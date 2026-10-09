@@ -163,13 +163,16 @@ programmatic changes don't fire edits.
 - **1.5 (in progress, from 2026-10-08):** roadmap HANDOFF 7, items 7-12 in the order 7, 8, 9, 12, 10, 11. Done: **zones as views**
   (item 7): zone kinds (Area, Favorites, Talkgroup, Utility), a channel in several zones (`ZoneInfo.Members`, `Project.ZoneChannels`),
   talkgroup zones (`RuleTalkgroups` / `RuleZones`), the importer keeps every zone a CPS channel is in, Zones tab and *Add to zone...* on
-  Windows and Mac. Older projects' output unchanged. Still to check in the CPS: a multi-zone Zone.CSV import (HANDOFF 7, "To check").
+  Windows and Mac. Older projects' output unchanged. Checked in the CPS.
   **Order that matches use** (item 8): `Project.Home` (Settings > Home town, callsign lookup, wizard), distance and direction on the
   Repeaters list, Zones > *Sort by distance* (`ZoneOrder`), *Local first* talkgroup order (`TalkgroupOrder`), talkgroup zones nearest first
   with an optional radius. Nothing reorders an existing project unless the user clicks.
   **Check for updates** (item 12, done before 9 because 9 needs the CPS): File > Check repeaters for updates compares repeaters added
   from RadioID.net with RadioID.net and BrandMeister now (frequency, color code, talkgroups, off air, delisted, new repeaters in their
-  counties), ticks, applies the ticked ones (`UpdateCheck`, `Online.CheckForUpdates`; dev `--check-updates`). Windows and Mac. 108 tests.
+  counties), ticks, applies the ticked ones (`UpdateCheck`, `Online.CheckForUpdates`; dev `--check-updates`). Windows and Mac.
+  **Scan lists 2-8** (item 9, checked in the CPS): Favorites zones' scan lists watch the home channel (priority), a Local FM list of analog
+  repeaters near home, and a channel's extra lists in Scan List 2-8. On for new projects only. Also checked in the CPS: a channel in
+  several zones (item 7), and GpsRoaming.CSV's columns (for item 10). 111 tests.
 - **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
   amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
   and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the

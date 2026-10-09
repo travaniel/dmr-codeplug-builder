@@ -37,6 +37,7 @@ namespace CodeplugBuilder.Tests
         static void FavoritesZoneHoldsChannelsFromOtherZones()
         {
             var p = Fixtures.Sample();
+            p.Options.FavoritesScanPriority = false; // item 9 gives favourites a second scan list; here only the zones matter
             var before = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
             Assert.True(p.AddToZone("Favorites", Ch(p, "K2XYZ", 93)), "added");
             Assert.True(p.AddToZone("Favorites", Ch(p, "W1ABC VHF")), "analog added");
