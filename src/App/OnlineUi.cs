@@ -11,17 +11,20 @@ namespace CodeplugBuilder.App
     {
         /// <summary>
         /// Checks the picked BrandMeister-only repeaters and gives them BrandMeister's static talkgroups (<see cref="PrepareForAdding"/>),
-        /// with a wait dialog while anything has to be asked. On any failure they keep RadioID.net's lists.
+        /// with a wait dialog while anything has to be asked. On any failure, or Cancel, they keep RadioID.net's lists.
         /// </summary>
         public static void PrepareForAdding(IWin32Window owner, List<OnlineRepeater> picked)
         {
             if (!NeedsPreparing(picked)) return;
-            try
+            using (var cancel = new System.Threading.CancellationTokenSource())
             {
-                RadioProgressDialog.Run(owner, "BrandMeister", pr => PrepareForAdding(picked, pr),
-                    "Asking BrandMeister about the picked repeaters: still on the air, and which talkgroups they carry...");
+                try
+                {
+                    RadioProgressDialog.Run(owner, "BrandMeister", pr => PrepareForAdding(picked, pr, cancel.Token),
+                        "Asking BrandMeister about the picked repeaters: still on the air, and which talkgroups they carry...", cancel);
+                }
+                catch { }
             }
-            catch { }
         }
 
         /// <summary>

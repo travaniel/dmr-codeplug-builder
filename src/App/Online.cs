@@ -260,12 +260,16 @@ namespace CodeplugBuilder.App
             var todo = new List<int>();
             foreach (int id in ids.Distinct())
             {
-                if (cache.TryGetValue(id, out string v)) result[id] = ParseCachedDate(v);
+                string v;
+                bool known = cache.TryGetValue(id, out v);
+                if (!known) lock (lastSeenThisRun) known = lastSeenThisRun.TryGetValue(id, out v); // answered while another check still runs
+                if (known) result[id] = ParseCachedDate(v);
                 else todo.Add(id);
             }
             if (todo.Count == 0) return result;
             int done = 0;
             progress?.Report(new ReadProgress { Done = 0, Total = todo.Count, What = "checking which repeaters BrandMeister still hears" });
+            if (priority) Interlocked.Increment(ref priorityChecks);
             try
             {
                 Parallel.ForEach(todo, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = token }, id =>
@@ -279,6 +283,7 @@ namespace CodeplugBuilder.App
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex) when (ex.Message.Contains(" 404 ")) { v = ""; } // BrandMeister doesn't know the ID
                     catch { }
+                    if (v != null) lock (lastSeenThisRun) lastSeenThisRun[id] = v;
                     lock (fetched)
                     {
                         if (v != null) { fetched[id] = v; result[id] = ParseCachedDate(v); }
@@ -288,9 +293,13 @@ namespace CodeplugBuilder.App
                 });
             }
             catch (OperationCanceledException) { }
+            finally { if (priority) Interlocked.Decrement(ref priorityChecks); }
             SaveDeviceCache("brandmeister-last-seen.txt", fetched);
             return result;
         }
+
+        /// <summary>Last-seen answers of this run, so a check doesn't ask again what one still running already asked.</summary>
+        static readonly Dictionary<int, string> lastSeenThisRun = new Dictionary<int, string>();
 
         /// <summary>
         /// The static talkgroups of each device (<see cref="BrandMeister.StaticTalkgroupUrl"/>); an empty list when it has
@@ -310,6 +319,7 @@ namespace CodeplugBuilder.App
             if (todo.Count == 0) return result;
             int done = 0;
             progress?.Report(new ReadProgress { Done = 0, Total = todo.Count, What = "getting talkgroups from BrandMeister" });
+            Interlocked.Increment(ref priorityChecks);
             try
             {
                 Parallel.ForEach(todo, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = token }, id =>
@@ -331,6 +341,7 @@ namespace CodeplugBuilder.App
                 });
             }
             catch (OperationCanceledException) { }
+            finally { Interlocked.Decrement(ref priorityChecks); }
             SaveDeviceCache("brandmeister-static-talkgroups.txt", fetched);
             return result;
         }
@@ -352,6 +363,7 @@ namespace CodeplugBuilder.App
                 foreach (var r in health)
                     if (seen.TryGetValue(r.BrandMeisterDeviceId, out var last)) { RepeaterHealth.Apply(r, last, now); MarkChecked(r); }
             }
+            if (token.IsCancellationRequested) return 0;
             var ask = list.Where(StaticTalkgroupsUnknown).ToList();
             if (ask.Count == 0) return 0;
             var statics = StaticTalkgroups(ask.Select(r => r.BrandMeisterDeviceId), progress, token);
@@ -395,15 +407,22 @@ namespace CodeplugBuilder.App
         }
 
         // BrandMeister allows 120 API requests a minute per address (x-ratelimit-limit, checked 2026-10-08) and answers 429
-        // after that. Background checks stop at BackgroundPerMinute so what the user waits for (priority) always has room.
+        // after that. Background checks stop at BackgroundPerMinute, and pause altogether while the user waits for a priority
+        // check (priorityChecks > 0), so that one gets the whole PriorityPerMinute.
         const int PriorityPerMinute = 100, BackgroundPerMinute = 70;
         static readonly Queue<DateTime> bmRequests = new Queue<DateTime>();
+        static int priorityChecks;
 
         static void WaitForBrandMeister(bool priority, CancellationToken token)
         {
             int limit = priority ? PriorityPerMinute : BackgroundPerMinute;
             while (true)
             {
+                if (!priority && Volatile.Read(ref priorityChecks) > 0)
+                {
+                    if (token.WaitHandle.WaitOne(250)) token.ThrowIfCancellationRequested();
+                    continue;
+                }
                 TimeSpan wait;
                 lock (bmRequests)
                 {

@@ -434,8 +434,10 @@ namespace CodeplugBuilder.App
             try
             {
                 report = RadioProgressDialog.Run(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
-                                                 "Asking RadioID.net and BrandMeister about your " + UpdateCheck.Tracked(p).Count + " repeater(s)...");
+                                                 "Asking RadioID.net and BrandMeister about your " + UpdateCheck.Tracked(p).Count + " repeater(s)...", cancel);
+                if (cancel.IsCancellationRequested) return; // a half-done check would report changes that aren't real
             }
+            catch (OperationCanceledException) { return; }
             catch (Exception ex) { Ui.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
             using (var d = new UpdatesDialog(report, p))
             {
