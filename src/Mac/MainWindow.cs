@@ -637,8 +637,14 @@ namespace CodeplugBuilder.Mac
                 return;
             }
             Online.UpdateReport report;
-            try { report = await Dialogs.Progress(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, System.Threading.CancellationToken.None),
-                                                  "Asking RadioID.net and BrandMeister about your " + tracked + " repeater(s)..."); }
+            var cancel = new System.Threading.CancellationTokenSource();
+            try
+            {
+                report = await Dialogs.Progress(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
+                                                "Asking RadioID.net and BrandMeister about your " + tracked + " repeater(s)...", cancel);
+                if (cancel.IsCancellationRequested) return; // a half-done check would report changes that aren't real
+            }
+            catch (OperationCanceledException) { return; }
             catch (Exception ex) { await Dialogs.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
             string last = p.LastUpdateCheck;
             p.LastUpdateCheck = RepeaterHealth.DateText(DateTime.Now);

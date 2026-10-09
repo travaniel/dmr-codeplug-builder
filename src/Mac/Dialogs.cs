@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -159,15 +160,24 @@ namespace CodeplugBuilder.Mac
 
         /// <summary>
         /// Runs <paramref name="work"/> off the UI thread behind a progress box that can't be closed halfway (a radio
-        /// write must never be interrupted). Rethrows the work's exception.
+        /// write must never be interrupted). Rethrows the work's exception. With <paramref name="cancel"/> (online work only)
+        /// there is a Cancel button that cancels it; the work decides what a cancel leaves.
         /// </summary>
         public static async Task<T> Progress<T>(Window owner, string title, Func<IProgress<ReadProgress>, T> work,
-            string message = "Talking to the radio. Don't touch the radio or unplug the cable.")
+            string message = "Talking to the radio. Don't touch the radio or unplug the cable.", CancellationTokenSource cancel = null)
         {
             var w = Make(title, 440);
             var label = Text(message);
             var bar = new ProgressBar { IsIndeterminate = true, Height = 18, Margin = new Thickness(0, 12, 0, 0) };
-            w.Content = new StackPanel { Margin = new Thickness(18), Children = { label, bar } };
+            var body = new StackPanel { Margin = new Thickness(18), Children = { label, bar } };
+            if (cancel != null)
+            {
+                Button stop = null;
+                stop = Button("Cancel", () => { cancel.Cancel(); stop.IsEnabled = false; label.Text = "Stopping..."; });
+                stop.IsCancel = true;
+                body.Children.Add(Buttons(stop));
+            }
+            w.Content = body;
             bool done = false;
             w.Closing += (s, e) => { if (!done) e.Cancel = true; };
             var progress = new Progress<ReadProgress>(p =>

@@ -276,17 +276,20 @@ namespace CodeplugBuilder.Mac
 
         /// <summary>
         /// Checks the picked BrandMeister-only repeaters and gives them BrandMeister's static talkgroups (<see cref="Online.PrepareForAdding"/>),
-        /// with a wait window while anything has to be asked. On any failure they keep RadioID.net's lists. (Windows: Online.FetchStaticTalkgroups.)
+        /// with a wait window while anything has to be asked. On any failure, or Cancel, they keep RadioID.net's lists. (Windows: OnlineUi.cs.)
         /// </summary>
         public static async Task PrepareForAdding(Window owner, List<OnlineRepeater> picked)
         {
             if (!Online.NeedsPreparing(picked)) return;
-            try
+            using (var cancel = new System.Threading.CancellationTokenSource())
             {
-                await Dialogs.Progress(owner, "BrandMeister", pr => Online.PrepareForAdding(picked, pr),
-                    "Asking BrandMeister about the picked repeaters: still on the air, and which talkgroups they carry...");
+                try
+                {
+                    await Dialogs.Progress(owner, "BrandMeister", pr => Online.PrepareForAdding(picked, pr, cancel.Token),
+                        "Asking BrandMeister about the picked repeaters: still on the air, and which talkgroups they carry...", cancel);
+                }
+                catch { }
             }
-            catch { }
         }
 
         string Status(OnlineRepeater r)
