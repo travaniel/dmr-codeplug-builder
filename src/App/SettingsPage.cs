@@ -14,7 +14,8 @@ namespace CodeplugBuilder.App
         readonly TextBox txtRadioName, txtRadioId, txtHome;
         readonly Label lblHome;
         readonly CheckBox chkRadioIdList, chkRxLists, chkScanLists, chkPolite, chkKeep, chkFavScan, chkLocalFm;
-        readonly NumericUpDown numLocalMiles;
+        readonly NumericUpDown numLocalMiles, numGpsMargin;
+        readonly CheckBox chkGps;
         readonly ComboBox cboCallers;
         readonly TextBox txtCallerAreas;
         readonly CheckBox chkAprs;
@@ -88,6 +89,15 @@ namespace CodeplugBuilder.App
             Section("Transmitting");
             chkPolite = Check("Polite transmit: on a repeater, key up only when its slot is free");
             Span(Ui.Hint(PoliteTransmitHint, wrap));
+
+            Section("GPS zone switching");
+            chkGps = Check("Switch zones by GPS: write GpsRoaming.CSV with a circle around each area zone's repeaters (up to 32)");
+            numGpsMargin = new NumericUpDown { Minimum = 1, Maximum = 100, Width = Ui.S(70), Anchor = AnchorStyles.Left };
+            var gpsRow = Ui.Row(Ui.Label("Circle reaches"), numGpsMargin, Ui.Label("km past the zone's farthest repeater"));
+            gpsRow.Dock = DockStyle.None;
+            gpsRow.WrapContents = false;
+            Span(gpsRow);
+            Span(Ui.Hint(GpsHint, wrap));
 
             Section("Caller names");
             cboCallers = Ui.Combo(false, CallerChoices);
@@ -170,6 +180,8 @@ namespace CodeplugBuilder.App
             chkRxLists.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.RxGroupListPerRepeater = chkRxLists.Checked; session.MarkDirty(); };
             chkScanLists.CheckedChanged += (s, e) => { chkFavScan.Enabled = chkLocalFm.Enabled = numLocalMiles.Enabled = chkScanLists.Checked; if (loading) return; session.Project.Options.ScanListPerZone = chkScanLists.Checked; session.MarkDirty(); };
             chkFavScan.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.FavoritesScanPriority = chkFavScan.Checked; session.MarkDirty(); };
+            chkGps.CheckedChanged += (s, e) => { numGpsMargin.Enabled = chkGps.Checked; if (loading) return; session.Project.Options.GpsZoneSwitching = chkGps.Checked; session.MarkDirty(); };
+            numGpsMargin.ValueChanged += (s, e) => { if (loading) return; session.Project.Options.GpsMarginKm = (int)numGpsMargin.Value; session.MarkDirty(); };
             chkLocalFm.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.LocalAnalogScanList = chkLocalFm.Checked; session.MarkDirty(); };
             numLocalMiles.ValueChanged += (s, e) => { if (loading) return; session.Project.Options.LocalAnalogMiles = (int)numLocalMiles.Value; session.MarkDirty(); };
             chkPolite.CheckedChanged += (s, e) => { if (loading) return; session.Project.Options.PoliteTransmit = chkPolite.Checked; session.MarkDirty(); };
@@ -278,6 +290,12 @@ namespace CodeplugBuilder.App
             "users; it holds 500,000). Write to radio doesn't send caller names yet: import the file in the CPS and write from there.";
 
         // Same text on the Mac Settings tab (MainWindow).
+        internal const string GpsHint =
+            "With GPS on, the radio changes to a zone when you drive into its circle (centre of the zone's repeaters; nearest home first when there are more than 32). " +
+            "In the radio (or the CPS's Optional Setting > GPS/Ranging) turn on GPS and GPS Roaming, and set the distance unit to meters: the radius is written in meters. " +
+            "Export writes GpsRoaming.CSV, which replaces the radio's 32 entries; Write to radio doesn't send it yet. Only the zone changes, not the channel, " +
+            "and while it is on the radio may switch back from a zone you picked by hand.";
+
         const string PoliteTransmitHint =
             "DMR repeater channels get TX permit \"Same Color Code\": the radio won't transmit while the repeater's slot carries another call. " +
             "The hotspot and DMR simplex channels stay on \"Always\" (a hotspot on a stricter setting can refuse to key) and analog channels on \"Off\". " +
@@ -333,6 +351,9 @@ namespace CodeplugBuilder.App
             chkRxLists.Checked = p.Options.RxGroupListPerRepeater;
             chkScanLists.Checked = p.Options.ScanListPerZone;
             chkFavScan.Checked = p.Options.FavoritesScanPriority;
+            chkGps.Checked = p.Options.GpsZoneSwitching;
+            numGpsMargin.Value = Math.Max(1, Math.Min(100, p.Options.GpsMarginKm > 0 ? p.Options.GpsMarginKm : GpsRoaming.DefaultMarginKm));
+            numGpsMargin.Enabled = p.Options.GpsZoneSwitching;
             chkLocalFm.Checked = p.Options.LocalAnalogScanList;
             numLocalMiles.Value = Math.Max(5, Math.Min(500, p.Options.LocalAnalogMiles > 0 ? p.Options.LocalAnalogMiles : GenerationOptions.DefaultLocalAnalogMiles));
             chkFavScan.Enabled = chkLocalFm.Enabled = numLocalMiles.Enabled = p.Options.ScanListPerZone;

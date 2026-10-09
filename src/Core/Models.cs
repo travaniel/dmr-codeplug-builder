@@ -399,6 +399,14 @@ namespace CodeplugBuilder.Core
         /// <summary>Radius of the Local FM list, miles (0 = <see cref="DefaultLocalAnalogMiles"/>).</summary>
         [DataMember(Order = 18, EmitDefaultValue = false)] public int LocalAnalogMiles { get; set; }
 
+        /// <summary>
+        /// GPS zone switching: write GpsRoaming.CSV with a circle per area zone (<see cref="GpsRoaming"/>). Off by default: it replaces the
+        /// radio's 32 GPS roaming entries, and the radio needs GPS and GPS Roaming switched on.
+        /// </summary>
+        [DataMember(Order = 19, EmitDefaultValue = false)] public bool GpsZoneSwitching { get; set; }
+        /// <summary>Kilometres added around a zone's farthest repeater (0 = <see cref="GpsRoaming.DefaultMarginKm"/>).</summary>
+        [DataMember(Order = 20, EmitDefaultValue = false)] public int GpsMarginKm { get; set; }
+
         public const int DefaultLocalAnalogMiles = 50;
 
         public GenerationOptions()

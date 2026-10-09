@@ -56,6 +56,9 @@ namespace CodeplugBuilder.Core
         public string AprsCsv;
         /// <summary>Null when there is no DMR ID to write.</summary>
         public CsvTable RadioIds;
+        /// <summary>GpsRoaming.CSV when GPS zone switching is on (<see cref="Core.GpsRoaming"/>); null otherwise.</summary>
+        public CsvTable GpsRoaming;
+        public List<GpsZoneEntry> GpsEntries = new List<GpsZoneEntry>();
 
         public List<GeneratedChannel> ChannelList = new List<GeneratedChannel>();
         public List<GeneratedZone> ZoneList = new List<GeneratedZone>();
@@ -79,6 +82,7 @@ namespace CodeplugBuilder.Core
             files.Add(new KeyValuePair<string, CsvTable>(CpsFormat.TalkGroupsFile, TalkGroups));
             files.Add(new KeyValuePair<string, CsvTable>(CpsFormat.RxGroupFile, RxGroupLists));
             if (Callers != null) files.Add(new KeyValuePair<string, CsvTable>(CallerDatabase.File, Callers));
+            if (GpsRoaming != null) files.Add(new KeyValuePair<string, CsvTable>(Core.GpsRoaming.File, GpsRoaming));
             return files;
         }
 
@@ -450,6 +454,15 @@ namespace CodeplugBuilder.Core
             }
             merge?.AddRadioIds();
             if (p.Aprs != null) g.AprsCsv = Aprs.ToCsv(p.Aprs);
+
+            // ---- GPS zone switching (GpsRoaming.CSV refers to zones by position, so it goes with every Zone.CSV) ----
+            if (o.GpsZoneSwitching)
+            {
+                g.GpsEntries = Core.GpsRoaming.Plan(p, g.ZoneList, o.GpsMarginKm > 0 ? o.GpsMarginKm : Core.GpsRoaming.DefaultMarginKm, g.Notes);
+                g.GpsRoaming = Core.GpsRoaming.ToTable(g.GpsEntries);
+                if (g.GpsEntries.Count == 0)
+                    g.Notes.Add("GPS zone switching is on, but no area zone has repeaters with a known position, so GpsRoaming.CSV switches nothing.");
+            }
 
             return g;
         }

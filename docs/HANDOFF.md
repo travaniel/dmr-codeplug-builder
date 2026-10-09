@@ -813,6 +813,15 @@ before it's called done.
     columns first (section 4). Users report it changes only the zone (not the nearest repeater), overrides manual zone
     changes while it's on, and sets only the main channel; GPS roaming is switched on in the radio (key function "GPS
     Roaming"). Off by default, explained in the UI, tried on the radio before release.
+    *Built 2026-10-08, checked in the CPS; waiting for the radio test (below).* `src/Core/GpsRoaming.cs`: `Plan` = one circle per generated
+    area zone (`ZoneKindOf` Area, not kept from the CPS) with placed repeaters (hotspot left out): centre = mean of the repeaters, radius =
+    farthest + `GpsMarginKm` (default 15 km), at least 5 km, rounded to 100 m; nearest home first, else zone order; 32 at most (note when
+    more). `ToTable` writes all 32 rows from the built-in template (the user's all-off file). `GenerationOptions.GpsZoneSwitching` (off by
+    default) writes it with every export (`.LST` section 22), because it points at zones by position. Settings > GPS zone switching
+    (Windows and Mac) says to set meters and turn on GPS Roaming. Write to radio doesn't send it (the radio's GPS roaming address is
+    unknown; the review says so). Checked: the wizard Texas project with GPS on (`CPSnow\gpsgen`, 3 circles: Lubbock 24.6 km, San Angelo
+    15.2 km, Abilene 15.2 km) imported with its 7-entry `.LST` and Export All (`CPSnow\gpsback`) gave all 7 files back byte for byte; the
+    CPS's GPS Roaming view showed the three zones by name. Tests `GpsRoamingTests` (3, one is the CPS's own row).
 11. **Route builder.** On the map: two towns, or a highway (`GeoAtlas.Roads`), and a corridor width; take repeaters within
     it (point-to-polyline distance), zones per county in driving order, a route zone like the user's hand-made "Hwy 183",
     GPS zone switching along the way.

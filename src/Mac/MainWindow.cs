@@ -36,7 +36,8 @@ namespace CodeplugBuilder.Mac
         TextBox radioIdName, radioId, homeTown;
         TextBlock homeStatus;
         CheckBox politeTransmit, scanLists, favScan, localFm;
-        NumericUpDown localMiles;
+        NumericUpDown localMiles, gpsMargin;
+        CheckBox gpsSwitch;
         ComboBox callerScope;
         TextBox callerAreas;
         CheckBox aprsOn;
@@ -292,6 +293,21 @@ namespace CodeplugBuilder.Mac
             scanHint.MaxWidth = 720;
             scanHint.HorizontalAlignment = HorizontalAlignment.Left;
             settings.Children.Add(scanHint);
+            // GPS zone switching (same text as the Windows SettingsPage).
+            gpsSwitch = new CheckBox { Content = "Switch zones by GPS: write GpsRoaming.CSV with a circle around each area zone's repeaters (up to 32)" };
+            gpsMargin = new NumericUpDown { Minimum = 1, Maximum = 100, Width = 130, FormatString = "0" };
+            gpsSwitch.IsCheckedChanged += (s, e) => { gpsMargin.IsEnabled = gpsSwitch.IsChecked == true; if (loading) return; session.Project.Options.GpsZoneSwitching = gpsSwitch.IsChecked == true; session.MarkDirty(); };
+            gpsMargin.ValueChanged += (s, e) => { if (loading) return; session.Project.Options.GpsMarginKm = (int)(gpsMargin.Value ?? GpsRoaming.DefaultMarginKm); session.MarkDirty(); };
+            settings.Children.Add(new TextBlock { Text = "GPS zone switching", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(gpsSwitch);
+            settings.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Circle reaches", VerticalAlignment = VerticalAlignment.Center }, gpsMargin, new TextBlock { Text = "km past the zone's farthest repeater", VerticalAlignment = VerticalAlignment.Center } } });
+            var gpsHint = UiKit.Hint("With GPS on, the radio changes to a zone when you drive into its circle (centre of the zone's repeaters; nearest home first when there are more than 32). " +
+                                     "In the radio (or the CPS's Optional Setting > GPS/Ranging) turn on GPS and GPS Roaming, and set the distance unit to meters: the radius is written in meters. " +
+                                     "Export writes GpsRoaming.CSV, which replaces the radio's 32 entries; Write to radio doesn't send it yet. Only the zone changes, not the channel, " +
+                                     "and while it is on the radio may switch back from a zone you picked by hand.");
+            gpsHint.MaxWidth = 720;
+            gpsHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(gpsHint);
             // Caller names (same choices and text as the Windows SettingsPage).
             var callerValues = new[] { CallerScopes.Off, CallerScopes.World, CallerScopes.Countries, CallerScopes.UsStates };
             callerScope = new ComboBox { ItemsSource = new[] { "Off (keep the CPS's list)", "Whole world", "Countries", "US states" }, Width = 240 };
@@ -433,6 +449,9 @@ namespace CodeplugBuilder.Mac
             politeTransmit.IsChecked = p.Options.PoliteTransmit;
             scanLists.IsChecked = p.Options.ScanListPerZone;
             favScan.IsChecked = p.Options.FavoritesScanPriority;
+            gpsSwitch.IsChecked = p.Options.GpsZoneSwitching;
+            gpsMargin.Value = Math.Max(1, Math.Min(100, p.Options.GpsMarginKm > 0 ? p.Options.GpsMarginKm : GpsRoaming.DefaultMarginKm));
+            gpsMargin.IsEnabled = p.Options.GpsZoneSwitching;
             localFm.IsChecked = p.Options.LocalAnalogScanList;
             localMiles.Value = Math.Max(5, Math.Min(500, p.Options.LocalAnalogMiles > 0 ? p.Options.LocalAnalogMiles : GenerationOptions.DefaultLocalAnalogMiles));
             favScan.IsEnabled = localFm.IsEnabled = localMiles.IsEnabled = p.Options.ScanListPerZone;

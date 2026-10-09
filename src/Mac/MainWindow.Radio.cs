@@ -57,6 +57,7 @@ namespace CodeplugBuilder.Mac
                 if (g.ChannelList.Count + g.KeptChannels.Count > p.Options.MaxChannels)
                     throw new InvalidOperationException("This codeplug has " + (g.ChannelList.Count + g.KeptChannels.Count) + " channels; the radio holds " + p.Options.MaxChannels + ".");
                 var notes = issues.Where(i => i.Severity == Severity.Warning).Select(i => i.Message).Concat(g.Notes).ToList();
+                if (g.GpsRoaming != null) notes.Insert(0, "GPS zone switching is not sent by Write to radio yet (where the radio keeps it is still unknown): use Export and the CPS for it. The radio keeps its current GPS roaming entries, which point at zones by position.");
                 return new KeyValuePair<Dictionary<string, CsvTable>, List<string>>(g.Files().ToDictionary(f => f.Key, f => f.Value), notes);
             }, () =>
             {

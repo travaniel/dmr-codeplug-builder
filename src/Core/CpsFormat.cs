@@ -29,7 +29,7 @@ namespace CodeplugBuilder.Core
         static readonly Dictionary<string, int> ListIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             { ChannelFile, 0 }, { RadioIdFile, 1 }, { ZoneFile, 2 }, { ScanListFile, 3 },
-            { TalkGroupsFile, 5 }, { RxGroupFile, 8 }, { CallerDatabase.File, 15 }, { Aprs.File, 19 },
+            { TalkGroupsFile, 5 }, { RxGroupFile, 8 }, { CallerDatabase.File, 15 }, { Aprs.File, 19 }, { GpsRoaming.File, 22 },
         };
 
         /// <summary>First channel number used by the VFO A/B rows in Channel.CSV.</summary>
