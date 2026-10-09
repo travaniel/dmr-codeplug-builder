@@ -172,7 +172,7 @@ namespace CodeplugBuilder.App
                     int reps = session.Project.ActiveRepeaters().Count(r => Project.SameZone(r.Zone, z.Name));
                     int chans = ZoneChannels(z.Name).Count;
                     var item = new ListViewItem(z.Name) { Tag = z };
-                    item.SubItems.Add(session.Project.ZoneKindOf(z));
+                    item.SubItems.Add(z.IsRoute ? "Route" : session.Project.ZoneKindOf(z));
                     item.SubItems.Add(reps.ToString(CultureInfo.InvariantCulture));
                     item.SubItems.Add(chans == 0 ? "none" : chans.ToString(CultureInfo.InvariantCulture));
                     if (chans == 0) item.ForeColor = SystemColors.GrayText;

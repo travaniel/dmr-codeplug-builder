@@ -280,6 +280,23 @@ namespace CodeplugBuilder.Core
         [DataMember(Order = 8, EmitDefaultValue = false)] public List<string> RuleZones { get; set; }
         /// <summary>Talkgroup zone: only repeaters within this many miles of <see cref="Project.Home"/> (0 = no limit).</summary>
         [DataMember(Order = 9, EmitDefaultValue = false)] public double RuleMiles { get; set; }
+        /// <summary>
+        /// Route zone (<see cref="RouteBuilder"/>): the route as latitude, longitude, latitude, longitude... (simplified). Its members are the
+        /// repeaters along it in driving order; GPS zone switching puts the area zones along it first. Null = not a route zone.
+        /// </summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public List<double> RoutePoints { get; set; }
+        /// <summary>Route zone: how far either side of the road repeaters were taken, km.</summary>
+        [DataMember(Order = 11, EmitDefaultValue = false)] public double RouteCorridorKm { get; set; }
+
+        public bool IsRoute => RoutePoints != null && RoutePoints.Count >= 4;
+
+        /// <summary>The route as [lat, lon] points.</summary>
+        public List<double[]> Route()
+        {
+            var list = new List<double[]>();
+            for (int i = 0; RoutePoints != null && i + 1 < RoutePoints.Count; i += 2) list.Add(new[] { RoutePoints[i], RoutePoints[i + 1] });
+            return list;
+        }
 
         public ZoneInfo() { Name = ""; }
         public ZoneInfo(string name) { Name = name; }

@@ -196,7 +196,7 @@ namespace CodeplugBuilder.Mac
                     int chans = ZoneChannels(z.Name).Count;
                     zoneRows.Add(new ZoneRow
                     {
-                        Zone = z, Kind = session.Project.ZoneKindOf(z), Repeaters = reps.ToString(CultureInfo.InvariantCulture),
+                        Zone = z, Kind = z.IsRoute ? "Route" : session.Project.ZoneKindOf(z), Repeaters = reps.ToString(CultureInfo.InvariantCulture),
                         Channels = chans == 0 ? "none" : chans.ToString(CultureInfo.InvariantCulture),
                     });
                 }

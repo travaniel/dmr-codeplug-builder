@@ -385,6 +385,7 @@ namespace CodeplugBuilder.Mac
             foreach (var a in selected.Where(a => Touches(Box(a), view))) Outline(ctx, SelectedPen, a, view);
 
             var roadLabels = DrawRoads(ctx, view);
+            DrawRoute(ctx);
             DrawDots(ctx, view);
             DrawLabels(ctx, visibleCountries, visibleStates, visibleCounties);
             DrawRoadLabels(ctx, roadLabels);
@@ -543,6 +544,31 @@ namespace CodeplugBuilder.Mac
         }
 
         // ---------------- Dots and labels ----------------
+
+        List<double[]> route;
+        static readonly IPen RouteHalo = new Pen(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 7, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        static readonly IPen RoutePen = new Pen(new SolidColorBrush(Color.FromArgb(220, 200, 40, 120)), 4, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+
+        /// <summary>A route to draw over the map (Repeaters > Add route): [latitude, longitude] points; null = none. Same as the Windows map.</summary>
+        public List<double[]> Route
+        {
+            get { return route; }
+            set { route = value; InvalidateVisual(); }
+        }
+
+        void DrawRoute(DrawingContext ctx)
+        {
+            if (route == null || route.Count < 2) return;
+            var geo = new StreamGeometry();
+            using (var g = geo.Open())
+            {
+                g.BeginFigure(ToScreen(route[0][1], MercY(route[0][0])), false);
+                for (int i = 1; i < route.Count; i++) g.LineTo(ToScreen(route[i][1], MercY(route[i][0])));
+                g.EndFigure(false);
+            }
+            ctx.DrawGeometry(null, RouteHalo, geo);
+            ctx.DrawGeometry(null, RoutePen, geo);
+        }
 
         void DrawDots(DrawingContext ctx, Rect view)
         {

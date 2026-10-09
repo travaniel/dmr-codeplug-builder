@@ -825,6 +825,22 @@ before it's called done.
 11. **Route builder.** On the map: two towns, or a highway (`GeoAtlas.Roads`), and a corridor width; take repeaters within
     it (point-to-polyline distance), zones per county in driving order, a route zone like the user's hand-made "Hwy 183",
     GPS zone switching along the way.
+    *Built 2026-10-08, checked in the CPS; waiting for the radio test.* `src/Core/Routes.cs`: `RoutePlanner.Find` builds a graph of the
+    highway lines in the box around the two towns (only the named highway when given: `MatchesHighway` takes "183", "Hwy 183", "US-183"),
+    joins line ends within 2.5 km, links each town to its 6 nearest road points within 40 km, and runs Dijkstra (Austin-Dallas: I-35,
+    194 mi, ~6 ms). **Natural Earth leaves many US and state routes unlabeled** (US 183 at Brownwood is a road with no label): when the named
+    highway doesn't join the towns, the route uses any highway and says so (`HighwayMissing`); with no road at all it is a straight line.
+    `Along` / `AlongProject` = repeaters within the corridor in driving order; `StatesCrossed` = what to download; `Simplify` for the
+    file. `RouteBuilder.Apply` makes the route zone (a Favorites zone with `ZoneInfo.RoutePoints` + `RouteCorridorKm`, every channel of the
+    ticked repeaters in driving order; "Route" in the Zones tab's Kind column). `GpsRoaming.Plan` puts area zones whose circle touches a
+    route's corridor first, in driving order. UI: Repeaters > *Add route...* (`RouteDialog` / Mac `RouteWindow`): towns, highway, corridor km,
+    map with the route line (`RegionMap.Route`), list with ticks (project repeaters ticked and blue, likely off-air ones unticked), route zone
+    name (suggested "Hwy 183" from the highway's number, else "From-To"), power, *GPS zone switching along the route* (turns the option on).
+    New repeaters go into county zones. Dev check: `--route-snapshot project.cpb folder from to [highway]` (San Angelo-Abilene: US 277, 90 mi,
+    12 repeaters within 15 km, 8 ticked, GPS Tom Green, Taylor, then Lubbock; it found that the download's Changed event can arrive on a
+    worker thread, so the dialog marshals it). That export (`CPSnow\routegen`) imported into the CPS and Export All (`CPSnow\routeback`) gave
+    all 7 files back byte for byte; the CPS's GPS Roaming view showed Tom Green, Taylor, Lubbock (after reopening the view: it keeps the old
+    zone names until then). Tests `RouteTests` (4).
 12. **Check for updates.** For repeaters with a `SourceId`: RadioID by ID (`RadioId.RepeaterIdUrl`) and BrandMeister device
     + static talkgroups → frequency/offset/CC changes, talkgroups added or dropped, off-air; new repeaters in the
     project's areas; a diff with ticks, applied selectively; also refresh caller names. Remember when it last ran.
@@ -877,6 +893,7 @@ before it's called done.
   on aprs.fi (analog, and BrandMeister digital).
 - ~~GpsRoaming.CSV minute columns and zone index~~ (section 4, 2026-10-08); how GPS zone switching behaves when driving.
 - Scan lists (item 9): a channel with two scan lists (what Scan does), and the Favorites priority channel heard while scanning.
+- GPS zone switching and routes (items 10-11): see "Radio tests for 1.5" below.
 - `Same Color Code` refuses to key on a busy slot. Before that: a polite codeplug (new project) imports into the CPS and its
   Export All gives back the same Channel.CSV (proves the `Same Color Code` spelling), and a CPS write of it read back with
   `--radio-read` shows TX permit 1 on those channels (proves the byte).
@@ -886,6 +903,19 @@ before it's called done.
 - ~~Zones sharing channels (item 7)~~: checked 2026-10-08 (section 4). Was: import `CPSnow\multizonegen\CodeplugBuilder.LST` into the CPS, Export All to a new folder, and
   compare its Zone.CSV with the generated one (expected: identical, no conflict dialogs; KC5EZZ in San Angelo DMR, Hwy 183 and
   Favorites). Optional: write it to the radio and check that the Favorites zone shows those four channels.
+
+### Radio tests for 1.5 (items 9-11, before they're called done)
+
+1. **Set up.** Open the project, Settings: home town, scan lists on (Favorites priority, Local FM), GPS zone switching on. Add a route
+   (Repeaters > Add route) you will drive, e.g. Brownwood to Abilene. Export, then in the CPS: Import From File List, check Optional
+   Setting > GPS/Ranging: GPS on, GPS Roaming on, distance unit **meters**; write to the radio from the CPS (Write to radio in this program
+   doesn't send GPS roaming yet).
+2. **Scan lists:** on a Favorites channel, start a scan. Does the radio scan the zone's list, the Favorites list, or let you choose (the
+   channel has Scan List 1 and 2)? Key up the home repeater/hotspot while scanning another channel: does the scan stop on it (priority)?
+3. **GPS zone switching:** with GPS fixed, drive into a zone's circle (Settings shows the radius idea; the CPS's GPS Roaming view lists the
+   entries). Note: does the zone change, and when (how far inside)? Which channel does it land on (the zone's A channel?)? Pick another
+   zone by hand inside a circle: does the radio switch back, and how soon? Overlapping circles: which zone wins (first entry?)?
+4. **Route:** along the drive, do the zones change in driving order? Is the route zone useful as the "drive" zone with GPS switching off?
 
 ### Sources (2026-10-08)
 

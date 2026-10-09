@@ -56,11 +56,24 @@ namespace CodeplugBuilder.Core
                     FromHomeKm = p.Home != null ? Distances.Km(p.Home.Latitude, p.Home.Longitude, lat, lon) : (double?)null,
                 });
             }
-            var ordered = list.Select((e, i) => new { e, i }).OrderBy(x => x.e.FromHomeKm ?? 0).ThenBy(x => x.i).Select(x => x.e).ToList();
+            // Zones along a route zone's road come first, in driving order (route by route); the rest nearest home first.
+            var routes = p.Zones.Where(z => z.IsRoute).Select(z => new { pts = z.Route(), corridor = Math.Max(z.RouteCorridorKm, 1) }).ToList();
+            var keyed = list.Select((e, i) =>
+            {
+                int route = int.MaxValue; double along = 0;
+                for (int k = 0; k < routes.Count && route == int.MaxValue; k++)
+                {
+                    double off = RoutePlanner.DistanceTo(routes[k].pts, e.Latitude, e.Longitude, out double a);
+                    if (off <= routes[k].corridor + e.RadiusMeters / 1000.0) { route = k; along = a; }
+                }
+                return new { e, i, route, along };
+            });
+            var ordered = keyed.OrderBy(x => x.route).ThenBy(x => x.route == int.MaxValue ? 0 : x.along).ThenBy(x => x.e.FromHomeKm ?? 0).ThenBy(x => x.i)
+                               .Select(x => x.e).ToList();
             if (ordered.Count > MaxEntries)
             {
-                notes?.Add("GPS zone switching: the radio holds " + MaxEntries + " entries, so only the " + MaxEntries + " zones " +
-                           (p.Home != null ? "nearest home" : "first in the zone list") + " switch automatically (" + (ordered.Count - MaxEntries) + " left out).");
+                notes?.Add("GPS zone switching: the radio holds " + MaxEntries + " entries, so only the first " + MaxEntries + " zones (along your routes, then " +
+                           (p.Home != null ? "nearest home" : "in zone order") + ") switch automatically (" + (ordered.Count - MaxEntries) + " left out).");
                 ordered = ordered.Take(MaxEntries).ToList();
             }
             return ordered;

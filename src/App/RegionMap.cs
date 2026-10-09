@@ -353,6 +353,7 @@ namespace CodeplugBuilder.App
             }
 
             var roadLabels = DrawRoads(g, view);
+            DrawRoute(g);
             DrawDots(g, view);
             DrawLabels(g, visibleCountries, visibleStates, visibleCounties);
             DrawRoadLabels(g, roadLabels);
@@ -520,6 +521,32 @@ namespace CodeplugBuilder.App
                     g.DrawRectangle(edge, rect);
                     TextRenderer.DrawText(g, l.Key, Font, rect, Color.FromArgb(90, 55, 10), flags);
                 }
+            }
+        }
+
+        List<double[]> route;
+
+        /// <summary>A route to draw over the map (Repeaters > Add route): [latitude, longitude] points; null = none.</summary>
+        public List<double[]> Route
+        {
+            get { return route; }
+            set { route = value; Invalidate(); }
+        }
+
+        void DrawRoute(Graphics g)
+        {
+            if (route == null || route.Count < 2) return;
+            // GDI+ can crash (not throw) on huge coordinates with anti-aliasing, so keep points near the screen.
+            float lim = 4 * Math.Max(Width, Height) + 1000;
+            var pts = route.Select(p => ToScreen(p[1], MercY(p[0])))
+                           .Where(p => !float.IsNaN(p.X) && !float.IsNaN(p.Y))
+                           .Select(p => new PointF(Math.Max(-lim, Math.Min(lim, p.X)), Math.Max(-lim, Math.Min(lim, p.Y)))).ToArray();
+            if (pts.Length < 2) return;
+            using (var halo = new Pen(Color.FromArgb(200, 255, 255, 255), Math.Max(5f, Ui.S(7))) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round })
+            using (var pen = new Pen(Color.FromArgb(220, 200, 40, 120), Math.Max(3f, Ui.S(4))) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round })
+            {
+                g.DrawLines(halo, pts);
+                g.DrawLines(pen, pts);
             }
         }
 

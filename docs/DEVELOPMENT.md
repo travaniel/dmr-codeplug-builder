@@ -99,6 +99,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
 | `Updates.cs` | `UpdateCheck`: Check for updates (item 12): `Compare` (project vs current RadioID.net listings, BrandMeister last-seen and static talkgroups, new repeaters in the project's counties) → `UpdateItem`s with suggested ticks; `Apply` |
 | `GpsRoaming.cs` | GPS zone switching (item 10): `Plan` (circle per area zone around its repeaters, nearest home first, 32 max), `ToTable` (GpsRoaming.CSV: zone index, degrees + minutes + hundredths, N/S E/W as 0/1, radius m) |
+| `Routes.cs` | Route builder (item 11): `RoutePlanner` (`Find` on the highway graph with Dijkstra, `Along` corridor in driving order, `StatesCrossed`, `Simplify`), `RouteBuilder.Apply` (route zone) |
 | `Home.cs` | `HomeLocation` (Project.Home; `Parse` a typed town on the atlas), `Distances` (km, bearing, "148 mi NE"), `ZoneOrder.Sort` (hotspot, favorites, areas nearest first, talkgroup zones, utilities), `TalkgroupOrder` (local first) |
 | `Zoning.cs` | `ZonePlanner`: automatic zone names per county/city/state/country/band/single, `Apply`, one spelling per zone (`Canonical`) |
 | `Radio/*.cs` | Direct radio access (HANDOFF 4d): `AnytoneLink` (serial protocol over a Stream), `MemoryImage` (16-byte blocks, `radio.img`), `Dmr6x2Pro` (memory map, read plan, `RadioReader`, CPS write set), `RadioCodeplug` (decoder), `RadioCsv` (→ CPS CSVs, `Compare`), `RadioEncoder` (CPS tables → image, the reverse), `RadioWriter` (full CPS-style write, guards), `RadioSettings` (table of optional settings: read/write/report; App `RadioSettingsForm` is the dev editor), `RecommendedSettings` (settings Write codeplug to radio offers to change: send talker alias) |
@@ -176,7 +177,10 @@ programmatic changes don't fire edits.
   several zones (item 7), and GpsRoaming.CSV's columns.
   **GPS zone switching** (item 10, built and checked in the CPS; still to try on the radio): Settings > GPS zone switching writes
   GpsRoaming.CSV (a circle per area zone, nearest home first, up to 32) with every export (`GpsRoaming.cs`). Export only: Write to radio
-  doesn't send it yet. 114 tests.
+  doesn't send it yet.
+  **Route builder** (item 11, built and checked in the CPS; still to try on the radio): Repeaters > Add route finds a route on the built-in
+  highways (`Routes.cs`), lists the repeaters near it in driving order, adds new ones by county and makes a route zone; GPS zone switching
+  puts the route's counties first. Dev `--route-snapshot`. 118 tests.
 - **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
   amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
   and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the

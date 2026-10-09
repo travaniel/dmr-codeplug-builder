@@ -450,4 +450,61 @@ namespace CodeplugBuilder.App
             return 0;
         }
     }
+
+    /// <summary>
+    /// Dev check: <c>--route-snapshot project.cpb folder from to [highway]</c> runs Repeaters > Add route off screen (real downloads),
+    /// saves route.png, adds the route, exports the CSVs to folder\csv and writes route.log. The project file isn't saved.
+    /// </summary>
+    static class RouteSnapshot
+    {
+        public static int Run(string projectPath, string folder, string from, string to, string highway)
+        {
+            Directory.CreateDirectory(folder);
+            var log = new List<string>();
+            void L(string line) { log.Add(line); File.WriteAllLines(Path.Combine(folder, "route.log"), log); }
+            try
+            {
+                var session = new Session { Format = CpsFormat.BuiltIn() };
+                session.Replace(ProjectStore.Load(projectPath), null, false);
+                using (var d = new RouteDialog(session) { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000), ShowInTaskbar = false })
+                {
+                    L("showing");
+                    d.Show();
+                    L("shown");
+                    Wait(d.LoadMap());
+                    L("map loaded");
+                    var sw = Stopwatch.StartNew();
+                    Wait(d.Find(from, to, highway));
+                    L("route found in " + sw.ElapsedMilliseconds + " ms");
+                    while (!d.Downloaded && sw.ElapsedMilliseconds < 180000) { Application.DoEvents(); Thread.Sleep(20); }
+                    for (int i = 0; i < 30; i++) { Application.DoEvents(); Thread.Sleep(20); }
+                    L(d.RouteText);
+                    L(d.Listed + " repeaters listed after " + sw.ElapsedMilliseconds + " ms");
+                    using (var bmp = new Bitmap(d.Width, d.Height))
+                    {
+                        d.DrawToBitmap(bmp, new Rectangle(Point.Empty, d.Size));
+                        bmp.Save(Path.Combine(folder, "route.png"), ImageFormat.Png);
+                    }
+                    d.Add();
+                    log.AddRange(d.Notes);
+                    var g = CodeplugGenerator.Generate(session.Project, session.Format);
+                    var route = g.ZoneList.FirstOrDefault(z => z.Info != null && z.Info.IsRoute);
+                    L("route zone: " + (route == null ? "none" : route.Name + " = " + string.Join(", ", route.Members.Select(m => m.Name))));
+                    L("GPS entries: " + string.Join("; ", g.GpsEntries.Select(e => e.Zone + " " + e.RadiusMeters + " m")));
+                    L("generates " + g.ChannelList.Count + " channels, " + g.ZoneList.Count + " zones; notes: " + string.Join(" | ", g.Notes));
+                    g.WriteTo(Path.Combine(folder, "csv"));
+                }
+                L("ok");
+            }
+            catch (Exception ex) { L("ERROR " + ex); }
+            File.WriteAllLines(Path.Combine(folder, "route.log"), log);
+            return 0;
+        }
+
+        static void Wait(System.Threading.Tasks.Task t)
+        {
+            while (!t.IsCompleted) { Application.DoEvents(); Thread.Sleep(15); }
+            if (t.IsFaulted) throw t.Exception.InnerException;
+        }
+    }
 }

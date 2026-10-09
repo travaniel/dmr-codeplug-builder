@@ -77,6 +77,7 @@ namespace CodeplugBuilder.App
             btnMap.Font = Ui.BoldFont;
             var buttons = Ui.Row(
                 btnMap,
+                Ui.Button("Add route...", (s, e) => AddRoute()),
                 Ui.Button("Find online...", (s, e) => FindOnline()),
                 Ui.Button("From RepeaterBook...", (s, e) => FromRepeaterBook()),
                 Ui.Button("Add DMR repeater", (s, e) => Add(Repeater.NewDigital("New repeater"))),
@@ -238,6 +239,20 @@ namespace CodeplugBuilder.App
         }
 
         /// <summary>Opens the map picker and shows what it added.</summary>
+        /// <summary>Repeaters along a drive: new ones by county, all of them in a route zone in driving order.</summary>
+        void AddRoute()
+        {
+            using (var d = new RouteDialog(session))
+            {
+                if (d.ShowDialog(FindForm()) != DialogResult.OK) return;
+                session.NotifyTalkgroupsChanged();
+                session.MarkDirty();
+                cboFilter.SelectedIndex = 0;
+                Reload(d.FirstAdded);
+                using (var n = new IssuesDialog("Route added.", new string[0], d.Notes, false)) n.ShowDialog(FindForm());
+            }
+        }
+
         public void AddFromMap()
         {
             var first = AddFromMapDialog.Run(FindForm(), session);

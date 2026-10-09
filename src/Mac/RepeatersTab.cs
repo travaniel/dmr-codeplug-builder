@@ -71,6 +71,7 @@ namespace CodeplugBuilder.Mac
             buttons.Children.Add(btnUp); btnUp.Margin = new Thickness(0, 0, 6, 6);
             buttons.Children.Add(btnDown); btnDown.Margin = new Thickness(0, 0, 6, 6);
             AddButton("Add from map...", async () => await AddFromMap());
+            AddButton("Add route...", async () => await AddRoute());
             AddButton("Add NOAA weather", async () => await AddWeather());
             AddButton("Add simplex", async () => await AddSimplex());
 
@@ -172,6 +173,14 @@ namespace CodeplugBuilder.Mac
             session.MarkDirty();
             Reload(r);
             editor.FocusName();
+        }
+
+        /// <summary>Repeaters along a drive: new ones by county, all of them in a route zone in driving order.</summary>
+        async System.Threading.Tasks.Task AddRoute()
+        {
+            var first = await RouteWindow.Run(owner, session);
+            cboFilter.SelectedIndex = 0;
+            Reload(first);
         }
 
         /// <summary>Opens the map picker and shows what it added.</summary>
