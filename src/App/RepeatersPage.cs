@@ -238,21 +238,20 @@ namespace CodeplugBuilder.App
             editor.FocusName();
         }
 
-        /// <summary>Opens the map picker and shows what it added.</summary>
         /// <summary>Repeaters along a drive: new ones by county, all of them in a route zone in driving order.</summary>
         void AddRoute()
         {
             using (var d = new RouteDialog(session))
             {
                 if (d.ShowDialog(FindForm()) != DialogResult.OK) return;
-                session.NotifyTalkgroupsChanged();
-                session.MarkDirty();
+                session.NotifyTalkgroupsChanged(); // also marks the project changed
                 cboFilter.SelectedIndex = 0;
                 Reload(d.FirstAdded);
                 using (var n = new IssuesDialog("Route added.", new string[0], d.Notes, false)) n.ShowDialog(FindForm());
             }
         }
 
+        /// <summary>Opens the map picker and shows what it added.</summary>
         public void AddFromMap()
         {
             var first = AddFromMapDialog.Run(FindForm(), session);
@@ -292,8 +291,7 @@ namespace CodeplugBuilder.App
         {
             var added = Presets.AddSimplex(session.Project);
             if (added.Count == 0) { Ui.Info(FindForm(), "You already have all the simplex channels."); return; }
-            session.MarkDirty();
-            session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new
+            session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new; also marks the project changed
             cboFilter.SelectedIndex = 0;
             Reload(added[0]);
         }

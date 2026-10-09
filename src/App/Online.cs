@@ -153,11 +153,10 @@ namespace CodeplugBuilder.App
                         return bmCache = map;
                     }
                 }
-                catch
-                {
-                    if (File.Exists(file))
-                        try { return bmCache = BrandMeister.ParseTalkgroups(File.ReadAllText(file, Encoding.UTF8)); } catch { }
-                }
+                catch { }
+                // No download (or an empty answer): an older copy beats nothing.
+                if (File.Exists(file))
+                    try { return bmCache = BrandMeister.ParseTalkgroups(File.ReadAllText(file, Encoding.UTF8)); } catch { }
                 return new Dictionary<int, string>();
             });
         }
@@ -456,28 +455,30 @@ namespace CodeplugBuilder.App
 
         static readonly object deviceCacheLock = new object();
 
-        /// <summary>"id,checked yyyy-MM-dd,value" lines in the settings folder; entries older than <paramref name="days"/> are dropped.</summary>
-        static Dictionary<int, string> DeviceCache(string name, int days)
+        /// <summary>The "id,checked yyyy-MM-dd,value" lines of a cache file checked less than <paramref name="days"/> ago, id → whole line. Call under <see cref="deviceCacheLock"/>.</summary>
+        static Dictionary<int, string[]> ReadDeviceCache(string file, int days)
         {
-            var map = new Dictionary<int, string>();
-            lock (deviceCacheLock)
+            var map = new Dictionary<int, string[]>();
+            if (!File.Exists(file)) return map;
+            foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
             {
-                try
-                {
-                    string file = Path.Combine(AppSettings.Folder, name);
-                    if (!File.Exists(file)) return map;
-                    foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
-                    {
-                        var f = line.Split(new[] { ',' }, 3);
-                        if (f.Length == 3 && int.TryParse(f[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) &&
-                            DateTime.TryParseExact(f[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) &&
-                            (DateTime.Now.Date - at).TotalDays < days)
-                            map[id] = f[2];
-                    }
-                }
-                catch { }
+                var f = line.Split(new[] { ',' }, 3);
+                if (f.Length == 3 && int.TryParse(f[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) &&
+                    DateTime.TryParseExact(f[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) &&
+                    (DateTime.Now.Date - at).TotalDays < days)
+                    map[id] = f;
             }
             return map;
+        }
+
+        /// <summary>A cache in the settings folder (<see cref="ReadDeviceCache"/>): id → value, entries older than <paramref name="days"/> dropped.</summary>
+        static Dictionary<int, string> DeviceCache(string name, int days)
+        {
+            lock (deviceCacheLock)
+            {
+                try { return ReadDeviceCache(Path.Combine(AppSettings.Folder, name), days).ToDictionary(kv => kv.Key, kv => kv.Value[2]); }
+                catch { return new Dictionary<int, string>(); }
+            }
         }
 
         /// <summary>Stores what was just asked (<paramref name="fetched"/>) as checked today; other entries keep their date, and ones over 60 days old go.</summary>
@@ -490,19 +491,10 @@ namespace CodeplugBuilder.App
                 try
                 {
                     string file = Path.Combine(AppSettings.Folder, name);
-                    var lines = new Dictionary<int, string>();
-                    if (File.Exists(file))
-                        foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
-                        {
-                            var f = line.Split(new[] { ',' }, 3);
-                            if (f.Length == 3 && int.TryParse(f[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) &&
-                                DateTime.TryParseExact(f[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var at) &&
-                                (DateTime.Now.Date - at).TotalDays < 60)
-                                lines[id] = line;
-                        }
-                    foreach (var kv in fetched) lines[kv.Key] = kv.Key.ToString(CultureInfo.InvariantCulture) + "," + today + "," + kv.Value;
+                    var lines = ReadDeviceCache(file, 60);
+                    foreach (var kv in fetched) lines[kv.Key] = new[] { kv.Key.ToString(CultureInfo.InvariantCulture), today, kv.Value };
                     Directory.CreateDirectory(AppSettings.Folder);
-                    File.WriteAllLines(file, lines.OrderBy(kv => kv.Key).Select(kv => kv.Value), new UTF8Encoding(false));
+                    File.WriteAllLines(file, lines.OrderBy(kv => kv.Key).Select(kv => string.Join(",", kv.Value)), new UTF8Encoding(false));
                 }
                 catch { }
             }

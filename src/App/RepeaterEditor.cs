@@ -411,7 +411,7 @@ namespace CodeplugBuilder.App
                 if (rep.TxMHz <= 0 && Validator.InRadioBand(rep.RxMHz) && !hotspot)
                 {
                     // Nothing typed for transmit yet: suggest the usual offset for that band.
-                    int idx = Array.IndexOf(OffsetValues, SuggestOffset(rep.RxMHz));
+                    int idx = Array.IndexOf(OffsetValues, BandPlan.SuggestOffset(rep.RxMHz) ?? 0m);
                     if (idx >= 0) { loading = true; cboOffset.SelectedIndex = idx; loading = false; }
                 }
                 decimal? off = cboOffset.SelectedIndex >= 0 ? OffsetValues[cboOffset.SelectedIndex] : null;
@@ -534,12 +534,6 @@ namespace CodeplugBuilder.App
             RefreshGrid();
             UpdateExample();
             Raise();
-        }
-
-        /// <summary>US band-plan repeater offsets: 2 m below 147 MHz is -0.6, above is +0.6; 70 cm below 445 MHz is +5, above is -5.</summary>
-        static decimal? SuggestOffset(decimal rx)
-        {
-            return BandPlan.SuggestOffset(rx) ?? 0m;
         }
 
         void CheckBand()

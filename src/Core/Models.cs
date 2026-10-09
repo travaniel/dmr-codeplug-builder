@@ -546,13 +546,12 @@ namespace CodeplugBuilder.Core
             foreach (var z in Zones)
             {
                 z.Name = z.Name ?? "";
-                if (z.Talkgroups == null) continue;
-                z.Talkgroups.RemoveAll(t => t == null);
-                foreach (var t in z.Talkgroups) if (t.Slot != 2) t.Slot = 1;
-                if (z.Talkgroups.Count == 0) z.Talkgroups = null;
-            }
-            foreach (var z in Zones)
-            {
+                if (z.Talkgroups != null)
+                {
+                    z.Talkgroups.RemoveAll(t => t == null);
+                    foreach (var t in z.Talkgroups) if (t.Slot != 2) t.Slot = 1;
+                    if (z.Talkgroups.Count == 0) z.Talkgroups = null;
+                }
                 if (z.Kind != null && !ZoneKinds.Values.Contains(z.Kind)) z.Kind = null;
                 z.Members?.RemoveAll(m => m == null || string.IsNullOrEmpty(m.Repeater));
                 z.RuleTalkgroups?.RemoveAll(id => id <= 0);
@@ -838,7 +837,7 @@ namespace CodeplugBuilder.Core
         /// <summary>Zones other than the repeater's own that hold this channel.</summary>
         public List<string> OtherZonesOf(ChannelRef c)
         {
-            return Zones.Where(z => !SameZone(z.Name, c.Repeater.Zone) && (z.IsView) && ZoneChannels(z.Name).Contains(c)).Select(z => z.Name).ToList();
+            return Zones.Where(z => !SameZone(z.Name, c.Repeater.Zone) && z.IsView && ZoneChannels(z.Name).Contains(c)).Select(z => z.Name).ToList();
         }
 
         // ------------------------------------------------------------------
@@ -953,6 +952,15 @@ namespace CodeplugBuilder.Core
             return added;
         }
 
+        /// <summary>What Copy ticked to all zones did, for the message after it (Windows and Mac).</summary>
+        public static string CopyZoneTalkgroupsReport(int talkgroups, int zones, int channels)
+        {
+            return "Ticked " + talkgroups + " talkgroup" + (talkgroups == 1 ? "" : "s") + " in " + zones + " more zone" + (zones == 1 ? "" : "s") + ": " +
+                   (channels == 0 ? "no new channels, because the repeaters there already list them (their own lists keep their slots)."
+                                  : channels + " new channel" + (channels == 1 ? "" : "s") + ".") +
+                   " Pick another zone on the left to see its talkgroups.";
+        }
+
         /// <summary>
         /// Brings one repeater in line with its zone: drops channels a previous zone's set put there, and adds the
         /// current zone's talkgroups it doesn't carry yet. Call after adding a repeater or changing its zone.
@@ -1064,12 +1072,8 @@ namespace CodeplugBuilder.Core
             foreach (var r in AllRepeaters()) r.Talkgroups.RemoveAll(e => set.Contains(e.TalkgroupId));
             foreach (var z in Zones)
             {
-                if (z.Talkgroups == null) continue;
-                z.Talkgroups.RemoveAll(t => set.Contains(t.TalkgroupId));
-                if (z.Talkgroups.Count == 0) z.Talkgroups = null;
-            }
-            foreach (var z in Zones)
-            {
+                z.Talkgroups?.RemoveAll(t => set.Contains(t.TalkgroupId));
+                if (z.Talkgroups?.Count == 0) z.Talkgroups = null;
                 z.RuleTalkgroups?.RemoveAll(set.Contains);
                 if (z.RuleTalkgroups?.Count == 0) z.RuleTalkgroups = null;
             }

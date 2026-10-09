@@ -102,6 +102,7 @@ namespace CodeplugBuilder.App
             Ui.InitSplitter(split, Ui.S(720), Ui.S(400), Ui.S(360));
 
             list.ItemChecked += (s, e) => { if (!filling) UpdateMap(); };
+            numCorridor.ValueChanged += (s, e) => Fill(); // a wider or narrower corridor relists without finding the route again
             btnAdd.Click += (s, e) => AddRoute();
             Shown += async (s, e) =>
             {

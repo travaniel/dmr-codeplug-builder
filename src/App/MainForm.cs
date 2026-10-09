@@ -430,15 +430,17 @@ namespace CodeplugBuilder.App
                 return;
             }
             Online.UpdateReport report;
-            var cancel = new System.Threading.CancellationTokenSource();
-            try
+            using (var cancel = new System.Threading.CancellationTokenSource())
             {
-                report = RadioProgressDialog.Run(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
-                                                 "Asking RadioID.net and BrandMeister about your " + UpdateCheck.Tracked(p).Count + " repeater(s)...", cancel);
-                if (cancel.IsCancellationRequested) return; // a half-done check would report changes that aren't real
+                try
+                {
+                    report = RadioProgressDialog.Run(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
+                                                     "Asking RadioID.net and BrandMeister about your " + UpdateCheck.Tracked(p).Count + " repeater(s)...", cancel);
+                    if (cancel.IsCancellationRequested) return; // a half-done check would report changes that aren't real
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex) { Ui.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
             }
-            catch (OperationCanceledException) { return; }
-            catch (Exception ex) { Ui.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
             using (var d = new UpdatesDialog(report, p))
             {
                 p.LastUpdateCheck = RepeaterHealth.DateText(DateTime.Now); // after the dialog took the previous date
@@ -478,8 +480,11 @@ namespace CodeplugBuilder.App
             catch (Exception ex) { Ui.Error(this, "Couldn't import that " + what + ":\n\n" + ex.Message); return; }
 
             var notes = new List<string>(result.Notes);
-            if (fromRadio) notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
-            if (fromRadio) try { notes.AddRange(Aprs.ReadNotes(MemoryImage.Load(Path.Combine(folder, "radio.img")))); } catch { }
+            if (fromRadio)
+            {
+                notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
+                try { notes.AddRange(Aprs.ReadNotes(MemoryImage.Load(Path.Combine(folder, "radio.img")))); } catch { }
+            }
             else
             {
                 try
@@ -487,10 +492,7 @@ namespace CodeplugBuilder.App
                     var f = CpsFormat.FromFolder(folder);
                     if (!SameLayout(f, session.Format))
                     {
-                        if (Directory.Exists(AppSettings.FormatFolder)) Directory.Delete(AppSettings.FormatFolder, true);
-                        f.SaveTemplates(AppSettings.FormatFolder);
-                        AppSettings.Set("FormatSource", folder);
-                        session.Format = AppSettings.LoadFormat();
+                        session.Format = AppSettings.SaveFormat(f, folder);
                         notes.Add("This export's CSV layout differs from the built-in one, so generated files now follow it (Settings tab).");
                     }
                 }

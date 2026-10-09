@@ -250,9 +250,8 @@ namespace CodeplugBuilder.App
             string offAirText = offAir == 0 ? "" : "   " + offAir + " look off the air (grey) and aren't taken by clicks.";
             if (picked.Count == 0 && all.Count > 0)
             {
-                int notPlaced = all.Count(r => r.Location == null || r.Location.Lat == null);
                 lblSummary.Text = "Nothing picked yet: click a state or county on the map to take its repeaters (" + all.Count + " to choose from), or tick single ones on the List tab." +
-                                  (notPlaced > 0 ? " " + notPlaced + " couldn't be placed exactly." : "") + offAirText;
+                                  (unplaced > 0 ? " " + unplaced + " couldn't be placed exactly." : "") + offAirText;
                 lblSummary.ForeColor = Color.FromArgb(176, 84, 0);
                 return;
             }

@@ -639,11 +639,13 @@ namespace CodeplugBuilder.App
         {
             var z = Selected;
             if (z == null) return;
+            // Swap with the next zone the list shows: Project.Zones can also hold zones nothing uses (not listed here).
+            int k = list.SelectedIndices[0] + delta;
+            if (k < 0 || k >= list.Items.Count) return;
             var zones = State.Project.Zones;
-            int i = zones.IndexOf(z), j = i + delta;
-            if (j < 0 || j >= zones.Count) return;
-            zones.RemoveAt(i);
-            zones.Insert(j, z);
+            int i = zones.IndexOf(z), j = zones.IndexOf((ZoneInfo)list.Items[k].Tag);
+            zones[i] = zones[j];
+            zones[j] = z;
             Fill(z.Name);
         }
     }

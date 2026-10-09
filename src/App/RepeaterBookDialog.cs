@@ -126,6 +126,7 @@ namespace CodeplugBuilder.App
 
             btnAdd.Click += (s, e) => AddPicked();
             txtZone.TextChanged += (s, e) => { if (!loading) zoneTyped = true; UpdateStatus(); };
+            foreach (var opt in new[] { optOne, optCounty, optCity }) opt.CheckedChanged += (s, e) => UpdateStatus(); // per city needs no zone name
             cboState.SelectedIndexChanged += (s, e) => Relocate();
             cboState.Leave += (s, e) => Relocate();
             // Windows raises ItemChecked for every item while the ListView creates its handle; ignore those.

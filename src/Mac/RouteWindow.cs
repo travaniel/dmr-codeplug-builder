@@ -113,6 +113,7 @@ namespace CodeplugBuilder.Mac
                 else picker.Map.ZoomTo(-128, 22, -64, 52);
             };
             Closed += (s, e) => { if (download != null) { download.Changed -= OnDownload; download.Cancel(); } };
+            numCorridor.ValueChanged += (s, e) => Fill(); // a wider or narrower corridor relists without finding the route again
         }
 
         async Task FindRoute()
@@ -244,8 +245,7 @@ namespace CodeplugBuilder.Mac
         {
             var w = new RouteWindow(session);
             if (!await w.ShowDialog<bool>(owner)) return null;
-            session.NotifyTalkgroupsChanged();
-            session.MarkDirty();
+            session.NotifyTalkgroupsChanged(); // also marks the project changed
             await Dialogs.List(owner, "Route added.", new string[0], w.Notes, false);
             return w.FirstAdded;
         }

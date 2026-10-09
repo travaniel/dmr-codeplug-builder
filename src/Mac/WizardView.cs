@@ -603,12 +603,14 @@ namespace CodeplugBuilder.Mac
         void MoveZone(int delta)
         {
             var z = Selected;
-            if (z == null) return;
+            if (z == null || !(list.ItemsSource is List<ZRow> rows)) return;
+            // Swap with the next zone the list shows: Project.Zones can also hold zones nothing uses (not listed here).
+            int k = rows.FindIndex(r => r.Zone == z) + delta;
+            if (k < 0 || k >= rows.Count) return;
             var zones = State.Project.Zones;
-            int i = zones.IndexOf(z), j = i + delta;
-            if (j < 0 || j >= zones.Count) return;
-            zones.RemoveAt(i);
-            zones.Insert(j, z);
+            int i = zones.IndexOf(z), j = zones.IndexOf(rows[k].Zone);
+            zones[i] = zones[j];
+            zones[j] = z;
             Fill(z.Name);
         }
     }

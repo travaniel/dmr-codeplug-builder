@@ -143,11 +143,12 @@ namespace CodeplugBuilder.Core
         public void PlaceNumbers()
         {
             var taken = new HashSet<int>(g.ChannelList.Select(c => c.Number));
+            var reserved = p.StoredChannelNumbers(); // also the numbers of switched-off repeaters, which may come back
             foreach (var k in Kept.Where(k => taken.Contains(k.Number)).ToList())
             {
                 int old = k.Number;
                 int n = 1;
-                while (taken.Contains(n) || Kept.Any(x => x != k && x.Number == n)) n++;
+                while (taken.Contains(n) || reserved.Contains(n) || Kept.Any(x => x != k && x.Number == n)) n++;
                 k.Number = k.Member.Number = n;
                 g.Notes.Add("\"" + k.Name + "\" (made in the CPS) was on channel " + old + ", which belongs to \"" +
                             g.ChannelList.First(c => c.Number == old).Name + "\" here; it moves to channel " + n + ".");
@@ -274,7 +275,8 @@ namespace CodeplugBuilder.Core
             var wanted = Kept.SelectMany(k => ScanColumns.Select(c => b.Channels.Get(k.Row, c).Trim()))
                              .Where(n => n.Length > 0 && !n.Equals("None", StringComparison.OrdinalIgnoreCase))
                              .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var finalNames = new HashSet<string>(g.ChannelList.Select(c => c.Name).Concat(Kept.Select(k => k.Name)), StringComparer.OrdinalIgnoreCase);
+            var byName = new Dictionary<string, GeneratedChannel>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in g.ChannelList.Concat(Kept.Select(k => k.Member))) if (!byName.ContainsKey(c.Name)) byName[c.Name] = c;
             foreach (string listName in wanted)
             {
                 var row = b.ScanLists.Rows.FirstOrDefault(r => string.Equals(b.ScanLists.Get(r, "Scan List Name").Trim(), listName, StringComparison.OrdinalIgnoreCase));
@@ -285,7 +287,11 @@ namespace CodeplugBuilder.Core
                 foreach (var col in b.ScanLists.Header) g.ScanLists.Set(r, b.ScanLists.Get(row, col), col);
                 g.ScanLists.Set(r, (g.ScanLists.Rows.Count + 1).ToString(CultureInfo.InvariantCulture), "No.");
                 g.ScanLists.Set(r, final, "Scan List Name");
-                g.ScanLists.Set(r, string.Join("|", b.ScanLists.Get(row, "Scan Channel Member").Split('|').Select(m => m.Trim()).Where(finalNames.Contains)), "Scan Channel Member");
+                // Members that still exist; the frequency columns follow them, so they stay in step after a channel was dropped.
+                var members = b.ScanLists.Get(row, "Scan Channel Member").Split('|').Select(m => m.Trim()).Where(byName.ContainsKey).Select(m => byName[m]).ToList();
+                g.ScanLists.Set(r, string.Join("|", members.Select(m => m.Name)), "Scan Channel Member");
+                g.ScanLists.Set(r, string.Join("|", members.Select(m => f.FormatFrequency(m.Repeater.RxMHz))), "Scan Channel Member RX Frequency");
+                g.ScanLists.Set(r, string.Join("|", members.Select(m => f.FormatFrequency(m.Repeater.TxMHz))), "Scan Channel Member TX Frequency");
                 g.ScanLists.Rows.Add(r);
             }
         }

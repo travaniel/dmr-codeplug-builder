@@ -32,6 +32,7 @@ namespace CodeplugBuilder.Core
                 // No recognisable header: the first line is data too. Guess the columns.
                 rows = new List<List<string>> { t.Header }.Concat(t.Rows).ToList();
                 int width = rows.Max(r => r.Count);
+                if (width == 0) return new List<Talkgroup>(); // an empty file
                 idCol = Enumerable.Range(0, width)
                     .OrderByDescending(c => rows.Count(r => c < r.Count && int.TryParse(r[c].Trim(), out _)))
                     .First();

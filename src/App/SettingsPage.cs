@@ -342,7 +342,12 @@ namespace CodeplugBuilder.App
         public void Reload()
         {
             loading = true;
-            var p = session.Project;
+            try { Fill(session.Project); }
+            finally { loading = false; }
+        }
+
+        void Fill(Project p)
+        {
             txtRadioName.Text = p.RadioIdName;
             txtRadioId.Text = p.RadioId > 0 ? p.RadioId.ToString(CultureInfo.InvariantCulture) : "";
             chkRadioIdList.Checked = p.Options.WriteRadioIdList;
@@ -359,7 +364,7 @@ namespace CodeplugBuilder.App
             chkFavScan.Enabled = chkLocalFm.Enabled = numLocalMiles.Enabled = p.Options.ScanListPerZone;
             chkPolite.Checked = p.Options.PoliteTransmit;
             cboCallers.SelectedIndex = Math.Max(0, Array.IndexOf(CallerScopeValues, p.Options.CallerScope ?? ""));
-            txtCallerAreas.Text = string.Join(", ", p.Options.CallerAreas ?? new System.Collections.Generic.List<string>());
+            txtCallerAreas.Text = string.Join(", ", p.Options.CallerAreas ?? Enumerable.Empty<string>());
             txtCallerAreas.Enabled = cboCallers.SelectedIndex >= 2;
             chkAprs.Checked = p.Aprs != null;
             var aprs = p.Aprs ?? Aprs.Suggest(p);
@@ -376,7 +381,6 @@ namespace CodeplugBuilder.App
             ShowNumbers();
             ShowBase();
             CheckFields();
-            loading = false;
         }
 
         void ShowBase()
@@ -459,11 +463,7 @@ namespace CodeplugBuilder.App
                 string folder = Path.GetDirectoryName(dlg.FileName);
                 try
                 {
-                    var f = CpsFormat.FromFolder(folder);
-                    if (Directory.Exists(AppSettings.FormatFolder)) Directory.Delete(AppSettings.FormatFolder, true);
-                    f.SaveTemplates(AppSettings.FormatFolder);
-                    AppSettings.Set("FormatSource", folder);
-                    session.Format = AppSettings.LoadFormat();
+                    session.Format = AppSettings.SaveFormat(CpsFormat.FromFolder(folder), folder);
                     ShowFormat();
                     session.MarkDirty();
                     Ui.Info(FindForm(), "Generated files now follow the layout from:\n" + folder);
@@ -477,9 +477,7 @@ namespace CodeplugBuilder.App
 
         void UseBuiltIn()
         {
-            try { if (Directory.Exists(AppSettings.FormatFolder)) Directory.Delete(AppSettings.FormatFolder, true); } catch { }
-            AppSettings.Set("FormatSource", null);
-            session.Format = CpsFormat.BuiltIn();
+            session.Format = AppSettings.ClearFormat();
             ShowFormat();
             session.MarkDirty();
         }

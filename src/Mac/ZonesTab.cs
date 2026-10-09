@@ -730,11 +730,7 @@ namespace CodeplugBuilder.Mac
                 return;
             int added = others.Sum(z => project.CopyZoneTalkgroups(zone, z.Name));
             AfterChange();
-            // Same wording as Windows (ZoneTalkgroupsEditor.CopyReport).
-            await Dialogs.Info(owner, "Ticked " + count + " talkgroup" + (count == 1 ? "" : "s") + " in " + others.Count + " more zone" + (others.Count == 1 ? "" : "s") + ": " +
-                                      (added == 0 ? "no new channels, because the repeaters there already list them (their own lists keep their slots)."
-                                                  : added + " new channel" + (added == 1 ? "" : "s") + ".") +
-                                      " Pick another zone on the left to see its talkgroups.");
+            await Dialogs.Info(owner, Project.CopyZoneTalkgroupsReport(count, others.Count, added));
         }
 
         void AfterChange()

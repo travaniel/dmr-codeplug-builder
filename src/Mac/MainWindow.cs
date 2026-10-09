@@ -490,7 +490,11 @@ namespace CodeplugBuilder.Mac
             {
                 lastIssues = Validator.Validate(p, session.Format);
                 int errors = lastIssues.Count(i => i.Severity == Severity.Error), warnings = lastIssues.Count(i => i.Severity == Severity.Warning);
-                status.Text = p.ChannelCount() + " channels in " + p.Zones.Count + " zones, " + Plural(p.Talkgroups.Count, "talkgroup") + ". " +
+                // What the radio gets (as on Windows): the generator's channels and zones, not every zone name the project knows.
+                string counts;
+                try { var g = CodeplugGenerator.Generate(p, session.Format); counts = Plural(g.ChannelList.Count, "channel") + " in " + Plural(g.ZoneList.Count, "zone"); }
+                catch { counts = Plural(p.ChannelCount(), "channel"); }
+                status.Text = counts + ", " + Plural(p.Talkgroups.Count, "talkgroup") + ". " +
                               (errors > 0 ? Plural(errors, "problem") + " to fix before exporting" : warnings > 0 ? Plural(warnings, "thing") + " to check" : "No problems found") + ".";
             }
             catch (Exception ex) { status.Text = "Couldn't check the project: " + ex.Message; }
@@ -637,15 +641,17 @@ namespace CodeplugBuilder.Mac
                 return;
             }
             Online.UpdateReport report;
-            var cancel = new System.Threading.CancellationTokenSource();
-            try
+            using (var cancel = new System.Threading.CancellationTokenSource())
             {
-                report = await Dialogs.Progress(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
-                                                "Asking RadioID.net and BrandMeister about your " + tracked + " repeater(s)...", cancel);
-                if (cancel.IsCancellationRequested) return; // a half-done check would report changes that aren't real
+                try
+                {
+                    report = await Dialogs.Progress(this, "Check for updates", pr => Online.CheckForUpdates(p, pr, cancel.Token),
+                                                    "Asking RadioID.net and BrandMeister about your " + tracked + " repeater(s)...", cancel);
+                    if (cancel.IsCancellationRequested) return; // a half-done check would report changes that aren't real
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex) { await Dialogs.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
             }
-            catch (OperationCanceledException) { return; }
-            catch (Exception ex) { await Dialogs.Error(this, "Couldn't check for updates:\n\n" + ex.Message); return; }
             string last = p.LastUpdateCheck;
             p.LastUpdateCheck = RepeaterHealth.DateText(DateTime.Now);
             session.MarkDirty();
@@ -676,22 +682,24 @@ namespace CodeplugBuilder.Mac
             try { result = CpsImporter.Import(folder); }
             catch (Exception ex) { await Dialogs.Error(this, "Couldn't import that " + what + ":\n\n" + ex.Message); return; }
             var notes = new List<string>(result.Notes);
-            if (fromRadio) notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
-            if (fromRadio) try { notes.AddRange(Aprs.ReadNotes(MemoryImage.Load(Path.Combine(folder, "radio.img")))); } catch { }
-            if (!fromRadio)
+            if (fromRadio)
+            {
+                notes.Insert(0, "The radio's memory and these CSV files were saved in " + folder + " (a backup of what was on the radio).");
+                try { notes.AddRange(Aprs.ReadNotes(MemoryImage.Load(Path.Combine(folder, "radio.img")))); } catch { }
+            }
+            else
+            {
                 try
                 {
                     var f = CpsFormat.FromFolder(folder);
                     if (!SameLayout(f, session.Format))
                     {
-                        if (Directory.Exists(AppSettings.FormatFolder)) Directory.Delete(AppSettings.FormatFolder, true);
-                        f.SaveTemplates(AppSettings.FormatFolder);
-                        AppSettings.Set("FormatSource", folder);
-                        session.Format = AppSettings.LoadFormat();
+                        session.Format = AppSettings.SaveFormat(f, folder);
                         notes.Add("This export's CSV layout differs from the built-in one, so generated files now follow it.");
                     }
                 }
                 catch { }
+            }
             session.Replace(result.Project, null, true);
             ShowWorkspace();
             var p = result.Project;

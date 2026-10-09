@@ -401,16 +401,7 @@ namespace CodeplugBuilder.App
                 return;
             int added = others.Sum(z => project.CopyZoneTalkgroups(zone, z.Name));
             AfterChange();
-            Ui.Info(FindForm(), CopyReport(count, others.Count, added));
-        }
-
-        /// <summary>What Copy ticked to all zones did (shared wording with the Mac).</summary>
-        internal static string CopyReport(int talkgroups, int zones, int channels)
-        {
-            return "Ticked " + talkgroups + " talkgroup" + (talkgroups == 1 ? "" : "s") + " in " + zones + " more zone" + (zones == 1 ? "" : "s") + ": " +
-                   (channels == 0 ? "no new channels, because the repeaters there already list them (their own lists keep their slots)."
-                                  : channels + " new channel" + (channels == 1 ? "" : "s") + ".") +
-                   " Pick another zone on the left to see its talkgroups.";
+            Ui.Info(FindForm(), Project.CopyZoneTalkgroupsReport(count, others.Count, added));
         }
 
         void AfterChange()

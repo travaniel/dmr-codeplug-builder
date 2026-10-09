@@ -433,6 +433,7 @@ namespace CodeplugBuilder.App
                 foreach (var r in order) if (r.Location == null) r.Location = atlas.Locate(r.City, r.State, r.Country);
             }
             catch { }
+            Online.PrepareForAdding(this, order); // BrandMeister's own talkgroups for its repeaters, as Add from map does
             Result = OnlineImporter.AddRepeaters(p, order, o, bm);
             if (chkNoaa.Checked) NoaaAdded = Presets.AddNoaaWeather(p);
             DialogResult = DialogResult.OK;
@@ -454,7 +455,7 @@ namespace CodeplugBuilder.App
                               (d.NoaaAdded.Count > 0 ? " and " + d.NoaaAdded.Count + " NOAA weather channels" : "") +
                               ". Each repeater's zone, talkgroups and slots can be changed on the Repeaters tab.";
                 using (var dlg = new IssuesDialog(head, new string[0], lines, false)) dlg.ShowDialog(owner);
-                return r.Added.Cast<Repeater>().Concat(d.NoaaAdded).FirstOrDefault();
+                return r.Added.Concat(d.NoaaAdded).FirstOrDefault();
             }
         }
     }

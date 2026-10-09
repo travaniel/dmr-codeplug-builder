@@ -137,7 +137,7 @@ namespace CodeplugBuilder.Core
         public static bool Sort(Project p)
         {
             p.SyncZones();
-            var keyed = p.Zones.Select((z, i) => new { z, i, g = Group(p, z), d = Group(p, z) == 2 ? DistanceKm(p, z) : null }).ToList();
+            var keyed = p.Zones.Select((z, i) => new { z, i, g = Group(p, z) }).Select(x => new { x.z, x.i, x.g, d = x.g == 2 ? DistanceKm(p, x.z) : null }).ToList();
             var sorted = keyed.OrderBy(x => x.g).ThenBy(x => x.d == null ? 1 : 0).ThenBy(x => x.d ?? 0).ThenBy(x => x.i).Select(x => x.z).ToList();
             if (sorted.SequenceEqual(p.Zones)) return false;
             p.Zones.Clear();

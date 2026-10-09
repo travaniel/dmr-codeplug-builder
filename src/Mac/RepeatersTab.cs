@@ -179,6 +179,7 @@ namespace CodeplugBuilder.Mac
         async System.Threading.Tasks.Task AddRoute()
         {
             var first = await RouteWindow.Run(owner, session);
+            if (first == null) return; // cancelled
             cboFilter.SelectedIndex = 0;
             Reload(first);
         }
@@ -205,8 +206,7 @@ namespace CodeplugBuilder.Mac
         {
             var added = Presets.AddSimplex(session.Project);
             if (added.Count == 0) { await Dialogs.Info(owner, "You already have all the simplex channels."); return; }
-            session.MarkDirty();
-            session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new
+            session.NotifyTalkgroupsChanged(); // talkgroup 99 may be new; also marks the project changed
             cboFilter.SelectedIndex = 0;
             Reload(added[0]);
         }

@@ -102,6 +102,26 @@ namespace CodeplugBuilder.App
             catch { }
         }
 
+        /// <summary>
+        /// Makes <paramref name="format"/> (learned from the Export All in <paramref name="source"/>) the layout generated files follow,
+        /// from now on: its templates replace the saved ones. Returns the format as saved (what <see cref="LoadFormat"/> gives).
+        /// </summary>
+        public static CpsFormat SaveFormat(CpsFormat format, string source)
+        {
+            if (Directory.Exists(FormatFolder)) Directory.Delete(FormatFolder, true);
+            format.SaveTemplates(FormatFolder);
+            Set("FormatSource", source);
+            return LoadFormat();
+        }
+
+        /// <summary>Back to the built-in layout: the saved custom one is deleted.</summary>
+        public static CpsFormat ClearFormat()
+        {
+            try { if (Directory.Exists(FormatFolder)) Directory.Delete(FormatFolder, true); } catch { }
+            Set("FormatSource", null);
+            return CpsFormat.BuiltIn();
+        }
+
         /// <summary>The saved custom CPS format if there is one, else the built-in 6X2 Pro layout.</summary>
         public static CpsFormat LoadFormat()
         {
