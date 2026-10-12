@@ -211,26 +211,6 @@ namespace CodeplugBuilder.App
             public void Report(string value) { report(value); }
         }
 
-        /// <summary>
-        /// Adds listings from elsewhere (analog repeaters from a CHIRP file) to this download, so the map and list offer
-        /// them with the rest. A line that RadioID already lists as DMR (same callsign and output) or that's already here
-        /// is left out. Returns how many were added.
-        /// </summary>
-        public int AddListings(IEnumerable<OnlineRepeater> listings)
-        {
-            int added = 0;
-            lock (repeaters)
-                foreach (var r in listings)
-                {
-                    // Same output and callsign = the same machine. (Frequency pairs alone repeat all over a state.)
-                    if (repeaters.Any(x => x.RxMHz == r.RxMHz && string.Equals(x.Callsign, r.Callsign, StringComparison.OrdinalIgnoreCase))) continue;
-                    repeaters.Add(r);
-                    added++;
-                }
-            Report("Added " + added + " analog repeater" + (added == 1 ? "" : "s") + " from CHIRP files.");
-            return added;
-        }
-
         static bool Same(OnlineRepeater a, OnlineRepeater b)
         {
             return a.Callsign == b.Callsign && a.RxMHz == b.RxMHz && a.ColorCode == b.ColorCode && a.DmrId == b.DmrId;

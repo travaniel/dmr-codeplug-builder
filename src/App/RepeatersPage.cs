@@ -269,7 +269,7 @@ namespace CodeplugBuilder.App
             Reload(first);
         }
 
-        /// <summary>Opens the RepeaterBook importer (CHIRP export) and shows what it added.</summary>
+        /// <summary>Opens the RepeaterBook importer (DMR and analog, with the user's token) and shows what it added.</summary>
         public void FromRepeaterBook()
         {
             var first = RepeaterBookDialog.Run(FindForm(), session);

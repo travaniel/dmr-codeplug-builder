@@ -336,22 +336,8 @@ per-state/country lists (Texas 343 of 354), so the app keeps those as the list a
 listed country is ignored). Cached a week as `radioid-positions.txt` (~300 KB). North America: repeaters the map
 couldn't place exactly went from 1,073 to 77 of 5,525.
 
-**RepeaterBook CHIRP export** (what the app uses, no token; checked on a one-county export
-2026-10-06, file `rb_chirp_<yyMMddHHmm>.csv` in Downloads): header
-`Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment`, CRLF,
-an extra trailing comma on every row. Name = callsign, Frequency = output, Comment = city ("Brownwood, Bangs Hill").
-No county, state, color code or digital modes. Tone semantics are CHIRP's and match the user's CPS channels: `TSQL`
-→ cToneFreq both ways + tone squelch (K0TSTA UHF), `Tone` → rToneFreq transmit only (W0TONE), blank → carrier.
-The export's county search includes towns just over the line (Cross Plains is in Callahan County).
-
-**CHIRP's own CSV after its RepeaterBook query** (the user's `TexasRepeaters.csv`, 2026-10-06, 1,365 lines: 1,025 FM,
-173 DN, 124 DMR, 43 DV; 137 FM lines on 10 m / 6 m / 220 / 1.2 GHz): extra columns `RxDtcsCode,CrossMode,...,Skip,Power,
-...,URCALL,RPT1CALL,RPT2CALL,DVCODE`. Name is often a site or club ("Westlake Hills"); the comment is
-"CALL near Town, X County, Texas OPEN [notes]" (12 lines leave out the callsign). `ChirpChannel.ReadComment` takes the
-callsign, town, county and state from it, so the map step needs no state from the file name and towns the map
-doesn't know go to their county's middle. Frequency pairs repeat across the state: duplicate checks must include the
-callsign (or town), never frequencies alone. Result: 888 usable FM, 854 added next to Texas's DMR repeaters (the
-rest are listed twice or are the same machine RadioID lists as DMR), every one in its county.
+**CHIRP files** (RepeaterBook's CHIRP export and CHIRP's own CSV) were the analog source in 1.3-1.5; removed 2026-10-12 when the
+RepeaterBook API was approved (see git history before that date for the parser and the format notes).
 
 **RepeaterBook** (analog): since 2026-03 the API (`/api/export.php?state_id=<FIPS>&...`) answers 401
 without a token. Personal use needs an approved token: request at repeaterbook.com/api/token_request.php,
@@ -365,7 +351,7 @@ program their own radio (about 100 users, each with their own app-bound token). 
 the code already does:
 - User-Agent `W6OZZ-CPS/1.3 (+https://github.com/travaniel/dmr-codeplug-builder)` (`RepeaterBookApi.UserAgent`, also used for
   RadioID.net and BrandMeister). It must match the approved value exactly.
-- Attribution "Data courtesy of RepeaterBook.com." with a link on the pick list's CHIRP row, in the RepeaterBook import dialog,
+- Attribution "Data courtesy of RepeaterBook.com." with a link in the RepeaterBook import dialog,
   in the Add-from-map summary when analog repeaters were added, and in Help > About (Windows and Mac).
 - RepeaterBook (analog) rows are never drawn on the map and are not counted in the map's area badges; they are on the List
   tab only. The map shows DMR repeaters from RadioID.net and BrandMeister.
@@ -375,9 +361,38 @@ the code already does:
   5 states per click, 30 requests per hour per installation (`RequestBudget`, history kept so it survives restarts), 10 pages
   per state, 429 backoff 60 s doubling or Retry-After. Results in memory for the session only. Each user pastes their own token
   into Settings; never embed or share one.
-When a token arrives: look at one real response first, then write the client and parser to these limits, add the Settings field
-(Windows and Mac), keep it off until a token is present, and make sure the fields used match what the application listed.
-
+**Approved (2026-10-12)** as a distributed, non-commercial radio-programming integration. The admin note's conditions, and where
+the code meets them:
+- Each user's own app-bound token (`rbuapp_...`), never a shared one: pasted in Settings > RepeaterBook (or *Paste token...* in the dialog),
+  stored DPAPI-encrypted for the Windows user in settings.txt (`RepeaterBookToken`, App/Online.RepeaterBook.cs). Never in a
+  `.cpb`, an export, a log or a message (`RepeaterBookFailure` messages don't carry it; redirects are not followed).
+- Only explicit user-started imports for programming the user's own radio, at most 5 states per action (`MaxStatesPerAction`,
+  checked in the dialog and in `Online.RepeaterBookStatesAsync`). Endpoint `export.php?state_id=<FIPS>&mode=DMR` and `&mode=analog`
+  (one request per state and ticked mode). DMR listings: color code (`DMR Color Code`; 1 and a note when missing), `DMR ID`,
+  network; no talkgroups (RepeaterBook has none), so they get zone talkgroups or the starter set. A repeater listed as both FM
+  and DMR is offered twice.
+- "Data courtesy of RepeaterBook.com" as a clickable link in the import dialog, under the list; double-click or *Open the
+  selected repeater on RepeaterBook* opens the listing's detail page (`details.php?state_id=..&ID=..`), and added repeaters keep
+  that link in their notes. The added-repeaters summary repeats the credit.
+- Cache only what programming needs: listings live in the dialog's memory and are gone when it closes. No map, browsing,
+  mirror or bulk download of RepeaterBook data.
+- HTTP 429 / `rate_limited`: the import stops at once and no request goes out until the backoff ends (Retry-After, else 60 s
+  doubling to an hour; `RepeaterBookBackoffUntil` survives restarts). `auth_*` / `ua_mismatch` / 401 / 403: stops, and the same
+  token + User-Agent pair is never sent again (fingerprint in `RepeaterBookRefused`) until the user pastes a token again.
+- User-Agent: RepeaterBook's API Apps page shows the approved value: `W6OZZ-CPS/1.3 (BTECH DMR-6X2 PRO codeplug tool; contact:
+  <the author's email>)`, "Match: prefix", endpoints `api.export, api.export_row`, rate `partner_server`. It is
+  `RepeaterBookApi.UserAgent`, sent on RepeaterBook requests only; RadioID.net and BrandMeister get
+  `OtherSitesUserAgent` (project URL, no email). The project-URL value sent at first got `403 ua_mismatch`.
+- **Checked on a real answer (2026-10-12, Texas):** `{"count":1442,"results":[...]}` for `mode=analog`, 140 for `mode=DMR`, all in
+  one answer (no paging). Fields: `State ID, Rptr ID, Frequency, Input Freq, PL, TSQ, Nearest City, Landmark, County` (no
+  "County" suffix), `State, Country, Lat, Long, Precise` (1 = surveyed), `Callsign, Use` (OPEN/CLOSED/PRIVATE), `Operational
+  Status` ("On-air"/"Off-air"), `ARES, RACES, SKYWARN, CANWARN, Emergency Power, AllStar/EchoLink/IRLP/Wires Node, FM Analog`
+  (Yes/No), `FM Bandwidth` ("25.0 kHz"), `DMR, DMR Color Code` (0-15, sometimes blank), `DMR ID, D-Star, D-Star Service, NXDN,
+  APCO P-25, P-25 NAC, M17, M17 CAN, Tetra, Tetra MCC, Tetra MNC, System Fusion, Notes, Last Update`. No DMR network or
+  talkgroups. Values are strings. `mode=DMR` returns multi-mode machines too (FM Analog Yes and DMR Yes). Analog includes
+  6 m / 10 m / 220 (left out as outside the radio's bands). Dev check: `--repeaterbook-sample Texas report.txt`.
+- Still open: Canada and the rest of the world (`exportROW.php`, approved), the Mac dialog, and RepeaterBook repeaters in
+  the map step (wizard, Add from map).
 ## 4c. The built-in map (atlas)
 
 `src/Core/Geo/atlas.gz` (~3.7 MB, embedded as `CodeplugBuilder.Geo.atlas.gz`) is made by `tools/GeoBuild`
@@ -875,7 +890,7 @@ before it's called done.
 
 ### Still open from the earlier roadmap
 
-- RepeaterBook API client when a token arrives (4b has the promised limits).
+- RepeaterBook API: built (4b). Still to do: check the parser on a real answer, Canada / rest of world, the Mac dialog.
 - Talkgroup sets: named presets ("BM wide area", "Texas") for one or many repeaters; per-network tags.
 - Usability: multi-select repeaters (zone, power, talkgroup set); drag-and-drop ordering; search and sort; undo/redo
   (JSON snapshots in `Session`); automatic `.cpb` snapshots on each Export/Write ("save iterations"); generator notes

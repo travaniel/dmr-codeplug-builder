@@ -23,7 +23,7 @@ namespace CodeplugBuilder.App
         readonly NumericUpDown numAprsSsid;
         Label lblBase;
         readonly NumericUpDown numName, numZone, numRx, numScan;
-        readonly Label lblFormat, lblNumbers;
+        readonly Label lblFormat, lblNumbers, lblRbToken;
         readonly ErrorProvider errors = new ErrorProvider { BlinkStyle = ErrorBlinkStyle.NeverBlink };
         readonly TableLayoutPanel stack;
         bool loading;
@@ -120,6 +120,19 @@ namespace CodeplugBuilder.App
             aprsRow.WrapContents = false;
             Span(aprsRow);
             Span(Ui.Hint(AprsHint, wrap));
+
+            Section("RepeaterBook");
+            lblRbToken = Ui.Label("");
+            var rbLink = new LinkLabel { Text = "Get a token on RepeaterBook (API Apps)", AutoSize = true, Margin = new Padding(3, Ui.S(7), 3, 3) };
+            rbLink.LinkClicked += (s, e) => RepeaterBookTokenDialog.Open(FindForm(), RepeaterBookApi.TokenPageUrl);
+            var rbRow = Ui.Row(Ui.Button("Paste token...", (s, e) => { RepeaterBookTokenDialog.Show(FindForm()); ShowRepeaterBookToken(); }), rbLink);
+            rbRow.WrapContents = false;
+            Pair("Your token", lblRbToken);
+            Span(rbRow);
+            Span(Ui.Hint("Repeaters > From RepeaterBook downloads DMR and analog repeaters with your own RepeaterBook token, up to " +
+                         RepeaterBookApi.MaxStatesPerAction + " states at a time. Sign in on RepeaterBook, open API Apps, generate a token for this " +
+                         "program and paste it here. It is kept on this PC, encrypted for your Windows account (not in your project). " +
+                         RepeaterBookApi.Attribution, wrap));
 
             Section("Channels made in the CPS");
             chkKeep = Check("Keep channels, zones and talkgroups made in the CPS (merge with a CPS export)");
@@ -320,6 +333,12 @@ namespace CodeplugBuilder.App
             stack.Controls.Add(field, 1, row);
         }
 
+        void ShowRepeaterBookToken()
+        {
+            lblRbToken.Text = RepeaterBookTokenDialog.Status;
+            lblRbToken.ForeColor = RepeaterBookToken.IsSet ? System.Drawing.SystemColors.ControlText : Ui.HintColor;
+        }
+
         void Section(string title)
         {
             var l = Ui.Label(title, true);
@@ -348,6 +367,7 @@ namespace CodeplugBuilder.App
 
         void Fill(Project p)
         {
+            ShowRepeaterBookToken();
             txtRadioName.Text = p.RadioIdName;
             txtRadioId.Text = p.RadioId > 0 ? p.RadioId.ToString(CultureInfo.InvariantCulture) : "";
             chkRadioIdList.Checked = p.Options.WriteRadioIdList;

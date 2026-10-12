@@ -62,7 +62,7 @@ when one changes.
 
 **Milestone 3 (same day):** the map and Add from map. `RegionMapView.cs` is the Windows `RegionMap` in Avalonia (same Mercator view,
 zoom levels, county/state/country picking, highways with route tags, dots, badges, labels; drawn with `StreamGeometry` and
-`DrawingContext`), `RegionPickerView.cs` its toolbar, `AreaChooserView.cs` the Map + List picker (with CHIRP files), and
+`DrawingContext`), `RegionPickerView.cs` its toolbar, `AreaChooserView.cs` the Map + List picker, and
 `AddFromMapWindow.cs` (also `RegionWindow`) *Repeaters > Add from map*. Checked with real downloads: `--addmap-check out.png`
 opened Texas (356 repeaters, 3 of them BrandMeister-only), picked Tom Green County (8 repeaters) and drew it. Dev switches
 `--map` and `--map-snapshot folder` show the map alone.

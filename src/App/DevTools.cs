@@ -96,20 +96,10 @@ namespace CodeplugBuilder.App
                         File.WriteAllLines(Path.Combine(folder, "walkthrough.log"), log);
                         return 0;
                     }
-                    string chirp = Environment.GetEnvironmentVariable("CODEPLUGBUILDER_WALK_CHIRP"); // a Texas CHIRP file to mix in (dev only)
                     var counties = new List<string> { "Tom Green County", "Taylor County", "Lubbock County" };
-                    if (!string.IsNullOrEmpty(chirp))
-                    {
-                        var listings = RepeaterBookImport.ToListings(ChirpCsv.Parse(CsvTable.Load(chirp)), "Texas", "United States", atlas);
-                        log.Add("CHIRP file: " + listings.Count + " analog listings, " + wiz.State.Download.AddListings(listings) + " added");
-                        areas.Chooser.Reload();
-                        counties.Add("Brown County");
-                        areas.Chooser.Picker.Map.ZoomToAreas(new[] { atlas.Find("US-TX") });
-                        Shot("areas-chirp-texas");
-                    }
                     foreach (var county in counties)
                         areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == county && c.ParentCode == "US-TX"));
-                    areas.Chooser.Picker.Map.ZoomToAreas(string.IsNullOrEmpty(chirp) ? new[] { atlas.Find("US-TX") } : atlas.Counties.Where(c => c.ParentCode == "US-TX" && (c.Name == "Brown County" || c.Name == "Callahan County" || c.Name == "Taylor County")).ToArray());
+                    areas.Chooser.Picker.Map.ZoomToAreas(new[] { atlas.Find("US-TX") });
                     Shot("areas-picked");
                     log.Add("picked " + areas.Chooser.Picked().Count + " repeaters: " + string.Join(", ", areas.Chooser.Picked().Select(r => r.Callsign + " " + r.City)));
                     areas.Chooser.Tabs.SelectedIndex = 1;
@@ -408,13 +398,14 @@ namespace CodeplugBuilder.App
         }
     }
     /// <summary>
-    /// Developer check: CodeplugBuilder.exe --repeaterbook-snapshot project.cpb export.csv folder
-    /// Opens Repeaters > From RepeaterBook off screen on a copy of the project, loads the export, saves a PNG, adds the
+    /// Developer check: CodeplugBuilder.exe --repeaterbook-snapshot project.cpb answer.json folder
+    /// Opens Repeaters > From RepeaterBook off screen on a copy of the project, lists the DMR and analog repeaters of a saved
+    /// RepeaterBook answer (no download), saves a PNG, adds the
     /// ticked repeaters and logs what happened. The project file isn't changed.
     /// </summary>
     static class RepeaterBookSnapshot
     {
-        public static int Run(string projectPath, string csv, string folder)
+        public static int Run(string projectPath, string json, string folder)
         {
             Directory.CreateDirectory(folder);
             var log = new List<string>();
@@ -426,7 +417,10 @@ namespace CodeplugBuilder.App
                 using (var d = new RepeaterBookDialog(session) { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000), ShowInTaskbar = false })
                 {
                     d.Show();
-                    d.LoadFile(csv, true);
+                    string body = File.ReadAllText(json);
+                    var atlas = GeoAtlas.BuiltIn();
+                    d.LoadListings(RepeaterBookApi.ParseListings(body, RepeaterBookApi.DmrMode, null, null, atlas)
+                                   .Concat(RepeaterBookApi.ParseListings(body, RepeaterBookApi.AnalogMode, null, null, atlas)).ToList());
                     var sw = Stopwatch.StartNew();
                     while (sw.ElapsedMilliseconds < 800) { Application.DoEvents(); Thread.Sleep(15); }
                     using (var bmp = new Bitmap(d.Width, d.Height))
@@ -434,10 +428,11 @@ namespace CodeplugBuilder.App
                         d.DrawToBitmap(bmp, new Rectangle(Point.Empty, d.Size));
                         bmp.Save(Path.Combine(folder, "repeaterbook-dialog.png"), ImageFormat.Png);
                     }
-                    d.AddPicked();
+                    var adding = d.AddPicked();
+                    while (!adding.IsCompleted) { Application.DoEvents(); Thread.Sleep(15); }
                     var r = d.Result;
                     log.Add("added " + r.Added.Count + ": " + string.Join("; ", r.Added.Select(x => x.Name + " " + x.RxMHz + "/" + x.TxMHz + " tone " + x.ToneEncode + "/" + x.ToneDecode +
-                                                                                         (x.ToneSquelch ? " tsql" : "") + " zone " + x.Zone + " county " + x.County)));
+                                                                                         (x.ToneSquelch ? " tsql" : "") + (x.IsDigital ? " CC" + x.ColorCode + " TGs " + x.Talkgroups.Count : "") + " zone " + x.Zone + " county " + x.County)));
                     log.AddRange(r.Notes);
                     log.Add("repeaters " + before + " -> " + session.Project.Repeaters.Count);
                     var g = CodeplugGenerator.Generate(session.Project, session.Format);

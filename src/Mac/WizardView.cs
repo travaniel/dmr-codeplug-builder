@@ -556,7 +556,7 @@ namespace CodeplugBuilder.Mac
             }
             State.Scheme = scheme;
             State.SingleZone = single;
-            // DMR and CHIRP (analog) repeaters alike; the weather channels keep their own zone.
+            // DMR and analog repeaters alike; the weather channels keep their own zone.
             ZonePlanner.Apply(p, p.Repeaters.Where(r => !Presets.IsPreset(r)), State.Scheme, State.SingleZone);
             WizardState.SortZones(p);
             Fill(null);

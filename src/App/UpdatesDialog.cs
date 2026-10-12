@@ -65,7 +65,7 @@ namespace CodeplugBuilder.App
             chkCallers = new CheckBox { Text = "Also download RadioID.net's caller list again (for Export's caller names; otherwise kept a week)", AutoSize = true,
                                         Visible = !string.IsNullOrEmpty(p.Options.CallerScope), Checked = true };
             t.Controls.Add(chkCallers);
-            t.Controls.Add(Ui.Hint("Repeaters typed in by hand, imported from the CPS or from RepeaterBook have no RadioID.net listing to compare with. " +
+            t.Controls.Add(Ui.Hint("Repeaters typed in by hand, imported from the CPS, or analog ones from RepeaterBook, have no RadioID.net listing to compare with. " +
                                    "Channel numbers stay the same; check the changes before writing to the radio.", Ui.S(840)));
 
             var ok = new Button { Text = "Apply ticked", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(Ui.S(110), 0) };

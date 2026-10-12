@@ -20,7 +20,7 @@ namespace CodeplugBuilder.Core
         public string Description { get; set; }
     }
 
-    /// <summary>One DMR repeater as listed on RadioID.net.</summary>
+    /// <summary>One repeater as listed online: a DMR repeater on RadioID.net or RepeaterBook, or an analog one on RepeaterBook.</summary>
     public sealed class OnlineRepeater
     {
         public string Callsign { get; set; } = "";
@@ -44,9 +44,14 @@ namespace CodeplugBuilder.Core
         /// <summary>Where it is on the built-in map (set by <see cref="GeoAtlas.Locate"/>; null until then).</summary>
         public GeoLocation Location { get; set; }
 
-        /// <summary>An analog (FM) repeater from a CHIRP file (RepeaterBook export), not a RadioID.net listing; null for DMR.</summary>
-        public ChirpChannel Analog { get; set; }
+        /// <summary>An analog (FM) repeater from RepeaterBook; null for DMR.</summary>
+        public AnalogListing Analog { get; set; }
         public bool IsAnalog => Analog != null;
+
+        /// <summary>Where the listing came from: null = RadioID.net (or BrandMeister), else e.g. "RepeaterBook".</summary>
+        public string Source { get; set; }
+        /// <summary>The listing's page on its site (RepeaterBook's detail page), or null.</summary>
+        public string DetailUrl { get; set; }
 
         public bool IsBrandMeister => Network.IndexOf("BrandMeister", StringComparison.OrdinalIgnoreCase) >= 0;
 
@@ -572,7 +577,7 @@ namespace CodeplugBuilder.Core
 
         /// <summary>
         /// Adds the picked repeaters to the project: DMR ones with one channel per talkgroup (adding any talkgroups the
-        /// project doesn't have yet), analog ones from CHIRP files as one channel each. Repeaters already in the project
+        /// project doesn't have yet), analog ones from RepeaterBook as one channel each. Repeaters already in the project
         /// (<see cref="FindExisting"/>) are skipped.
         /// </summary>
         public static OnlineImportResult AddRepeaters(Project p, IEnumerable<OnlineRepeater> picked, OnlineImportOptions o, IDictionary<int, string> bmNames)
@@ -596,7 +601,7 @@ namespace CodeplugBuilder.Core
 
                 if (r.Analog != null)
                 {
-                    // An FM repeater from a CHIRP file: one analog channel, zoned like the DMR ones.
+                    // An FM repeater from RepeaterBook: one analog channel, zoned like the DMR ones.
                     string problem = RepeaterBookImport.Problem(r.Analog);
                     if (problem != null) { skipped.Add(r.Callsign + " " + r.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) + " (" + problem + ")"); continue; }
                     var fm = RepeaterBookImport.NewRepeater(r.Analog, analogNames.Claim(RepeaterBookImport.ChannelName(r.Analog, analogPicked)), r.Location, o.Power);
@@ -660,7 +665,8 @@ namespace CodeplugBuilder.Core
             foreach (var rep in result.Added) p.ApplyZoneTalkgroups(rep);
 
             if (defaulted.Count > 0)
-                result.Notes.Add(defaulted.Count + " repeater" + (defaulted.Count == 1 ? " doesn't" : "s don't") + " list talkgroups on RadioID.net, so they got your default set: " +
+                result.Notes.Add(defaulted.Count + " repeater" + (defaulted.Count == 1 ? " doesn't" : "s don't") + " list talkgroups " +
+                                 (picked.All(x => x.Source == RepeaterBookImport.Site) ? "(RepeaterBook doesn't list them)" : "on RadioID.net") + ", so they got your default set: " +
                                  string.Join(", ", defaulted) + ". Check each repeater's web page for which talkgroups it carries on which slot.");
             if (empty.Count > 0)
                 result.Notes.Add("No talkgroups yet (none listed, no defaults picked): " + string.Join(", ", empty) + ". Add some in the repeater editor.");
@@ -671,7 +677,8 @@ namespace CodeplugBuilder.Core
 
         static string Notes(OnlineRepeater r)
         {
-            var parts = new List<string> { RadioId.Site + (r.DmrId > 0 ? " repeater ID " + r.DmrId.ToString(CultureInfo.InvariantCulture) : "") };
+            var parts = new List<string> { (r.Source ?? RadioId.Site) + (r.DmrId > 0 ? " repeater ID " + r.DmrId.ToString(CultureInfo.InvariantCulture) : "") };
+            if (r.DetailUrl != null) parts.Add(r.DetailUrl);
             if (r.Network.Length > 0) parts.Add(r.Network);
             if (r.TalkgroupSource == RepeaterHealth.BrandMeisterSource) parts.Add("talkgroups: BrandMeister's static ones");
             else if (r.Talkgroups.Count > 0) parts.Add("talkgroups: as listed on " + RadioId.Site);

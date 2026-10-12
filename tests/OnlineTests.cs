@@ -130,7 +130,74 @@ namespace CodeplugBuilder.Tests
             Assert.Equal(120, RepeaterBookApi.BackoffSeconds(60, null), "then doubles");
             Assert.Equal(17, RepeaterBookApi.BackoffSeconds(60, 17), "Retry-After wins");
             Assert.Equal(3600, RepeaterBookApi.BackoffSeconds(3000, null), "never more than an hour");
-            Assert.True(RepeaterBookApi.UserAgent.StartsWith("W6OZZ-CPS/"), "identifies the app");
+            Assert.Equal("W6OZZ-CPS/1.3 (BTECH DMR-6X2 PRO codeplug tool; contact: austinth11@gmail.com)", RepeaterBookApi.UserAgent, "the approved value, exactly");
+            Assert.True(RepeaterBookApi.UserAgent.Count(ch => ch == '(') == RepeaterBookApi.UserAgent.Count(ch => ch == ')'), "parentheses closed");
+        }
+
+        // Made up in RepeaterBook's export field names (no real answer captured yet; check with --repeaterbook-sample).
+        const string RbExport = @"{""count"":5,""results"":[
+ {""State ID"":""48"",""Rptr ID"":""1234"",""Frequency"":""444.70000"",""Input Freq"":""449.70000"",""PL"":""94.8"",""TSQ"":""94.8"",""Nearest City"":""Brownwood"",""Landmark"":""Bangs Hill"",""County"":""Brown"",""Lat"":""31.70930000"",""Long"":""-98.99120000"",""Precise"":1,""State"":""Texas"",""Country"":""United States"",""Callsign"":""K0TSTA"",""Use"":""OPEN"",""Operational Status"":""On-air"",""FM Analog"":""Yes"",""DMR"":""No""},
+ {""State ID"":""48"",""Rptr ID"":""1235"",""Frequency"":""146.94000"",""Input Freq"":""146.34000"",""PL"":""88.5"",""TSQ"":"""",""Near"":""Early"",""County"":""Brown"",""State"":""Texas"",""Callsign"":""W0TONE"",""Use"":""OPEN"",""Operational Status"":""On-air"",""FM Analog"":""Yes"",""FM Bandwidth"":""12.5 kHz""},
+ {""State ID"":""48"",""Rptr ID"":""1236"",""Frequency"":""147.12000"",""Input Freq"":""147.72000"",""PL"":""CSQ"",""TSQ"":""023"",""Near"":""Bangs"",""County"":""Brown"",""State"":""Texas"",""Callsign"":""N0DCS"",""Use"":""CLOSED"",""Operational Status"":""Off-air"",""FM Analog"":""Yes""},
+ {""State ID"":""48"",""Rptr ID"":""1237"",""Frequency"":""441.00000"",""Input Freq"":""446.00000"",""Callsign"":""N0DMR"",""FM Analog"":""No"",""DMR"":""Yes""},
+ {""State ID"":""48"",""Rptr ID"":""1238"",""Frequency"":"""",""Callsign"":""N0FREQ""}
+]}";
+
+        [Test]
+        static void RepeaterBookExportBecomesChannels()
+        {
+            var notes = new List<string>();
+            var listings = RepeaterBookApi.ParseListings(RbExport, RepeaterBookApi.AnalogMode, notes);
+            Assert.Equal(3, listings.Count, "analog listings with a frequency");
+            var list = listings.Select(l => l.Analog).ToList();
+            Assert.True(notes.Count == 1 && notes[0].StartsWith("2 listings"), "the others are counted");
+
+            var a = list[0];
+            Assert.Equal("K0TSTA", a.Callsign, "callsign");
+            Assert.Equal(444.7m, a.RxMHz, "output");
+            Assert.Equal(449.7m, a.TxMHz, "input");
+            Assert.Equal("94.8", a.ToneEncode, "PL out");
+            Assert.True(a.ToneSquelch && a.ToneDecode == "94.8", "TSQ in");
+            Assert.Equal("Brownwood", a.City, "town");
+            Assert.Equal("Brown County", a.County, "county named like the map");
+            Assert.Equal("Texas", a.State, "state");
+            Assert.Equal("Brownwood, Bangs Hill", a.Comment, "town and landmark");
+            Assert.Equal("https://www.repeaterbook.com/repeaters/details.php?state_id=48&ID=1234", a.DetailUrl, "detail page");
+            Assert.Equal(null, RepeaterBookImport.Problem(a), "can be added");
+            Assert.Equal("K0TSTA Brownwood", RepeaterBookImport.ChannelName(a, list), "channel name");
+            var r = RepeaterBookImport.NewRepeater(a, "K0TSTA Brownwood", GeoLocation.Unknown);
+            Assert.True(r.Notes.Contains(a.DetailUrl), "the repeater's notes link its RepeaterBook page");
+
+            Assert.True(list[1].ToneEncode == "88.5" && list[1].ToneDecode == "Off" && !list[1].ToneSquelch, "PL without TSQ: encode only");
+            Assert.Equal("NFM", list[1].Mode, "12.5 kHz is narrow");
+            Assert.True(list[2].ToneEncode == "Off" && list[2].ToneDecode == "D023N", "CSQ is off; a bare 023 is DCS");
+            Assert.Equal("off the air (RepeaterBook)", RepeaterBookImport.Problem(list[2]), "off-air listings aren't ticked");
+
+            Assert.Equal("Orleans Parish", RepeaterBookApi.CountyName("Orleans", "Louisiana"), "parish");
+            Assert.Equal("Brown County", RepeaterBookApi.CountyName("Brown County", "Texas"), "already named");
+            Assert.Equal("https://www.repeaterbook.com/api/export.php?state_id=08&mode=analog", RepeaterBookApi.ExportUrl(8, RepeaterBookApi.AnalogMode), "export URL: two-digit FIPS, one mode");
+            Assert.Equal(1, RepeaterBookApi.ParseListings("[" + RbExport.Substring(RbExport.IndexOf("{\"State ID\"", StringComparison.Ordinal)).Split('\n')[0].TrimEnd(',') + "]", RepeaterBookApi.AnalogMode).Count, "a bare array works too");
+        }
+
+        [Test]
+        static void RepeaterBookErrorsStopTheRightWay()
+        {
+            Assert.Equal(RepeaterBookFailureKind.RateLimited, RepeaterBookApi.Classify(429, "").Kind, "429 backs off");
+            Assert.Equal(RepeaterBookFailureKind.RateLimited, RepeaterBookApi.Classify(200, "{\"error\":\"rate_limited\"}").Kind, "rate_limited code");
+            foreach (var code in new[] { "auth_missing", "auth_invalid", "auth_inactive", "auth_revoked", "auth_scope_denied", "ua_mismatch" })
+            {
+                var f = RepeaterBookApi.Classify(403, "{\"error\":{\"code\":\"" + code + "\",\"message\":\"x\"}}");
+                Assert.True(f.Kind == RepeaterBookFailureKind.Refused && f.Code == code, code + " is a refusal (not retried)");
+            }
+            Assert.Equal(RepeaterBookFailureKind.Refused, RepeaterBookApi.Classify(401, "<html>").Kind, "401 without JSON");
+            Assert.Equal(RepeaterBookFailureKind.Other, RepeaterBookApi.Classify(500, "").Kind, "server error");
+            Assert.Equal("", RepeaterBookApi.ErrorCode(RbExport), "a listing isn't an error");
+
+            const string token = "rbuapp_0123456789abcdef0123456789";
+            string fp = RepeaterBookApi.Fingerprint(token);
+            Assert.True(fp.Length == 16 && !fp.Contains("0123456789abcdef"), "the fingerprint isn't the token");
+            Assert.True(fp != RepeaterBookApi.Fingerprint(token + "x"), "a new token is tried again");
+            Assert.True(RepeaterBookApi.LooksLikeToken(token) && !RepeaterBookApi.LooksLikeToken("abc") && !RepeaterBookApi.LooksLikeToken("rbuapp_ with spaces in it"), "token shape");
         }
 
         [Test]
@@ -145,120 +212,65 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
-        static void RepeaterBookChirpExport()
+        static void RepeaterBookAnalogImport()
         {
-            // An invented export in the format of RepeaterBook's CHIRP download (made-up callsigns), CRLF and trailing commas as downloaded.
-            string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment\r\n" +
-                         "1,\"K0TSTA\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "2,\"W0DEMO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
-                         "3,\"N0SAMP\",443.925000,+,5,,88.5,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "4,\"K0LOCL\",443.900000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood, Bangs Hill\",\r\n" +
-                         "5,\"W0XTRA\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
-                         "6,\"N0FAKE\",147.000000,+,0.6,TSQL,94.8,94.8,023,NN,FM,5,\"Bangs\",\r\n" +
-                         "7,\"K0TSTA\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "8,\"W0TONE\",146.820000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
-            var t = CsvTable.Parse(csv);
-            Assert.True(ChirpCsv.IsChirp(t), "recognized");
-            var all = ChirpCsv.Parse(t);
-            Assert.Equal(8, all.Count, "rows");
-            var uhfOne = all[0];
-            Assert.Equal(449.7m, uhfOne.TxMHz, "+5");
-            Assert.True(uhfOne.ToneEncode == "94.8" && uhfOne.ToneDecode == "94.8" && uhfOne.ToneSquelch, "TSQL = tone both ways, like a typical UHF machine");
-            var toneOne = all[7];
-            Assert.True(toneOne.TxMHz == 146.22m && toneOne.ToneEncode == "94.8" && toneOne.ToneDecode == "Off" && !toneOne.ToneSquelch, "Tone = encode only, like a transmit-tone-only machine");
-            Assert.Equal("Off", all[2].ToneEncode, "no tone mode: carrier");
-            Assert.Equal("Brownwood", all[3].City, "city from \"Brownwood, Bangs Hill\"");
-            Assert.Equal("K0TSTA UHF", RepeaterBookImport.ChannelName(uhfOne, all), "same callsign twice: band");
-            Assert.Equal("W0DEMO Cross Pla", RepeaterBookImport.ChannelName(all[1], all), "callsign + city");
+            var all = RepeaterBookApi.ParseListings(RbExport, RepeaterBookApi.AnalogMode, null, null, GeoAtlas.BuiltIn());
+            var k0tsta = all[0];
+            Assert.Equal("Brown County", k0tsta.Location?.County?.Name, "placed in its county");
+            Assert.True(k0tsta.Location.Lat == 31.7093 && k0tsta.Location.Lon == -98.9912 && k0tsta.Location.Precision == LocationPrecision.Point, "at RepeaterBook's coordinates");
+            Assert.True(k0tsta.Details.StartsWith("RepeaterBook: Brownwood, Bangs Hill, tone 94.8 both ways"), "details: " + k0tsta.Details);
 
-            // Analog channels from the same area are already in the project.
+            // Analog channels from the same area are already in the project; frequency pairs repeat across a state, so only
+            // the same pair with the same callsign (or town) is a duplicate.
             var p = new Project { RadioIdName = "Test", RadioId = 1 };
-            void Analog(string name, decimal rx, decimal tx) { var r = Repeater.NewAnalog(name); r.RxMHz = rx; r.TxMHz = tx; p.Repeaters.Add(r); }
-            Analog("K0TSTA VHF", 146.94m, 146.34m); Analog("K0LOCL", 443.9m, 448.9m); Analog("N0SAMP", 443.925m, 448.925m);
-            Analog("K0TSTA UHF", 444.7m, 449.7m); Analog("W0TONE", 146.82m, 146.22m);
-            var res = RepeaterBookImport.Add(p, all, all, (c, loc) => "Brown Co", c => GeoLocation.Unknown);
-            Assert.Equal("W0DEMO Cross Pla,N0FAKE Bangs", string.Join(",", res.Added.Select(r => r.Name)), "only the new ones");
-            Assert.True(res.Notes[0].Contains("W0XTRA 224.720 (outside the radio's bands)") && res.Notes[0].Contains("already in the project as \"K0TSTA UHF\""), "skips explained: " + res.Notes[0]);
-            Assert.True(res.Added.All(r => r.Zone == "Brown Co" && !r.IsDigital && r.Bandwidth == Bandwidths.Wide), "zone, analog, wide");
             p.Talkgroups.Add(new Talkgroup("Local", 9)); // analog channels still need a contact in the CPS
+            var other = Repeater.NewAnalog("K0XYZB Lubbock"); other.RxMHz = 146.94m; other.TxMHz = 146.34m; other.City = "Lubbock";
+            p.Repeaters.Add(other);
+            Assert.True(OnlineImporter.FindExisting(p, all[1]) == null, "same pair, other callsign and town");
+            other.Name = "W0TONE West";
+            Assert.True(OnlineImporter.FindExisting(p, all[1]) == other, "same pair and callsign");
+
+            var o = new OnlineImportOptions { ZoneFor = r => ZonePlanner.ZoneName(r, ZoneScheme.County), Scheme = ZoneScheme.County, DefaultTalkgroups = OnlineImporter.SuggestedDefaults("Texas") };
+            var res = OnlineImporter.AddRepeaters(p, all, o, null);
+            Assert.Equal("K0TSTA Brownwood|Brown Co", string.Join(",", res.Added.Select(r => r.Name + "|" + r.Zone)), "names and county zone");
+            Assert.True(res.Notes.Any(n => n.Contains("already in the project as \"W0TONE West\"")) && res.Notes.Any(n => n.Contains("off the air")), "skips explained: " + string.Join(" ", res.Notes));
+            var added = res.Added[0];
+            Assert.True(!added.IsDigital && added.Talkgroups.Count == 0 && added.ToneSquelch && added.ToneDecode == "94.8", "analog with its tones, no talkgroups");
+            Assert.True(added.Notes.Contains("repeaterbook.com/repeaters/details.php"), "its RepeaterBook page in the notes");
+            var errors = Validator.Validate(p, CpsFormat.BuiltIn()).Where(i => i.Severity == Severity.Error).Select(i => i.Message).ToList();
+            Assert.True(errors.Count == 0, "valid: " + string.Join("; ", errors));
+            Assert.Equal(2, CodeplugGenerator.Generate(p, CpsFormat.BuiltIn()).ChannelList.Count, "generates");
+        }
+
+        [Test]
+        static void RepeaterBookDmrImport()
+        {
+            const string json = @"{""count"":3,""results"":[
+ {""State ID"":""48"",""Rptr ID"":""2001"",""Frequency"":""441.32500"",""Input Freq"":""446.32500"",""Near"":""Abilene"",""County"":""Taylor"",""State"":""Texas"",""Callsign"":""K0DMRA"",""Use"":""OPEN"",""Operational Status"":""On-air"",""FM Analog"":""No"",""DMR"":""Yes"",""DMR Color Code"":""3"",""DMR ID"":""314001"",""DMR Network"":""BrandMeister""},
+ {""State ID"":""48"",""Rptr ID"":""2002"",""Frequency"":""442.10000"",""Input Freq"":""447.10000"",""Near"":""Brownwood"",""County"":""Brown"",""State"":""Texas"",""Callsign"":""K0DMRB"",""Use"":""OPEN"",""Operational Status"":""On-air"",""DMR"":""Yes"",""DMR Color Code"":""""},
+ {""State ID"":""48"",""Rptr ID"":""2003"",""Frequency"":""146.94000"",""Input Freq"":""146.34000"",""Callsign"":""W0FMON"",""FM Analog"":""Yes"",""DMR"":""No""}
+]}";
+            var notes = new List<string>();
+            var dmr = RepeaterBookApi.ParseListings(json, RepeaterBookApi.DmrMode, notes, null, GeoAtlas.BuiltIn());
+            Assert.Equal(2, dmr.Count, "DMR rows only");
+            Assert.True(notes.Count == 1 && notes[0].StartsWith("1 listing wasn't DMR"), "the FM one is counted");
+            var a = dmr[0];
+            Assert.True(!a.IsAnalog && a.ColorCode == 3 && a.DmrId == 314001 && a.Network == "BrandMeister" && a.Talkgroups.Count == 0, "color code, ID, network, no talkgroups");
+            Assert.Equal("Taylor County", a.Location?.County?.Name, "placed in its county");
+            Assert.True(dmr[1].ColorCode == 1 && dmr[1].Details.Contains(RepeaterBookApi.NoColorCode), "no color code listed: 1, flagged");
+
+            var p = new Project { RadioIdName = "Test", RadioId = 1 };
+            var o = new OnlineImportOptions { ZoneFor = r => ZonePlanner.ZoneName(r, ZoneScheme.County), Scheme = ZoneScheme.County, DefaultTalkgroups = OnlineImporter.SuggestedDefaults("Texas") };
+            var res = OnlineImporter.AddRepeaters(p, dmr, o, null);
+            Assert.Equal("Taylor Co,Brown Co", string.Join(",", res.Added.Select(r => r.Zone)), "county zones");
+            var rep = res.Added[0];
+            Assert.True(rep.IsDigital && rep.ColorCode == 3 && rep.Talkgroups.Any(x => x.TalkgroupId == 3148) && rep.Talkgroups.Any(x => x.TalkgroupId == 9 && x.Slot == 2), "starter talkgroups with Texas");
+            Assert.True(rep.Notes.StartsWith("RepeaterBook repeater ID 314001") && rep.Notes.Contains("details.php?state_id=48&ID=2001"), "notes: " + rep.Notes);
+            Assert.True(res.Notes.Any(n => n.Contains("RepeaterBook doesn't list them")), "says why they got the starter set");
+            Assert.True(OnlineImporter.FindExisting(p, a) != null, "now in the project");
             var errors = Validator.Validate(p, CpsFormat.BuiltIn()).Where(i => i.Severity == Severity.Error).Select(i => i.Message).ToList();
             Assert.True(errors.Count == 0, "valid: " + string.Join("; ", errors));
         }
-
-        [Test]
-        static void ChirpFilesOnTheMap()
-        {
-            string S(string path) { var s = RepeaterBookImport.StateFromName(path); return s.HasValue ? s.Value.Key + "/" + s.Value.Value : "none"; }
-            // Path.Combine, so the paths are right on Windows and on a Mac.
-            Assert.Equal("Texas/United States", S(Path.Combine("x", "Texas.csv")), "full name");
-            Assert.Equal("Texas/United States", S(Path.Combine("x", "TX.csv")), "code");
-            Assert.Equal("New Mexico/United States", S(Path.Combine("x", "rb_chirp_New_Mexico.csv")), "two words, underscores");
-            Assert.Equal("West Virginia/United States", S(Path.Combine("x", "west-virginia repeaters.csv")), "not Virginia");
-            Assert.Equal("Oklahoma/United States", S(Path.Combine("States", "Oklahoma", "rb_chirp_2610061815.csv")), "folder name");
-            Assert.Equal("Ontario/Canada", S(Path.Combine("x", "ON.csv")), "province");
-            Assert.Equal("none", S(Path.Combine("x", "rb_chirp_2610061815.csv")), "doesn't say");
-            Assert.Equal("none", S(Path.Combine("x", "repeaters in my area.csv")), "lower-case words aren't codes (\"in\")");
-
-            // A county export as a Texas file: placed at their towns, then added by the wizard's path with county zones.
-            string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,Mode,TStep,Comment\r\n" +
-                         "1,\"K0TSTA\",444.700000,+,5,TSQL,94.8,94.8,023,NN,FM,5,\"Brownwood\",\r\n" +
-                         "2,\"W0DEMO\",444.650000,+,5,TSQL,77.0,77.0,023,NN,FM,5,\"Cross Plains\",\r\n" +
-                         "5,\"W0XTRA\",224.720000,-,1.6,TSQL,94.8,94.8,023,NN,FM,5,\"Blanket\",\r\n" +
-                         "7,\"K0TSTA\",146.940000,-,0.6,Tone,94.8,88.5,023,NN,FM,5,\"Brownwood\",\r\n";
-            var atlas = GeoAtlas.BuiltIn();
-            var listings = RepeaterBookImport.ToListings(ChirpCsv.Parse(CsvTable.Parse(csv)), "Texas", "United States", atlas);
-            Assert.Equal(3, listings.Count, "224 MHz left out");
-            Assert.True(listings.All(l => l.IsAnalog && l.Location?.Lat != null), "all placed");
-            Assert.Equal("Brown County", listings[0].Location.County?.Name, "Brownwood");
-            Assert.Equal("Callahan County", listings[1].Location.County?.Name, "Cross Plains");
-
-            var p = new Project { RadioIdName = "Test", RadioId = 1 };
-            p.Talkgroups.Add(new Talkgroup("Local", 9));
-            var o = new OnlineImportOptions { ZoneFor = r => ZonePlanner.ZoneName(r, ZoneScheme.County), Scheme = ZoneScheme.County,
-                                              DefaultTalkgroups = OnlineImporter.SuggestedDefaults("Texas") };
-            var res = OnlineImporter.AddRepeaters(p, listings, o, null);
-            Assert.Equal("K0TSTA UHF|Brown Co,W0DEMO Cross Pla|Callahan Co,K0TSTA VHF|Brown Co", string.Join(",", res.Added.Select(r => r.Name + "|" + r.Zone)), "names and county zones");
-            Assert.True(res.Added.All(r => !r.IsDigital && r.Talkgroups.Count == 0), "analog, no default talkgroups");
-            Assert.Equal(3, res.Channels, "one channel each");
-            Assert.True(OnlineImporter.FindExisting(p, listings[0]) != null, "now in the project");
-            var g = CodeplugGenerator.Generate(p, CpsFormat.BuiltIn());
-            Assert.Equal(3, g.ChannelList.Count, "generates");
-        }
-
-        [Test]
-        static void ChirpQueryExport()
-        {
-            // Invented lines in the format of CHIRP's own CSV after its RepeaterBook query (made-up callsigns).
-            string csv = "Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq,DtcsCode,DtcsPolarity,RxDtcsCode,CrossMode,Mode,TStep,Skip,Power,Comment,URCALL,RPT1CALL,RPT2CALL,DVCODE\r\n" +
-                "0,Hill Hospital,29.640000,-,0.100000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,FM,5.00,,50W,\"K0EMSX near Round Rock, Williamson County, Texas OPEN\",,,,\r\n" +
-                "28,Westlake Hills,145.110000,-,0.600000,Cross,103.5,88.5,023,NN,023,Tone->DTCS,FM,5.00,,50W,\"W0ZUAX near Austin, Travis County, Texas OPEN\",,,,\r\n" +
-                "81,Sun City,145.270000,-,0.600000,Tone,103.5,88.5,023,NN,023,Tone->Tone,FM,5.00,,50W,\"near Georgetown, Williamson County, Texas OPEN\",,,,\r\n" +
-                "274,W0ZUAX,146.800000,-,0.600000,Cross,100.0,67.0,023,NN,023,Tone->Tone,FM,5.00,,50W,\"W0ZUAX near La Grange, Fayette County, Texas OPEN\",,,,\r\n" +
-                "721,K0JRSX,441.375000,+,5.000000,TSQL,88.5,110.9,023,NN,023,Tone->Tone,DN,5.00,,50W,\"K0JRSX near Grand Prairie, Tarrant County, Texas OPEN\",,,,\r\n";
-            var all = ChirpCsv.Parse(CsvTable.Parse(csv));
-            Assert.Equal(5, all.Count, "rows");
-            var westlake = all[1];
-            Assert.Equal("W0ZUAX", westlake.Callsign, "callsign from the comment, not the site name");
-            Assert.True(westlake.City == "Austin" && westlake.County == "Travis County" && westlake.State == "Texas" && westlake.Status == "OPEN", "comment parts");
-            Assert.True(westlake.ToneEncode == "103.5" && westlake.ToneDecode == "D023N" && westlake.ToneSquelch, "Cross Tone->DTCS");
-            Assert.True(all[3].ToneEncode == "100.0" && all[3].ToneDecode == "67.0", "Cross Tone->Tone: rTone out, cTone in");
-            Assert.Equal("Sun City", all[2].Callsign, "no callsign in the comment: the Name column");
-            Assert.True(RepeaterBookImport.Problem(all[0]) != null && RepeaterBookImport.Problem(all[4]) != null, "10 m and Fusion left out");
-            Assert.Equal("W0ZUAX Austin", RepeaterBookImport.ChannelName(westlake, all), "same callsign in another town: still the town");
-
-            var listings = RepeaterBookImport.ToListings(all, null, "United States", GeoAtlas.BuiltIn());
-            Assert.Equal(3, listings.Count, "FM in band");
-            Assert.True(listings.All(l => l.State == "Texas" && l.Location?.County != null && l.Location.County.Name == l.Analog.County), "state and county from the comment");
-
-            // Frequency pairs repeat across a state: another town's machine on the same pair is not a duplicate.
-            var p = new Project();
-            var other = Repeater.NewAnalog("K0XYZB Lubbock"); other.RxMHz = 145.11m; other.TxMHz = 144.51m; other.City = "Lubbock";
-            p.Repeaters.Add(other);
-            Assert.True(RepeaterBookImport.FindExisting(p, westlake) == null, "same pair, other callsign and town");
-            other.Name = "W0ZUAX West";
-            Assert.True(RepeaterBookImport.FindExisting(p, westlake) == other, "same pair and callsign");
-        }
-
         [Test]
         static void SameCountyNameInTwoStatesGetsTwoZones()
         {

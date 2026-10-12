@@ -95,7 +95,7 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `Json.cs` | Minimal JSON reader (objects → `Dictionary<string, object>`, numbers → `decimal`) for the online APIs |
 | `OnlineData.cs` | RadioID.net repeater/user parsing (by state or country), BrandMeister talkgroup names + US state TGs (31 + FIPS), `Networks.Normalize`, `BandPlan` (offsets), `OnlineImporter.AddRepeaters` (repeaters + talkgroups + location into a project; same-callsign repeaters get prefix `CALL2`; applies zone talkgroup sets), `Presets.AddNoaaWeather`, `Presets.AddSimplex` (`IsPreset`: preset channels keep their zone). Pure: no HTTP |
 | `Geo.cs` | `GeoAtlas`: the embedded map (`Geo/atlas.gz`: countries, states/provinces, US counties, ~63k places). `Locate(city, state, country)` → `GeoLocation` (point + areas), `AreaAt`, `FindCountry/State/Place`, `Key()` name folding |
-| `RepeaterBook.cs` | RepeaterBook without the API: `ChirpCsv` reads a CHIRP export (Name = callsign, Comment = city, CHIRP tone modes), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, zone suggestion from the county, `Add`). `StateFromName` (state from the file/folder name), `ToListings` (CHIRP lines as `OnlineRepeater`s with `Analog` set, placed at their towns, so the map picker and `OnlineImporter.AddRepeaters` take them like DMR listings) |
+| `RepeaterBook.cs` | RepeaterBook listings: `AnalogListing` (tones, county, detail-page link), `RepeaterBookImport` (dedupe against analog repeaters, "CALL City" or "CALL VHF/UHF" names, `NewRepeater`, `Place` by town and county, `SuggestZone`). `RepeaterBookApi.cs`: the approved User-Agent, limits, export URL, `ParseListings` (DMR and analog `OnlineRepeater`s), error classification |
 | `Merge.cs` | Merge mode: `CpsExport` (an Export All folder), `Merge` (what was made in the CPS is kept: channels, zones, talkgroups, RX/scan lists, radio IDs), `KnownChannel`. Called from `Generate(p, f, mergeBase)` |
 | `Updates.cs` | `UpdateCheck`: Check for updates (item 12): `Compare` (project vs current RadioID.net listings, BrandMeister last-seen and static talkgroups, new repeaters in the project's counties) → `UpdateItem`s with suggested ticks; `Apply` |
 | `GpsRoaming.cs` | GPS zone switching (item 10): `Plan` (circle per area zone around its repeaters, nearest home first, 32 max), `ToTable` (GpsRoaming.CSV: zone index, degrees + minutes + hundredths, N/S E/W as 0/1, radius m) |
@@ -126,7 +126,8 @@ CodeplugBuilder.exe --import CpsExportFolder "My 6X2 Codeplug.cpb"
 | `ZonesPage.cs`, `SettingsPage.cs`, `IssuesDialog.cs`, `Ui.cs` | Zone order/rename/A-B, settings, problem list dialog, layout helpers (`Ui.SetUpGrid` for every DataGridView) |
 | `Online.cs` | HTTP (`HttpWebRequest`, 30 s timeout), all-pages RadioID download, BrandMeister names cached a week in `%APPDATA%`, callsign → DMR ID lookup flow |
 | `OnlineRepeaterDialog.cs`, `TalkgroupBrowserDialog.cs` | *Find repeaters online* (state → tick → add, default talkgroups grid) and *Browse BrandMeister* |
-| `RepeaterBookDialog.cs` | *Repeaters > From RepeaterBook*: opens repeaterbook.com, picks the CHIRP export up from Downloads (or Choose file), list with ticks, one zone / per county / per city. Dev check: `--repeaterbook-snapshot project.cpb export.csv folder` |
+| `RepeaterBookDialog.cs` | *Repeaters > From RepeaterBook*: downloads DMR and/or analog repeaters of up to 5 states with the user's own token, list with ticks, credit and detail-page links, one zone / per county / per city, starter talkgroups for DMR, adds through `OnlineImporter.AddRepeaters`. Token: *Settings > RepeaterBook* or *Paste token...* (`RepeaterBookTokenDialog.cs`). Dev checks: `--repeaterbook-snapshot project.cpb answer.json folder`, `--repeaterbook-sample State report.txt` |
+| `Online.RepeaterBook.cs` | RepeaterBook API client (Windows only): `RepeaterBookToken` (DPAPI), `RepeaterBookStatesAsync`, request budget, 429 backoff and refusal memory in settings. Rules in HANDOFF 4b |
 
 **ListView checkboxes:** on Windows a `ListView` raises `ItemChecked` for every item while it creates its
 handle. Every checkbox ListView here ignores those (`creatingHandle` flag set in `HandleCreated`, cleared
@@ -161,6 +162,10 @@ the status bar. Generate runs `Validator`, then `CodeplugGenerator`, then `Write
 programmatic changes don't fire edits.
 
 ## Status
+
+- **RepeaterBook API (2026-10-12):** RepeaterBook approved per-user tokens. *Repeaters > From RepeaterBook* now downloads DMR and analog
+  repeaters with the user's token (Settings > RepeaterBook); the CHIRP-file imports (that dialog and the map step's *Add analog repeaters from
+  CHIRP files*) are removed. Conditions and what's still to check: HANDOFF 4b.
 
 - **1.5 (in progress, from 2026-10-08):** roadmap HANDOFF 7, items 7-12 in the order 7, 8, 9, 12, 10, 11. Done: **zones as views**
   (item 7): zone kinds (Area, Favorites, Talkgroup, Utility), a channel in several zones (`ZoneInfo.Members`, `Project.ZoneChannels`),
@@ -259,4 +264,4 @@ transmit, repeater health from BrandMeister, safety checks, a simplex preset), t
 distance, scan lists 2-8, GPS zone switching, route builder, check for updates). Also still open:
 
 1. Click through the wizard and Add from map on screen (hover, wheel zoom, drag, county picking, list ticks).
-2. Analog repeaters online: RepeaterBook with a user-supplied token (RadioID.net and BrandMeister are done).
+2. RepeaterBook: Canada / rest of world (`exportROW.php`), the Mac dialog, RepeaterBook repeaters in the map step.

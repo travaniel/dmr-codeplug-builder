@@ -19,7 +19,6 @@ namespace CodeplugBuilder.App
         readonly ListView list;
         readonly TextBox txtFilter;
         readonly Label lblSummary, lblWaiting;
-        readonly Button btnChirp;
         readonly HashSet<OnlineRepeater> manualOn = new HashSet<OnlineRepeater>(), manualOff = new HashSet<OnlineRepeater>();
         readonly Dictionary<GeoArea, int> counts = new Dictionary<GeoArea, int>();
         RegionDownload download;
@@ -68,16 +67,9 @@ namespace CodeplugBuilder.App
 
             lblSummary = new Label { Dock = DockStyle.Bottom, AutoSize = false, Height = Ui.S(26), Font = Ui.BoldFont, TextAlign = ContentAlignment.MiddleLeft };
             lblWaiting = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Ui.HintColor, Visible = false };
-            btnChirp = Ui.Button("Add analog repeaters from CHIRP files...", (s, e) => AddChirpFiles());
-            var chirpRow = Ui.Row(btnChirp, Ui.Hint("FM repeaters exported from RepeaterBook in CHIRP format, one file per state (the file or folder name says which: \"Texas.csv\", \"TX.csv\"). They are listed on the List tab.", Ui.S(760)));
-            var credit = new LinkLabel { Text = RepeaterBookApi.Attribution, AutoSize = true, Margin = new Padding(3, Ui.S(7), 3, 3) };
-            credit.LinkClicked += (s, e) => { try { System.Diagnostics.Process.Start(RepeaterBookApi.SiteUrl); } catch { } };
-            chirpRow.Controls.Add(credit);
-            chirpRow.Dock = DockStyle.Bottom;
 
             Controls.Add(tabs);
             Controls.Add(lblWaiting);
-            Controls.Add(chirpRow);
             Controls.Add(lblSummary);
             tabs.BringToFront();
 
@@ -321,72 +313,6 @@ namespace CodeplugBuilder.App
             foreach (var r in Filtered()) if (!InProject(r)) SetPicked(r, on);
             Refill();
             Changed();
-        }
-        /// <summary>
-        /// Adds analog repeaters from CHIRP files (RepeaterBook exports), one file per state, to the download: each line is
-        /// placed at its town, and clicking areas then takes them along with the DMR repeaters.
-        /// </summary>
-        void AddChirpFiles()
-        {
-            if (download == null || !download.Done) { Ui.Info(FindForm(), "Wait for the repeater download to finish first."); return; }
-            string downloads = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-            string[] files;
-            using (var dlg = new OpenFileDialog
-            {
-                Title = "Pick CHIRP files (one per state)",
-                Filter = "CHIRP CSV (*.csv)|*.csv|All files (*.*)|*.*",
-                Multiselect = true,
-                InitialDirectory = System.IO.Directory.Exists(downloads) ? downloads : "",
-            })
-            {
-                if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
-                files = dlg.FileNames;
-            }
-
-            var atlas = GeoAtlas.BuiltIn();
-            var regionStates = region.Where(a => a.Level == AreaLevel.State).Concat(region.Where(a => a.Level == AreaLevel.County).Select(a => a.Parent)).Distinct().ToList();
-            var lines = new List<string>();
-            Cursor.Current = Cursors.WaitCursor;
-            foreach (string path in files)
-            {
-                string name = System.IO.Path.GetFileName(path);
-                List<ChirpChannel> channels;
-                var notes = new List<string>();
-                try { channels = ChirpCsv.Parse(CsvTable.Load(path), notes); }
-                catch (Exception ex) { lines.Add(name + ": couldn't be read (" + ex.Message + ")."); continue; }
-                if (channels.Count == 0) { lines.Add(name + ": no CHIRP channels. " + string.Join(" ", notes)); continue; }
-
-                // The state: from the lines themselves (CHIRP's RepeaterBook query writes "near Town, X County, State"),
-                // else the file or folder name, else ask.
-                string state, country = "United States";
-                string fromLines = channels.Where(c => c.State.Length > 0).GroupBy(c => c.State, StringComparer.OrdinalIgnoreCase)
-                                           .OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
-                var fromName = RepeaterBookImport.StateFromName(path);
-                if (fromLines != null) state = fromLines;
-                else if (fromName.HasValue) { state = fromName.Value.Key; country = fromName.Value.Value; }
-                else
-                {
-                    string typed = Prompt.Show(FindForm(), "Which state?", name + " doesn't say which state it's for. State or province:",
-                                               regionStates.Count == 1 ? regionStates[0].Name : "", 40);
-                    if (string.IsNullOrWhiteSpace(typed)) { lines.Add(name + ": skipped (no state)."); continue; }
-                    state = typed.Trim();
-                }
-                if (atlas.FindState(atlas.Find("US"), state) == null && atlas.FindState(atlas.Find("CA"), state) != null) country = "Canada";
-
-                var listings = RepeaterBookImport.ToListings(channels, state, country, atlas);
-                int placed = listings.Count(l => l.Location?.Lat != null);
-                int outside = listings.Count(l => !InScope(l));
-                int added = download.AddListings(listings);
-                lines.Add(name + " (" + state + "): " + channels.Count + " lines, " + added + " added" +
-                          (channels.Count - listings.Count > 0 ? ", " + (channels.Count - listings.Count) + " not FM or outside the radio's bands" : "") +
-                          (listings.Count - added > 0 ? ", " + (listings.Count - added) + " already listed (as DMR or in another file)" : "") +
-                          ", " + placed + " placed on the map" + (listings.Count - placed > 0 ? " (the rest are on the List tab)" : "") + "." +
-                          (outside > 0 ? " " + outside + " are outside the area you downloaded, so they don't show; add " + state + " to the region to see them." : ""));
-            }
-            Cursor.Current = Cursors.Default;
-            Reload();
-            Changed();
-            if (lines.Count > 0) Ui.Info(FindForm(), string.Join("\n\n", lines), "CHIRP files");
         }
     }
 }

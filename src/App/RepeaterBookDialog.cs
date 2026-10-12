@@ -1,40 +1,39 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
-using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using CodeplugBuilder.Core;
 
 namespace CodeplugBuilder.App
 {
     /// <summary>
-    /// Repeaters > From RepeaterBook: opens repeaterbook.com in the browser, the user exports a search in CHIRP format,
-    /// and the file (picked up from Downloads, or chosen) becomes analog repeaters with zones (Core/RepeaterBook.cs).
-    /// No API token needed.
+    /// Repeaters > From RepeaterBook: downloads DMR and analog repeaters with the user's own RepeaterBook token
+    /// (Online.RepeaterBook.cs: up to 5 states per click, listings in memory only while the dialog is open), lists them with
+    /// ticks, and adds the ticked ones through <see cref="OnlineImporter.AddRepeaters"/>. The credit and detail links are
+    /// RepeaterBook's terms.
     /// </summary>
     sealed class RepeaterBookDialog : Form
     {
         readonly Session session;
-        readonly ComboBox cboState, cboPower;
+        readonly ComboBox cboPower;
         readonly ListView list;
-        readonly Label lblFile, lblStatus;
+        readonly Label lblFile, lblStatus, lblToken;
+        readonly TextBox txtStates;
+        readonly CheckBox chkDmr, chkAnalog, chkStarter;
+        readonly Button btnDownload, btnStop, btnAdd;
+        readonly LinkLabel linkDetail;
         readonly RadioButton optOne, optCity, optCounty;
         readonly TextBox txtZone;
-        readonly Button btnAdd;
-        readonly Timer watch = new Timer { Interval = 1500 };
-        readonly DateTime opened = DateTime.Now;
-        readonly HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CancellationTokenSource downloadCancel;
 
-        List<ChirpChannel> all = new List<ChirpChannel>();
-        readonly Dictionary<ChirpChannel, GeoLocation> where = new Dictionary<ChirpChannel, GeoLocation>();
+        List<OnlineRepeater> all = new List<OnlineRepeater>();
         bool loading, creatingHandle, zoneTyped;
 
-        public RepeaterBookResult Result { get; private set; }
-
-        static string DownloadsFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        public OnlineImportResult Result { get; private set; }
 
         public RepeaterBookDialog(Session session)
         {
@@ -45,61 +44,73 @@ namespace CodeplugBuilder.App
             ShowInTaskbar = false;
             MinimizeBox = false;
             var area = Screen.FromControl(this).WorkingArea;
-            Size = new Size(Math.Min(Ui.S(1000), area.Width * 95 / 100), Math.Min(Ui.S(720), area.Height * 95 / 100));
-            MinimumSize = new Size(Ui.S(760), Ui.S(520));
+            Size = new Size(Math.Min(Ui.S(1060), area.Width * 95 / 100), Math.Min(Ui.S(740), area.Height * 95 / 100));
+            MinimumSize = new Size(Ui.S(780), Ui.S(520));
             Padding = new Padding(Ui.S(10));
 
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7 };
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9 };
+            for (int i = 0; i < 9; i++) root.RowStyles.Add(i == 4 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.AutoSize));
 
-            root.Controls.Add(Ui.Hint("1. Click Open RepeaterBook and sign in there. 2. Search for your county or city. 3. Export the results " +
-                                      "in CHIRP format. The file is picked up from your Downloads folder as soon as it lands (or click Choose file). " +
-                                      "Analog (FM) repeaters only; DMR repeaters come from Add from map / Find online. " + RepeaterBookApi.Attribution, Ui.S(940)), 0, 0);
+            root.Controls.Add(Ui.Hint("Download DMR and analog (FM) repeaters from RepeaterBook with your own RepeaterBook token, up to " +
+                                      RepeaterBookApi.MaxStatesPerAction + " states at a time, then tick the ones you want. RepeaterBook doesn't list " +
+                                      "DMR talkgroups: DMR repeaters get your zone's talkgroups, or the starter set below.", Ui.S(980)), 0, 0);
 
-            cboState = Ui.Combo(true, BrandMeister.UsStates.Select(s => s.Key).ToArray());
-            cboState.Width = Ui.S(160);
-            cboState.Anchor = AnchorStyles.Left;
-            cboState.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
-            cboState.AutoCompleteSource = AutoCompleteSource.ListItems;
-            cboState.Text = AppSettings.Get("OnlineState") ?? "Texas";
-            var open = Ui.Button("Open RepeaterBook", (s, e) => OpenSite());
-            open.Font = Ui.BoldFont;
-            root.Controls.Add(Ui.Row(open, Ui.Button("Choose file...", (s, e) => ChooseFile()),
-                                     Ui.Label("State (the export doesn't say)"), cboState), 0, 1);
+            lblToken = Ui.Label("");
+            var getToken = new LinkLabel { Text = "Get a token on RepeaterBook", AutoSize = true, Margin = new Padding(3, Ui.S(7), 3, 3) };
+            getToken.LinkClicked += (s, e) => RepeaterBookTokenDialog.Open(this, RepeaterBookApi.TokenPageUrl);
+            root.Controls.Add(Ui.Row(Ui.Label("Your RepeaterBook token:"), lblToken, Ui.Button("Paste token...", (s, e) => { RepeaterBookTokenDialog.Show(this); ShowToken(); }), getToken), 0, 1);
 
-            lblFile = new Label { AutoSize = true, ForeColor = Ui.HintColor, Margin = new Padding(3, Ui.S(6), 3, 3), Text = "Waiting for a CHIRP export in " + DownloadsFolder + "..." };
-            root.Controls.Add(lblFile, 0, 2);
+            txtStates = Ui.Text("e.g. Texas, Oklahoma");
+            txtStates.Width = Ui.S(260);
+            txtStates.Text = AppSettings.Get("RepeaterBookStates") ?? AppSettings.Get("OnlineState") ?? "";
+            txtStates.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Download(); } };
+            chkDmr = new CheckBox { Text = "DMR", AutoSize = true, Checked = AppSettings.Get("RepeaterBookDmr") != "0", Margin = new Padding(Ui.S(8), Ui.S(6), 3, 3) };
+            chkAnalog = new CheckBox { Text = "Analog (FM)", AutoSize = true, Checked = AppSettings.Get("RepeaterBookAnalog") != "0", Margin = new Padding(3, Ui.S(6), Ui.S(8), 3) };
+            btnDownload = Ui.Button("Download", (s, e) => Download());
+            btnDownload.Font = Ui.BoldFont;
+            btnStop = Ui.Button("Stop", (s, e) => downloadCancel?.Cancel());
+            btnStop.Enabled = false;
+            root.Controls.Add(Ui.Row(Ui.Label("States (up to " + RepeaterBookApi.MaxStatesPerAction + ")"), txtStates, chkDmr, chkAnalog, btnDownload, btnStop), 0, 2);
+
+            lblFile = new Label { AutoSize = true, ForeColor = Ui.HintColor, Margin = new Padding(3, Ui.S(6), 3, 3), Text = "Type your states and click Download." };
+            root.Controls.Add(lblFile, 0, 3);
 
             list = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, CheckBoxes = true, HideSelection = false, Margin = new Padding(3, 6, 3, 6) };
             Ui.DoubleBuffer(list);
-            list.Columns.Add("Channel name", Ui.S(140));
-            list.Columns.Add("Callsign", Ui.S(80));
-            list.Columns.Add("City", Ui.S(140));
+            list.Columns.Add("Callsign", Ui.S(90));
+            list.Columns.Add("Type", Ui.S(50));
+            list.Columns.Add("City", Ui.S(130));
+            list.Columns.Add("County", Ui.S(110));
             list.Columns.Add("Output MHz", Ui.S(84), HorizontalAlignment.Right);
             list.Columns.Add("Input MHz", Ui.S(84), HorizontalAlignment.Right);
-            list.Columns.Add("Tone", Ui.S(100));
-            list.Columns.Add("County", Ui.S(110));
-            list.Columns.Add("", Ui.S(200));
-            root.Controls.Add(list, 0, 3);
+            list.Columns.Add("Color code / tone", Ui.S(130));
+            list.Columns.Add("Use", Ui.S(70));
+            list.Columns.Add("", Ui.S(220));
+            root.Controls.Add(list, 0, 4);
+
+            // RepeaterBook's terms: the credit and a link wherever its data is shown, and each repeater's page when practical.
+            var credit = new LinkLabel { Text = RepeaterBookApi.Attribution, AutoSize = true, Margin = new Padding(3, 0, Ui.S(16), Ui.S(4)) };
+            credit.LinkClicked += (s, e) => RepeaterBookTokenDialog.Open(this, RepeaterBookApi.SiteUrl);
+            linkDetail = new LinkLabel { Text = "Open the selected repeater on RepeaterBook", AutoSize = true, Enabled = false, Margin = new Padding(3, 0, 3, Ui.S(4)) };
+            linkDetail.LinkClicked += (s, e) => OpenSelectedDetail();
+            root.Controls.Add(Ui.Row(credit, linkDetail), 0, 5);
+
+            lblStatus = new Label { AutoSize = true, ForeColor = Ui.HintColor, Margin = new Padding(3, 0, 3, Ui.S(6)) };
+            root.Controls.Add(lblStatus, 0, 6);
 
             var opts = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, AutoSize = true, Margin = new Padding(0) };
             opts.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             opts.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             opts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            optOne = new RadioButton { Text = "All in one zone:", AutoSize = true, Checked = true, Margin = new Padding(3, 4, 3, 2) };
+            optOne = new RadioButton { Text = "All in one zone:", AutoSize = true, Margin = new Padding(3, 4, 3, 2) };
             txtZone = new TextBox { Width = Ui.S(170), MaxLength = 16, Anchor = AnchorStyles.Left };
-            optCounty = new RadioButton { Text = "One zone per county (towns the map doesn't know go in the zone above)", AutoSize = true, Margin = new Padding(3, 2, 3, 2) };
+            optCounty = new RadioButton { Text = "One zone per county (towns the map doesn't place go in the zone above)", AutoSize = true, Checked = true, Margin = new Padding(3, 2, 3, 2) };
             optCity = new RadioButton { Text = "One zone per city", AutoSize = true, Margin = new Padding(3, 2, 3, 2) };
             cboPower = Ui.Combo(false, Powers.Values);
             cboPower.SelectedItem = "High";
             cboPower.Width = Ui.S(90);
             cboPower.Anchor = AnchorStyles.Left;
+            chkStarter = new CheckBox { Text = "DMR repeaters get the starter talkgroups (your state, USA, North America, Worldwide, Local on slot 2, Parrot)", AutoSize = true, Checked = true, Margin = new Padding(3, Ui.S(6), 3, 2) };
             opts.Controls.Add(optOne, 0, 0);
             opts.Controls.Add(txtZone, 1, 0);
             opts.Controls.Add(Ui.Row(Ui.Label("Transmit power"), cboPower), 2, 0);
@@ -107,9 +118,9 @@ namespace CodeplugBuilder.App
             opts.SetColumnSpan(optCounty, 3);
             opts.Controls.Add(optCity, 0, 2);
             opts.SetColumnSpan(optCity, 3);
-            lblStatus = new Label { AutoSize = true, ForeColor = Ui.HintColor, Margin = new Padding(3, 0, 3, Ui.S(6)) };
-            root.Controls.Add(lblStatus, 0, 4);
-            root.Controls.Add(opts, 0, 5);
+            opts.Controls.Add(chkStarter, 0, 3);
+            opts.SetColumnSpan(chkStarter, 3);
+            root.Controls.Add(opts, 0, 7);
 
             var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = new Padding(0, Ui.S(8), 0, 0) };
             buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -120,96 +131,119 @@ namespace CodeplugBuilder.App
             right.Controls.Add(btnAdd);
             right.Controls.Add(cancel);
             buttons.Controls.Add(right, 1, 0);
-            root.Controls.Add(buttons, 0, 6);
+            root.Controls.Add(buttons, 0, 8);
             Controls.Add(root);
             CancelButton = cancel;
 
-            btnAdd.Click += (s, e) => AddPicked();
+            btnAdd.Click += async (s, e) => await AddPicked();
             txtZone.TextChanged += (s, e) => { if (!loading) zoneTyped = true; UpdateStatus(); };
-            foreach (var opt in new[] { optOne, optCounty, optCity }) opt.CheckedChanged += (s, e) => UpdateStatus(); // per city needs no zone name
-            cboState.SelectedIndexChanged += (s, e) => Relocate();
-            cboState.Leave += (s, e) => Relocate();
+            foreach (var opt in new[] { optOne, optCounty, optCity }) opt.CheckedChanged += (s, e) => UpdateStatus();
             // Windows raises ItemChecked for every item while the ListView creates its handle; ignore those.
             list.HandleCreated += (s, e) => { creatingHandle = true; list.BeginInvoke((Action)(() => creatingHandle = false)); };
             list.ItemChecked += (s, e) => { if (!loading && !creatingHandle) UpdateStatus(); };
-            watch.Tick += (s, e) => LookForDownload();
-            Shown += (s, e) => watch.Start();
-            FormClosed += (s, e) => watch.Dispose();
+            list.SelectedIndexChanged += (s, e) => linkDetail.Enabled = Selected()?.DetailUrl != null;
+            list.DoubleClick += (s, e) => OpenSelectedDetail();
+            FormClosed += (s, e) => downloadCancel?.Cancel();
+            ShowToken();
         }
 
-        void OpenSite()
+        OnlineRepeater Selected()
         {
-            try { Process.Start(RepeaterBookImport.HomeUrl); }
-            catch (Exception ex) { Ui.Error(this, "Couldn't open the browser:\n\n" + ex.Message + "\n\nGo to " + RepeaterBookImport.HomeUrl + " yourself."); }
+            return list.SelectedItems.Count == 1 ? list.SelectedItems[0].Tag as OnlineRepeater : null;
         }
 
-        void ChooseFile()
+        void OpenSelectedDetail()
         {
-            using (var dlg = new OpenFileDialog
+            string url = Selected()?.DetailUrl;
+            if (url != null) RepeaterBookTokenDialog.Open(this, url);
+        }
+
+        void ShowToken()
+        {
+            lblToken.Text = RepeaterBookTokenDialog.Status;
+            lblToken.ForeColor = RepeaterBookToken.IsSet ? SystemColors.ControlText : Ui.HintColor;
+        }
+
+        /// <summary>The typed states as full US state names (names or two-letter codes), or null after telling the user what's wrong.</summary>
+        List<string> TypedStates()
+        {
+            var states = new List<string>();
+            foreach (string part in txtStates.Text.Split(new[] { ',', ';', '/' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x.Length > 0))
             {
-                Title = "Pick the CHIRP export from RepeaterBook",
-                Filter = "CHIRP CSV (*.csv)|*.csv|All files (*.*)|*.*",
-                InitialDirectory = Directory.Exists(DownloadsFolder) ? DownloadsFolder : "",
-            })
-            {
-                if (dlg.ShowDialog(this) == DialogResult.OK) LoadFile(dlg.FileName, true);
+                string name = BrandMeister.UsStates.Select(s => s.Key).FirstOrDefault(s => s.Equals(part, StringComparison.OrdinalIgnoreCase))
+                           ?? Naming.StateCodes.Where(kv => kv.Value.Equals(part, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key)
+                                               .FirstOrDefault(k => BrandMeister.UsStates.Any(s => s.Key == k));
+                if (name == null) { Ui.Error(this, "\"" + part + "\" isn't a US state. Type state names or codes, like: Texas, OK"); return null; }
+                if (!states.Contains(name)) states.Add(name);
             }
+            if (states.Count == 0) { Ui.Error(this, "Type the states to download, like: Texas, Oklahoma"); return null; }
+            if (states.Count > RepeaterBookApi.MaxStatesPerAction)
+            {
+                Ui.Error(this, "Up to " + RepeaterBookApi.MaxStatesPerAction + " states at a time (RepeaterBook's terms for this program). You typed " + states.Count + ".");
+                return null;
+            }
+            return states;
         }
 
-        /// <summary>A CHIRP export that appeared in Downloads since the dialog opened.</summary>
-        void LookForDownload()
+        /// <summary>Downloads the typed states with the user's token; the listings replace the list (kept in memory only).</summary>
+        async void Download()
         {
+            if (downloadCancel != null) return;
+            var states = TypedStates();
+            if (states == null) return;
+            var modes = new List<string>();
+            if (chkDmr.Checked) modes.Add(RepeaterBookApi.DmrMode);
+            if (chkAnalog.Checked) modes.Add(RepeaterBookApi.AnalogMode);
+            if (modes.Count == 0) { Ui.Error(this, "Tick DMR, Analog (FM), or both."); return; }
+            if (!RepeaterBookToken.IsSet) { RepeaterBookTokenDialog.Show(this); ShowToken(); if (!RepeaterBookToken.IsSet) return; }
+            string blocked = Online.RepeaterBookBlocked();
+            if (blocked != null) { Ui.Error(this, blocked); return; }
+
+            AppSettings.Set("RepeaterBookStates", string.Join(", ", states));
+            AppSettings.Set("RepeaterBookDmr", chkDmr.Checked ? "1" : "0");
+            AppSettings.Set("RepeaterBookAnalog", chkAnalog.Checked ? "1" : "0");
+            downloadCancel = new CancellationTokenSource();
+            btnDownload.Enabled = false;
+            btnStop.Enabled = true;
+            lblFile.ForeColor = SystemColors.ControlText;
+            RepeaterBookDownload got = null;
             try
             {
-                if (!Directory.Exists(DownloadsFolder)) return;
-                var newest = new DirectoryInfo(DownloadsFolder).GetFiles("*.csv")
-                    .Where(f => f.LastWriteTime >= opened.AddSeconds(-5) && !seen.Contains(f.FullName))
-                    .OrderByDescending(f => f.LastWriteTime).FirstOrDefault();
-                if (newest == null) return;
-                seen.Add(newest.FullName);
-                LoadFile(newest.FullName, false);
+                got = await Online.RepeaterBookStatesAsync(states, modes, new Progress<string>(s => lblFile.Text = s), downloadCancel.Token);
             }
-            catch { }
+            catch (OperationCanceledException) { lblFile.Text = "Stopped."; }
+            catch (Exception ex) { Ui.Error(this, "RepeaterBook download failed:\n\n" + ex.Message); }
+            finally
+            {
+                downloadCancel = null;
+                if (!IsDisposed) { btnDownload.Enabled = true; btnStop.Enabled = false; }
+            }
+            if (got == null || IsDisposed) return;
+            if (got.Listings.Count > 0) LoadListings(got.Listings);
+            lblFile.Text = "From RepeaterBook: " + string.Join(" ", got.Notes) + (got.Listings.Count == 0 && got.Failure == null ? " Nothing to add." : "");
+            if (got.Failure != null) Ui.Error(this, got.Failure.Message + (got.Listings.Count > 0 ? "\n\nWhat was downloaded before that is listed." : ""));
         }
 
-        internal void LoadFile(string path, bool chosen)
+        /// <summary>Lists downloaded repeaters (they replace the list), sorted by state, county, town and callsign.</summary>
+        internal void LoadListings(List<OnlineRepeater> listings)
         {
-            List<ChirpChannel> found;
-            var notes = new List<string>();
-            try { found = ChirpCsv.Parse(CsvTable.Load(path), notes); }
-            catch (Exception ex)
-            {
-                if (chosen) Ui.Error(this, "Couldn't read " + Path.GetFileName(path) + ":\n\n" + ex.Message);
-                return;
-            }
-            if (found.Count == 0)
-            {
-                if (chosen) Ui.Error(this, Path.GetFileName(path) + " has no CHIRP channels. " + string.Join(" ", notes) +
-                                           "\n\nOn RepeaterBook, export the search results in CHIRP format.");
-                return; // some other CSV landed in Downloads: keep waiting
-            }
-            all = found;
-            lblFile.Text = "From " + Path.GetFileName(path) + ": " + all.Count + " channel" + (all.Count == 1 ? "" : "s") + (notes.Count > 0 ? ". " + string.Join(" ", notes) : ".");
-            lblFile.ForeColor = SystemColors.ControlText;
-            Relocate();
-            Activate();
-        }
-
-        /// <summary>Places every city on the built-in map within the chosen state, then refills the list.</summary>
-        void Relocate()
-        {
-            if (all.Count == 0) return;
-            where.Clear();
-            GeoAtlas atlas = null;
-            try { atlas = GeoAtlas.BuiltIn(); } catch { }
-            foreach (var c in all) where[c] = RepeaterBookImport.Locate(atlas, c, cboState.Text.Trim());
+            all = listings.OrderBy(r => r.State).ThenBy(r => r.Location?.County?.Name ?? "~").ThenBy(r => r.City).ThenBy(r => r.Callsign).ToList();
             if (!zoneTyped)
             {
                 loading = true;
-                txtZone.Text = RepeaterBookImport.SuggestZone(where.Values, all);
+                txtZone.Text = RepeaterBookImport.SuggestZone(all);
                 loading = false;
             }
             Refill();
+        }
+
+        /// <summary>Why a listing can't be added (or isn't ticked), or null.</summary>
+        string Problem(OnlineRepeater r)
+        {
+            if (r.Analog != null) return RepeaterBookImport.Problem(r.Analog);
+            if (r.Status == "OFF-AIR") return "off the air (RepeaterBook)";
+            if (!r.InRadioBand) return "outside the radio's bands";
+            return null;
         }
 
         void Refill()
@@ -217,21 +251,26 @@ namespace CodeplugBuilder.App
             loading = true;
             list.BeginUpdate();
             list.Items.Clear();
-            foreach (var c in all)
+            foreach (var r in all)
             {
-                string problem = RepeaterBookImport.Problem(c);
-                var existing = problem == null ? RepeaterBookImport.FindExisting(session.Project, c) : null;
-                string tone = c.ToneEncode == "Off" && c.ToneDecode == "Off" ? "none"
-                            : c.ToneSquelch && c.ToneDecode == c.ToneEncode ? c.ToneEncode + " both ways"
-                            : c.ToneDecode == "Off" ? c.ToneEncode + " out" : c.ToneEncode + " / " + c.ToneDecode;
+                string problem = Problem(r);
+                var existing = problem == null ? OnlineImporter.FindExisting(session.Project, r) : null;
+                string signal;
+                if (r.Analog != null)
+                {
+                    var c = r.Analog;
+                    signal = c.ToneEncode == "Off" && c.ToneDecode == "Off" ? "no tone"
+                           : c.ToneSquelch && c.ToneDecode == c.ToneEncode ? c.ToneEncode + " both ways"
+                           : c.ToneDecode == "Off" ? c.ToneEncode + " out" : c.ToneEncode + " / " + c.ToneDecode;
+                }
+                else signal = "CC " + r.ColorCode.ToString(CultureInfo.InvariantCulture);
                 var it = new ListViewItem(new[]
                 {
-                    RepeaterBookImport.ChannelName(c, all), c.Name, c.Comment,
-                    c.RxMHz.ToString("0.0000", CultureInfo.InvariantCulture),
-                    c.RxOnly ? "receive only" : c.TxMHz.ToString("0.0000", CultureInfo.InvariantCulture),
-                    tone, where.TryGetValue(c, out var loc) && loc.County != null ? ZonePlanner.CountyZone(loc.County.Name) : "",
-                    problem ?? (existing != null ? "already in project: " + existing.Name : ""),
-                }) { Tag = c, Checked = problem == null && existing == null };
+                    r.Callsign, r.IsAnalog ? "FM" : "DMR", r.City,
+                    r.Location?.County != null ? ZonePlanner.CountyZone(r.Location.County.Name) : "",
+                    r.RxMHz.ToString("0.0000", CultureInfo.InvariantCulture), r.TxMHz.ToString("0.0000", CultureInfo.InvariantCulture),
+                    signal, r.Status, problem ?? (existing != null ? "already in project: " + existing.Name : ""),
+                }) { Tag = r, Checked = problem == null && existing == null };
                 if (problem != null || existing != null) it.ForeColor = Ui.HintColor;
                 list.Items.Add(it);
             }
@@ -240,35 +279,59 @@ namespace CodeplugBuilder.App
             UpdateStatus();
         }
 
-        List<ChirpChannel> Picked()
+        List<OnlineRepeater> Picked()
         {
-            return list.Items.Cast<ListViewItem>().Where(i => i.Checked).Select(i => (ChirpChannel)i.Tag).ToList();
+            return list.Items.Cast<ListViewItem>().Where(i => i.Checked).Select(i => (OnlineRepeater)i.Tag)
+                       .Where(r => Problem(r) == null && OnlineImporter.FindExisting(session.Project, r) == null).ToList();
         }
 
         void UpdateStatus()
         {
-            int n = Picked().Count(c => RepeaterBookImport.Problem(c) == null && RepeaterBookImport.FindExisting(session.Project, c) == null);
+            var picked = Picked();
+            int n = picked.Count;
             btnAdd.Enabled = n > 0 && (Naming.Clean(txtZone.Text, 16).Length > 0 || optCity.Checked);
             btnAdd.Text = n == 0 ? "Add repeaters" : "Add " + n + " repeater" + (n == 1 ? "" : "s");
-            int unplaced = all.Count(c => where.TryGetValue(c, out var l) && l.County == null);
-            lblStatus.Text = all.Count == 0 ? "" : unplaced == 0 ? "Every city was found on the map."
-                : unplaced + " of " + all.Count + " towns aren't on the built-in map (it knows places of 15,000+ people); they go in the zone you type.";
+            int unplaced = all.Count(r => r.Location?.County == null);
+            lblStatus.Text = all.Count == 0 ? "" : unplaced == 0 ? "Every repeater was placed on the map."
+                : unplaced + " of " + all.Count + " repeaters couldn't be placed in a county; with one zone per county they go in the zone you type.";
         }
 
-        internal void AddPicked()
+        internal async Task AddPicked()
         {
+            var picked = Picked();
+            if (picked.Count == 0) return;
+            btnAdd.Enabled = false;
+            IDictionary<int, string> bm = null;
+            if (chkStarter.Checked && picked.Any(r => !r.IsAnalog))
+                try { bm = await Online.BrandMeisterNamesAsync(); } catch { } // names only; the starter set works without them
+
             string one = Naming.Fit(txtZone.Text, 16);
             if (one.Length == 0) one = RepeaterBookImport.Site;
-            string ZoneFor(ChirpChannel c, GeoLocation loc)
+            var scheme = optCounty.Checked ? ZoneScheme.County : optCity.Checked ? ZoneScheme.City : (ZoneScheme?)null;
+            string ZoneFor(Repeater rep)
             {
-                if (optCity.Checked) return c.City.Length > 0 ? Naming.Fit(c.City, 16) : one;
-                if (optCounty.Checked && loc.County != null) return ZonePlanner.CountyZone(loc.County.Name);
+                if (optCity.Checked) return string.IsNullOrEmpty(rep.City) ? one : Naming.Fit(rep.City, 16);
+                if (optCounty.Checked && !string.IsNullOrEmpty(rep.County)) return ZonePlanner.CountyZone(rep.County);
                 return one;
             }
-            Result = RepeaterBookImport.Add(session.Project, Picked(), all, ZoneFor,
-                                            c => where.TryGetValue(c, out var l) ? l : GeoLocation.Unknown,
-                                            (string)cboPower.SelectedItem ?? "High");
-            AppSettings.Set("OnlineState", cboState.Text.Trim());
+
+            // Each state's DMR repeaters get that state's statewide talkgroup in the starter set.
+            var result = new OnlineImportResult();
+            foreach (var group in picked.GroupBy(r => r.State))
+            {
+                var o = new OnlineImportOptions
+                {
+                    ZonePerCity = false, Zone = one, Power = (string)cboPower.SelectedItem ?? "High", ZoneFor = ZoneFor, Scheme = scheme,
+                    DefaultTalkgroups = chkStarter.Checked ? OnlineImporter.SuggestedDefaults(group.Key, bm) : new List<TalkgroupChoice>(),
+                };
+                var r = OnlineImporter.AddRepeaters(session.Project, group, o, bm);
+                result.Added.AddRange(r.Added);
+                result.NewTalkgroups.AddRange(r.NewTalkgroups);
+                result.Notes.AddRange(r.Notes);
+            }
+            if (picked.Any(r => !r.IsAnalog && (r.Details ?? "").Contains(RepeaterBookApi.NoColorCode)))
+                result.Notes.Add("Some DMR repeaters don't list a color code on RepeaterBook, so they got color code 1: check them.");
+            Result = result;
             DialogResult = DialogResult.OK;
         }
 
@@ -280,9 +343,13 @@ namespace CodeplugBuilder.App
                 if (d.ShowDialog(owner) != DialogResult.OK || d.Result == null) return null;
                 var r = d.Result;
                 if (r.Added.Count > 0) session.MarkDirty();
-                string head = "Added " + r.Added.Count + " analog repeater" + (r.Added.Count == 1 ? "" : "s") +
+                if (r.NewTalkgroups.Count > 0) session.NotifyTalkgroupsChanged();
+                int dmr = r.Added.Count(x => x.IsDigital), fm = r.Added.Count - dmr;
+                string head = "Added " + (dmr > 0 ? dmr + " DMR" : "") + (dmr > 0 && fm > 0 ? " and " : "") + (fm > 0 ? fm + " analog" : "") +
+                              (r.Added.Count == 0 ? "no" : "") + " repeater" + (r.Added.Count == 1 ? "" : "s") +
                               (r.Added.Count > 0 ? " to " + string.Join(", ", r.Added.Select(x => x.Zone).Distinct()) : "") +
-                              ". Tones and offsets come from RepeaterBook; check them on the Repeaters tab.";
+                              ". Frequencies, tones and color codes come from RepeaterBook; check them on the Repeaters tab. " +
+                              RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")";
                 using (var dlg = new IssuesDialog(head, new string[0], r.Notes, false)) dlg.ShowDialog(owner);
                 return r.Added.FirstOrDefault();
             }

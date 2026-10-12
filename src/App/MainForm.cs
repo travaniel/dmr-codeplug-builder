@@ -891,7 +891,7 @@ namespace CodeplugBuilder.App
                 Ui.AppName + " " + version.Major + "." + version.Minor + (version.Build > 0 ? "." + version.Build : "") + "\n\n" +
                 "Builds CSV codeplug files for the BTECH DMR-6X2 PRO's CPS from your talkgroups, repeaters and hotspot.\n\n" +
                 "Online data: DMR repeaters and IDs from RadioID.net, talkgroup names from BrandMeister.\n\n" +
-                "Analog repeaters: from RepeaterBook CHIRP exports you import yourself. " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +
+                "Repeaters from RepeaterBook: downloaded with your own RepeaterBook token. " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +
                 "Built-in map: boundaries from the US Census Bureau and Natural Earth (public domain); place names from " +
                 "GeoNames (geonames.org), licensed under CC BY 4.0.\n\n" +
                 "CPS format: " + session.Format.Source + "\n" +

@@ -162,11 +162,14 @@ Projects are saved as readable JSON (`.cpb`). The built-in map uses US Census an
 
 - **DMR repeaters and users:** [RadioID.net](https://radioid.net) (repeater lists, DMR ID lookup).
 - **Talkgroup names and repeaters on the network:** [BrandMeister](https://brandmeister.network).
-- **Analog repeaters:** RepeaterBook's own CHIRP export, which you download yourself from
-  [repeaterbook.com](https://www.repeaterbook.com) and import into the program. *Data courtesy of RepeaterBook.com.*
-  This program does not call RepeaterBook's API, ships no RepeaterBook data, and has no bulk-download feature.
-  If an API client is added later, each user will use their own RepeaterBook token (never a shared one), and
-  requests will be limited to the areas the user picks.
+- **DMR and analog repeaters:** [RepeaterBook](https://www.repeaterbook.com). *Data courtesy of RepeaterBook.com.*
+  *Repeaters > From RepeaterBook* downloads the DMR and/or analog repeaters of up to 5 states at a time with **your own
+  RepeaterBook token**: sign in on RepeaterBook, open API Apps, generate a token for this program, and paste it in
+  *Settings > RepeaterBook* (there is no shared token in the program). Downloads happen only when you click Download;
+  listings are kept in memory only while the dialog is open, and only the repeaters you add go into your project.
+  RepeaterBook doesn't list DMR talkgroups, so DMR repeaters get your zone's talkgroups or a starter set. The program ships
+  no RepeaterBook data and has no bulk download, map or browsing of RepeaterBook data. Your token is stored encrypted for
+  your Windows account and never written to projects, exports or logs.
 - **Map:** boundaries from the US Census Bureau and Natural Earth (public domain); highways from Natural Earth;
   place names from [GeoNames](https://www.geonames.org), licensed under CC BY 4.0.
 

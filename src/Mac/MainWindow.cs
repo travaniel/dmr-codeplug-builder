@@ -792,7 +792,7 @@ namespace CodeplugBuilder.Mac
         {
             return Dialogs.Info(this, Dialogs.AppName + " (Mac version, in progress)\nBuilds CSV codeplugs for the BTECH DMR-6X2 PRO and talks to the radio directly.\n\n" +
                                       "DMR repeaters and IDs: RadioID.net; talkgroup names: BrandMeister.\n" +
-                                      "Analog repeaters: from RepeaterBook CHIRP exports you import yourself. " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +
+                                      "Repeaters from RepeaterBook: downloaded with your own RepeaterBook token (Windows version). " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +
                                       "Map data: US Census, Natural Earth (public domain), GeoNames (CC BY 4.0).", "About");
         }
 
