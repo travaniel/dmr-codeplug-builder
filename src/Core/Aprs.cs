@@ -70,7 +70,8 @@ namespace CodeplugBuilder.Core
         public static string CallsignFrom(string radioIdName)
         {
             var words = (radioIdName ?? "").ToUpperInvariant().Split(new[] { ' ', '-', '/', ',' }, StringSplitOptions.RemoveEmptyEntries);
-            return words.Reverse().FirstOrDefault(w => CallsignPattern.IsMatch(w)) ?? "";
+            // Enumerable.Reverse by name: on C# 14 an array's .Reverse() binds to the in-place Span one (void).
+            return Enumerable.Reverse(words).FirstOrDefault(w => CallsignPattern.IsMatch(w)) ?? "";
         }
 
         /// <summary>Analog APRS frequency by country (<see cref="AmateurBands.CountryOf"/>); unknown country = North America's, like the band checks.</summary>
