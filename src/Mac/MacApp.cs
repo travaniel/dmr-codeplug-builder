@@ -37,6 +37,8 @@ namespace CodeplugBuilder.Mac
                 if (Array.IndexOf(args, "--map") >= 0) { desktop.MainWindow = new MapPreviewWindow(null); base.OnFrameworkInitializationCompleted(); return; }
                 int wi = Array.IndexOf(args, "--wizard-walkthrough");
                 if (wi >= 0 && wi + 1 < args.Length) { var host = new Avalonia.Controls.Window { Width = 1180, Height = 820 }; desktop.MainWindow = host; WizardWalkthrough.Run(host, Path.GetFullPath(args[wi + 1]), wi + 2 < args.Length ? args[wi + 2] : "W6OZZ"); base.OnFrameworkInitializationCompleted(); return; }
+                int rbArg = Array.IndexOf(args, "--repeaterbook-check");
+                if (rbArg >= 0 && rbArg + 2 < args.Length) { var host = new Avalonia.Controls.Window { Width = 200, Height = 100 }; desktop.MainWindow = host; RepeaterBookCheck.Run(host, Path.GetFullPath(args[rbArg + 1]), Path.GetFullPath(args[rbArg + 2])); base.OnFrameworkInitializationCompleted(); return; }
                 int ai = Array.IndexOf(args, "--addmap-check");
                 if (ai >= 0 && ai + 1 < args.Length) { var host = new Avalonia.Controls.Window { Width = 200, Height = 100 }; desktop.MainWindow = host; AddMapCheck.Run(host, Path.GetFullPath(args[ai + 1])); base.OnFrameworkInitializationCompleted(); return; }
                 var window = new MainWindow(path);

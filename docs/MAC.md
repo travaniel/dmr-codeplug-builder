@@ -76,12 +76,31 @@ and generates the result: 13 repeaters, 41 channels, 0 errors, CSVs written.
 Not ported yet, in the order I would do them:
 
 1. (done) editors and zones, the map, Add from map, the wizard.
-2. Find repeaters online, Browse BrandMeister, From RepeaterBook.
+2. Find repeaters online, Browse BrandMeister. (From RepeaterBook: done 2026-10-13, see below.)
 4. Settings tab extras (CPS format folder, merge mode, renumber), radio settings editor, About with the credits.
 5. App icon (`.icns`), signing and notarization if the app is shared outside this Mac.
 
 Known duplication to remove later: the Windows `MainForm` and `MainWindow` each hold the open/save/import/generate/radio
 flows. If the Windows app keeps being developed, move those flows into a UI-free class in `src/Core` that both call.
+
+## RepeaterBook and the wizard caught up (2026-10-13)
+
+The Mac app now has everything the Windows app gained on 2026-10-12/13:
+- RepeaterBook with the user's own token: `Online.RepeaterBook.cs` and `RegionDownload.RepeaterBook.cs` are linked in (shared, not
+  copied). The token is kept in `repeaterbook-token` in the settings folder, created owner-only (mode 600); Windows keeps it DPAPI-encrypted
+  in settings.txt (`RepeaterBookToken`, `#if NETFRAMEWORK`). Not the Keychain: that needs Security.framework calls that can't be tried
+  without a Mac.
+- Repeaters > *From RepeaterBook...* (`RepeaterBookWindow.cs`): states (up to 5), DMR / Analog, "Narrow it down" (county, city, callsign,
+  MHz), credit and detail-page links, zones, starter talkgroups. Settings tab: RepeaterBook token. Token window and links: `RepeaterBookUi.cs`.
+- Wizard: step 2 token (recommended) with automatic fetch of the picked states; step 3 RepeaterBook line, sources line with links, counts
+  in the badges, fetch on clicks; step 4 DMR / FM columns and the sources count; step 5 lists every step-4 zone with DMR / FM columns
+  (FM-only zones say they need no talkgroups).
+- Click-to-sort (ascending, descending, off) on the Repeaters tab, the map step's List tab and the RepeaterBook window (`GridSorter.cs`;
+  Up/Down wait while a sort is on).
+- Checked on Windows with the Mac build: `--wizard-walkthrough` with `CODEPLUGBUILDER_WALK_RB=<saved answer>` (offline RepeaterBook
+  sample: picked on step 3, in the zones, 0 errors) and the new `--repeaterbook-check answer.json out.png`. Not yet on a real Mac, and the
+  live RepeaterBook download not from the Mac build.
+- Avalonia note: `TextBlock.Foreground = null` hides the text (no brush); use `ClearValue(TextBlock.ForegroundProperty)` for the default.
 
 ## Getting ready to test on a Mac (2026-10-07)
 

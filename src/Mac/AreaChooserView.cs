@@ -25,6 +25,8 @@ namespace CodeplugBuilder.Mac
         readonly DataGrid list;
         readonly TextBox txtFilter;
         readonly TextBlock lblSummary, lblWaiting;
+        readonly WrapPanel rbLine;
+        readonly GridSorter sorter;
         readonly HashSet<OnlineRepeater> manualOn = new HashSet<OnlineRepeater>(), manualOff = new HashSet<OnlineRepeater>();
         readonly Dictionary<GeoArea, int> counts = new Dictionary<GeoArea, int>();
         RegionDownload download;
@@ -52,8 +54,9 @@ namespace CodeplugBuilder.Mac
             public string City => R.City;
             public string Where => AreaChooserView.Where(R);
             public string Output => R.RxMHz.ToString("0.0000", CultureInfo.InvariantCulture);
+            public decimal OutputMHz => R.RxMHz; // sorts as a number
             public string CC => R.IsAnalog ? "" : R.ColorCode.ToString(CultureInfo.InvariantCulture);
-            public string Network => R.IsAnalog ? "FM (analog)" : R.Network;
+            public string Network => R.IsAnalog ? "FM, RepeaterBook" : FromRepeaterBook(R) ? "DMR, RepeaterBook" : R.Network;
             public string Listed => R.IsAnalog ? "" : R.Talkgroups.Count == 0 ? "none" : R.Talkgroups.Count.ToString(CultureInfo.InvariantCulture) + (R.TalkgroupSource != null ? " (" + R.TalkgroupSource + ")" : "");
             public string State => owner.Status(R);
         }
@@ -68,11 +71,14 @@ namespace CodeplugBuilder.Mac
             var filterRow = UiKit.Row(UiKit.Label("Filter"), txtFilter, UiKit.Button("Tick all shown", () => SetShown(true)), UiKit.Button("Untick all shown", () => SetShown(false)));
             filterRow.Margin = new Thickness(0, 0, 0, 6);
             list = UiKit.Grid(false);
-            list.Columns.Add(new DataGridCheckBoxColumn { Header = "Pick", Binding = new Avalonia.Data.Binding("Pick"), Width = new DataGridLength(54) });
+            sorter = new GridSorter(list); // click a header to sort
+            list.Columns.Add(new DataGridCheckBoxColumn { Header = "Pick", Binding = new Avalonia.Data.Binding("Pick"), Width = new DataGridLength(54), CanUserSort = false });
             list.Columns.Add(UiKit.Col("Callsign", "Callsign", true, 90));
             list.Columns.Add(UiKit.Col("City", "City", true, 130));
             list.Columns.Add(UiKit.Col("On the map", "Where", true, 190));
-            list.Columns.Add(UiKit.Col("Output MHz", "Output", true, 100));
+            var output = UiKit.Col("Output MHz", "Output", true, 100);
+            output.SortMemberPath = "OutputMHz";
+            list.Columns.Add(output);
             list.Columns.Add(UiKit.Col("CC", "CC", true, 40));
             list.Columns.Add(UiKit.Col("Network", "Network", true, 120));
             list.Columns.Add(UiKit.Col("Talkgroups listed", "Listed", true, 120));
@@ -89,9 +95,16 @@ namespace CodeplugBuilder.Mac
             lblSummary = new TextBlock { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             lblWaiting = new TextBlock { TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7, IsVisible = false, TextWrapping = TextWrapping.Wrap };
 
+            // The RepeaterBook line (progress, result, or a link to add a token) and where the listings come from.
+            rbLine = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+            var sources = RepeaterBookUi.Sources();
             var dock = new DockPanel();
             DockPanel.SetDock(lblSummary, Dock.Bottom);
+            DockPanel.SetDock(sources, Dock.Bottom);
+            DockPanel.SetDock(rbLine, Dock.Bottom);
             dock.Children.Add(lblSummary);
+            dock.Children.Add(sources);
+            dock.Children.Add(rbLine);
             dock.Children.Add(new Grid { Children = { tabs, lblWaiting } });
             Content = dock;
 
@@ -124,7 +137,9 @@ namespace CodeplugBuilder.Mac
         {
             all = download == null ? new List<OnlineRepeater>() : download.Repeaters.Where(r => r.InRadioBand && InScope(r)).ToList();
             counts.Clear();
-            foreach (var r in all.Where(x => !x.IsAnalog)) // badges count DMR repeaters from RadioID.net and BrandMeister only
+            // Badges count every repeater in an area ("18 repeaters"), RepeaterBook's too (only ones a click takes: not the off-air
+            // ones). RepeaterBook rows are counted, never drawn as dots.
+            foreach (var r in all.Where(x => !FromRepeaterBook(x) || Takeable(x)))
             {
                 var loc = r.Location ?? GeoLocation.Unknown;
                 foreach (var a in new[] { loc.Country, loc.State, loc.County })
@@ -139,6 +154,7 @@ namespace CodeplugBuilder.Mac
             UpdateMap();
             if (tabs.SelectedIndex == 1) Refill();
             UpdateSummary();
+            ShowRepeaterBook();
         }
 
         /// <summary>Areas inside the downloaded region (an area, or anything within it).</summary>
@@ -170,14 +186,24 @@ namespace CodeplugBuilder.Mac
         public bool IsPicked(OnlineRepeater r)
         {
             if (InProject(r) || manualOff.Contains(r)) return false;
-            return manualOn.Contains(r) || (InPickedArea(r) && !r.IsOffAir); // off-air repeaters only when ticked one by one
+            return manualOn.Contains(r) || (InPickedArea(r) && Takeable(r)); // off-air repeaters only when ticked one by one
+        }
+
+        static bool FromRepeaterBook(OnlineRepeater r) { return r.Source == RepeaterBookImport.Site; }
+
+        /// <summary>Taken by area clicks: not off the air (BrandMeister's health check or RepeaterBook's status), and addable.</summary>
+        static bool Takeable(OnlineRepeater r)
+        {
+            if (r.IsOffAir) return false;
+            if (FromRepeaterBook(r) && (r.Status == "OFF-AIR" || (r.Analog != null && RepeaterBookImport.Problem(r.Analog) != null))) return false;
+            return true;
         }
 
         void SetPicked(OnlineRepeater r, bool on)
         {
             manualOn.Remove(r);
             manualOff.Remove(r);
-            bool byArea = InPickedArea(r) && !r.IsOffAir;
+            bool byArea = InPickedArea(r) && Takeable(r);
             if (on && !byArea) manualOn.Add(r);
             if (!on && byArea) manualOff.Add(r);
         }
@@ -212,6 +238,57 @@ namespace CodeplugBuilder.Mac
             manualOn.RemoveWhere(Inside);
             manualOff.RemoveWhere(Inside);
             Changed();
+            FetchRepeaterBook();
+        }
+
+        /// <summary>
+        /// RepeaterBook for the US states of the clicked areas that the download doesn't have yet, with the user's own token:
+        /// each click is the user's request, up to <see cref="RepeaterBookApi.MaxStatesPerAction"/> states a batch, one batch
+        /// at a time (the states picked on the first map arrive by themselves, RegionDownload.FetchRegionRepeaterBook).
+        /// </summary>
+        async void FetchRepeaterBook()
+        {
+            var d = download;
+            if (d == null || !d.Done) return;
+            if (!RepeaterBookToken.IsSet) { ShowRepeaterBook(); return; }
+            var states = RegionDownload.UsStates(Picker.Map.Selected).Where(s => !d.HasRepeaterBook(s)).ToList();
+            if (states.Count == 0)
+            {
+                if (Picker.Map.Selected.Any(a => a.Level == AreaLevel.Country && a.CountryCode == "US") && !d.RepeaterBookBusy)
+                    SetLine("RepeaterBook: click states or counties (not the whole country) to bring in its repeaters.", null);
+                return;
+            }
+            if (d.RepeaterBookBusy) return; // this runs again when that batch is done
+            bool ok = await d.FetchRepeaterBookAsync(states);
+            if (d != download) return;
+            Reload();
+            PickedChanged?.Invoke(this, EventArgs.Empty);
+            if (ok) FetchRepeaterBook(); // areas clicked while that ran
+        }
+
+        /// <summary>The RepeaterBook line under the map: the download's last news, else how to turn it on.</summary>
+        void ShowRepeaterBook()
+        {
+            if (!RepeaterBookToken.IsSet)
+                SetLine("RepeaterBook: ", "Add your RepeaterBook token", " to also bring in analog (FM) repeaters, and DMR ones RadioID.net doesn't list, for your states.");
+            else
+                SetLine(download?.RepeaterBookNote ?? "RepeaterBook: clicking a state or county also brings in its analog (FM) repeaters, and DMR ones RadioID.net doesn't list.", null);
+        }
+
+        void SetLine(string text, string link, string after = "")
+        {
+            if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) { Avalonia.Threading.Dispatcher.UIThread.Post(() => SetLine(text, link, after)); return; }
+            rbLine.Children.Clear();
+            rbLine.Children.Add(new TextBlock { Text = text, Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
+            if (link == null) return;
+            rbLine.Children.Add(RepeaterBookUi.Link(link, async () =>
+            {
+                if (!await RepeaterBookUi.ShowTokenWindow(owner)) return;
+                ShowRepeaterBook();
+                download?.FetchRegionRepeaterBook();
+                FetchRepeaterBook();
+            }));
+            rbLine.Children.Add(new TextBlock { Text = after, Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
         }
 
         string Badge(GeoArea a)
@@ -239,8 +316,8 @@ namespace CodeplugBuilder.Mac
 
         void UpdateMap()
         {
-            // RepeaterBook (analog) rows are listed on the List tab only, never drawn on the map.
-            Picker.Map.Dots = all.Where(r => !r.IsAnalog && r.Location?.Lat != null)
+            // RepeaterBook rows are listed on the List tab only, never drawn on the map (no map of RepeaterBook data).
+            Picker.Map.Dots = all.Where(r => !FromRepeaterBook(r) && r.Location?.Lat != null)
                                  .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, OffAir = r.IsOffAir, Tag = r })
                                  .ToList();
         }
@@ -251,7 +328,7 @@ namespace CodeplugBuilder.Mac
             int listed = picked.Sum(r => r.Talkgroups.Count);
             int already = all.Count(InProject);
             int unplaced = all.Count(r => r.Location == null || r.Location.Lat == null);
-            int offAir = all.Count(r => r.IsOffAir && !IsPicked(r) && !InProject(r));
+            int offAir = all.Count(r => !Takeable(r) && !IsPicked(r) && !InProject(r));
             string offAirText = offAir == 0 ? "" : "   " + offAir + " look off the air (grey) and aren't taken by clicks.";
             if (picked.Count == 0 && all.Count > 0)
             {
@@ -288,7 +365,8 @@ namespace CodeplugBuilder.Mac
         string Status(OnlineRepeater r)
         {
             if (InProject(r)) return "in your project";
-            string off = r.IsOffAir ? "off the air since " + r.OffAirSince.Value.Year.ToString(CultureInfo.InvariantCulture) : "";
+            string off = r.IsOffAir ? "off the air since " + r.OffAirSince.Value.Year.ToString(CultureInfo.InvariantCulture)
+                       : FromRepeaterBook(r) && !Takeable(r) ? (r.Status == "OFF-AIR" ? "off the air (RepeaterBook)" : RepeaterBookImport.Problem(r.Analog)) : "";
             return IsPicked(r) ? (off.Length > 0 ? "picked (" + off + ")" : "picked") : off;
         }
 
@@ -319,7 +397,7 @@ namespace CodeplugBuilder.Mac
             try
             {
                 rows = Filtered().Select(r => new ListRow(this, r)).ToList();
-                list.ItemsSource = rows;
+                sorter.Show(rows);
             }
             finally { loading = false; }
         }

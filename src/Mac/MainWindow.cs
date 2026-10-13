@@ -371,6 +371,22 @@ namespace CodeplugBuilder.Mac
             aprsHint.HorizontalAlignment = HorizontalAlignment.Left;
             settings.Children.Add(aprsHint);
 
+            // RepeaterBook: the user's own token (kept on this computer, not in the project).
+            var rbStatus = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            void ShowRbToken() { rbStatus.Text = RepeaterBookUi.Status; if (RepeaterBookToken.IsSet) rbStatus.Foreground = Avalonia.Media.Brushes.ForestGreen; else rbStatus.ClearValue(TextBlock.ForegroundProperty); }
+            ShowRbToken();
+            settings.Children.Add(new TextBlock { Text = "RepeaterBook", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 0) });
+            settings.Children.Add(UiKit.Row(UiKit.Label("Your token"), rbStatus,
+                UiKit.Button("Paste token...", async () => { await RepeaterBookUi.ShowTokenWindow(this); ShowRbToken(); }),
+                RepeaterBookUi.Link("Get a token on RepeaterBook (API Apps)", RepeaterBookApi.TokenPageUrl)));
+            var rbHint = UiKit.Hint("Repeaters > From RepeaterBook, and the map in the new-codeplug wizard and Add from map, bring in DMR and analog repeaters " +
+                                    "with your own RepeaterBook token, up to " + RepeaterBookApi.MaxStatesPerAction + " states at a time. Sign in on RepeaterBook, " +
+                                    "open API Apps, generate a token for this program and paste it here. " + RepeaterBookToken.WhereKept + " (not in your project). " +
+                                    RepeaterBookApi.Attribution);
+            rbHint.MaxWidth = 720;
+            rbHint.HorizontalAlignment = HorizontalAlignment.Left;
+            settings.Children.Add(rbHint);
+
             var tabs = new TabControl();
             zonesTab = new ZonesTab(session, this);
             tabs.Items.Add(new TabItem { Header = "Repeaters", Content = new RepeatersTab(session, this) });
@@ -792,7 +808,7 @@ namespace CodeplugBuilder.Mac
         {
             return Dialogs.Info(this, Dialogs.AppName + " (Mac version, in progress)\nBuilds CSV codeplugs for the BTECH DMR-6X2 PRO and talks to the radio directly.\n\n" +
                                       "DMR repeaters and IDs: RadioID.net; talkgroup names: BrandMeister.\n" +
-                                      "Repeaters from RepeaterBook: downloaded with your own RepeaterBook token (Windows version). " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +
+                                      "Repeaters from RepeaterBook: downloaded with your own RepeaterBook token. " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")\n\n" +
                                       "Map data: US Census, Natural Earth (public domain), GeoNames (CC BY 4.0).", "About");
         }
 

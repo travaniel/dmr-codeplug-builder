@@ -39,6 +39,8 @@
     <Compile Include="..\App\Session.cs" Link="Shared\Session.cs" />
     <Compile Include="..\App\Online.cs" Link="Shared\Online.cs" />
     <Compile Include="..\App\RegionDownload.cs" Link="Shared\RegionDownload.cs" />
+    <Compile Include="..\App\RegionDownload.RepeaterBook.cs" Link="Shared\RegionDownload.RepeaterBook.cs" />
+    <Compile Include="..\App\Online.RepeaterBook.cs" Link="Shared\Online.RepeaterBook.cs" />
     <Compile Include="..\App\RadioPort.cs" Link="Shared\RadioPort.cs" />
     <Compile Include="..\App\WizardState.cs" Link="Shared\WizardState.cs" />
     <EmbeddedResource Include="..\Core\Templates\*.CSV" LogicalName="CodeplugBuilder.Templates.%(Filename)%(Extension)" />

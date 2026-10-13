@@ -168,8 +168,9 @@ Projects are saved as readable JSON (`.cpb`). The built-in map uses US Census an
   *Settings > RepeaterBook* (there is no shared token in the program). Downloads happen only when you click Download;
   listings are kept in memory only while the dialog is open, and only the repeaters you add go into your project.
   RepeaterBook doesn't list DMR talkgroups, so DMR repeaters get your zone's talkgroups or a starter set. The program ships
-  no RepeaterBook data and has no bulk download, map or browsing of RepeaterBook data. Your token is stored encrypted for
-  your Windows account and never written to projects, exports or logs.
+  no RepeaterBook data and has no bulk download, map or browsing of RepeaterBook data. Your token is never written to
+  projects, exports or logs: on Windows it is stored encrypted for your Windows account, on a Mac in a file in the app's
+  settings folder that only your user account can read.
 - **Map:** boundaries from the US Census Bureau and Natural Earth (public domain); highways from Natural Earth;
   place names from [GeoNames](https://www.geonames.org), licensed under CC BY 4.0.
 

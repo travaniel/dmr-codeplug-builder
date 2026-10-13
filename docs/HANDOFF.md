@@ -404,7 +404,8 @@ the code meets them:
   locally (`RepeaterBookQuery.Matches`) in case the server ignores a term. A state is still required: a nationwide callsign
   search would need RepeaterBook's OK (the approval says at most five states per action). Dev: `--repeaterbook-sample State
   report.txt [county] [city] [callsign] [MHz]`.
-- Still open: Canada and the rest of the world (`exportROW.php`, approved), and RepeaterBook on the Mac.
+- Mac (2026-10-13): the same client and screens (docs/MAC.md); the token in an owner-only file instead of DPAPI.
+- Still open: Canada and the rest of the world (`exportROW.php`, approved).
 ## 4c. The built-in map (atlas)
 
 `src/Core/Geo/atlas.gz` (~3.7 MB, embedded as `CodeplugBuilder.Geo.atlas.gz`) is made by `tools/GeoBuild`

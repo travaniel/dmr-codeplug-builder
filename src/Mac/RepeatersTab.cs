@@ -21,6 +21,7 @@ namespace CodeplugBuilder.Mac
         readonly RepeaterEditorView editor;
         readonly TextBlock empty;
         readonly Button btnUp, btnDown;
+        readonly GridSorter sorter;
         List<RepRow> rows = new List<RepRow>();
         bool loading;
 
@@ -42,7 +43,9 @@ namespace CodeplugBuilder.Mac
                 ? "DMR " + R.Talkgroups.Count + " TG" + (R.Talkgroups.Count == 1 ? "" : "s")
                 : "FM" + (Tones.Normalize(R.ToneEncode) != "Off" ? " " + Tones.Normalize(R.ToneEncode) : "");
             public string Rx => R.RxMHz > 0 ? R.RxMHz.ToString("0.000", CultureInfo.InvariantCulture) : "";
+            public decimal? RxMHz => R.RxMHz > 0 ? R.RxMHz : (decimal?)null; // sorts as a number
             public string FromHome { get; set; }
+            public double? HomeKm { get; set; }
         }
 
         public RepeatersTab(Session session, Window owner)
@@ -52,12 +55,19 @@ namespace CodeplugBuilder.Mac
 
             cboFilter = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch };
             list = UiKit.Grid(false);
-            list.Columns.Add(new DataGridCheckBoxColumn { Header = "On", Binding = new Avalonia.Data.Binding("On"), Width = new DataGridLength(46) });
+            list.Columns.Add(new DataGridCheckBoxColumn { Header = "On", Binding = new Avalonia.Data.Binding("On"), Width = new DataGridLength(46), CanUserSort = false });
             list.Columns.Add(UiKit.Col("Name", "Name", true, 150));
             list.Columns.Add(UiKit.Col("Zone", "Zone", true, 100));
             list.Columns.Add(UiKit.Col("Type", "Type", true, 90));
-            list.Columns.Add(UiKit.Col("RX MHz", "Rx", true, 70));
-            list.Columns.Add(UiKit.Col("From home", "FromHome", true, 80));
+            var rx = UiKit.Col("RX MHz", "Rx", true, 70);
+            rx.SortMemberPath = "RxMHz";
+            list.Columns.Add(rx);
+            var home = UiKit.Col("From home", "FromHome", true, 80);
+            home.SortMemberPath = "HomeKm";
+            list.Columns.Add(home);
+            // Click a header to sort; Up/Down change the real order, so they wait until the sort is off.
+            sorter = new GridSorter(list);
+            sorter.Changed += (s, e) => btnUp.IsEnabled = btnDown.IsEnabled = Filter == null && !sorter.Active;
 
             btnUp = UiKit.Button("Up", () => MoveItem(-1));
             btnDown = UiKit.Button("Down", () => MoveItem(1));
@@ -72,6 +82,7 @@ namespace CodeplugBuilder.Mac
             buttons.Children.Add(btnDown); btnDown.Margin = new Thickness(0, 0, 6, 6);
             AddButton("Add from map...", async () => await AddFromMap());
             AddButton("Add route...", async () => await AddRoute());
+            AddButton("From RepeaterBook...", async () => await FromRepeaterBook());
             AddButton("Add NOAA weather", async () => await AddWeather());
             AddButton("Add simplex", async () => await AddSimplex());
 
@@ -89,7 +100,7 @@ namespace CodeplugBuilder.Mac
             editor = new RepeaterEditorView(false);
             empty = new TextBlock
             {
-                Text = "Click \"Add from map...\" to add DMR repeaters near you from RadioID.net and BrandMeister, or add one by hand with the buttons on the left, or File > Import from a CPS export to load your current codeplug.\n\n(Find online and From RepeaterBook come in a later step of the Mac port.)",
+                Text = "Click \"Add from map...\" to add DMR repeaters near you from RadioID.net and BrandMeister, or add one by hand with the buttons on the left, or File > Import from a CPS export to load your current codeplug.\n\n(Find online comes in a later step of the Mac port.)",
                 Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap, TextAlignment = Avalonia.Media.TextAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 420,
             };
@@ -128,12 +139,12 @@ namespace CodeplugBuilder.Mac
                 rows = session.Project.Repeaters
                     .Where(r => !(filter == "(no zone)" && !string.IsNullOrWhiteSpace(r.Zone)))
                     .Where(r => filter == null || filter == "(no zone)" || inZone.Contains(r))
-                    .Select(r => new RepRow(r, row => { if (editor.Repeater == row.R) editor.Bind(session, row.R); session.MarkDirty(); }) { FromHome = session.Project.DistanceText(r) })
+                    .Select(r => new RepRow(r, row => { if (editor.Repeater == row.R) editor.Bind(session, row.R); session.MarkDirty(); }) { FromHome = session.Project.DistanceText(r), HomeKm = session.Project.DistanceKm(r) })
                     .ToList();
-                list.ItemsSource = rows;
+                sorter.Show(rows);
                 var pick = rows.FirstOrDefault(x => x.R == select) ?? (select == null && editor.Repeater == null ? rows.FirstOrDefault() : null);
                 if (pick != null) { list.SelectedItem = pick; list.ScrollIntoView(pick, null); }
-                btnUp.IsEnabled = btnDown.IsEnabled = filter == null;
+                btnUp.IsEnabled = btnDown.IsEnabled = filter == null && !sorter.Active;
             }
             finally { loading = false; }
             BindSelected();
@@ -188,6 +199,15 @@ namespace CodeplugBuilder.Mac
         async System.Threading.Tasks.Task AddFromMap()
         {
             var first = await AddFromMapWindow.Run(owner, session);
+            if (first == null) return;
+            cboFilter.SelectedIndex = 0;
+            Reload(first);
+        }
+
+        /// <summary>Opens Repeaters > From RepeaterBook (the user's own token) and shows what it added.</summary>
+        async System.Threading.Tasks.Task FromRepeaterBook()
+        {
+            var first = await RepeaterBookWindow.Run(owner, session);
             if (first == null) return;
             cboFilter.SelectedIndex = 0;
             Reload(first);
@@ -254,7 +274,7 @@ namespace CodeplugBuilder.Mac
         void MoveItem(int delta)
         {
             var r = Selected;
-            if (r == null || Filter != null) return;
+            if (r == null || Filter != null || sorter.Active) return;
             var all = session.Project.Repeaters;
             int i = all.IndexOf(r), j = i + delta;
             if (j < 0 || j >= all.Count) return;

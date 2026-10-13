@@ -21,44 +21,85 @@ namespace CodeplugBuilder.App
     }
 
     /// <summary>
-    /// The user's own RepeaterBook token (made on RepeaterBook > API Apps for this program). Kept in the settings folder,
-    /// encrypted for the Windows user (DPAPI); never in a project, an export, a log or a message.
+    /// The user's own RepeaterBook token (made on RepeaterBook > API Apps for this program); never in a project, an export,
+    /// a log or a message. Windows: in the settings file, encrypted for the Windows user (DPAPI). Mac (and the Mac build
+    /// elsewhere): in its own file in the settings folder that only the user's account can read (mode 600).
     /// </summary>
     static class RepeaterBookToken
     {
-        const string Key = "RepeaterBookToken";
-        static readonly byte[] Entropy = Encoding.UTF8.GetBytes("W6OZZ-CPS RepeaterBook token");
-
         public static bool IsSet => Get() != null;
+
+        /// <summary>"encrypted for your Windows account" / "readable only by your Mac account", for the UI.</summary>
+        public static string WhereKept =>
+#if NETFRAMEWORK
+            "It stays on this PC, encrypted for your Windows account";
+#else
+            "It stays on this computer, in a file only your user account can read";
+#endif
 
         public static string Get()
         {
-            string saved = AppSettings.Get(Key);
-            if (string.IsNullOrEmpty(saved) || !saved.StartsWith("dpapi:", StringComparison.Ordinal)) return null;
             try
             {
-                var bytes = ProtectedData.Unprotect(Convert.FromBase64String(saved.Substring(6)), Entropy, DataProtectionScope.CurrentUser);
-                string t = Encoding.UTF8.GetString(bytes);
-                return t.Length > 0 ? t : null;
+                string t = Load();
+                return string.IsNullOrWhiteSpace(t) ? null : t.Trim();
             }
-            catch { return null; } // another Windows user's or a damaged value: as if none
+            catch { return null; } // another user's or a damaged value: as if none
         }
 
         /// <summary>Saves a new token (or clears it with null). A new token also clears an earlier refusal, so it is tried once.</summary>
         public static void Set(string token)
         {
-            token = (token ?? "").Trim();
-            if (token.Length == 0) { AppSettings.Set(Key, null); }
-            else
-            {
-                var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.CurrentUser);
-                AppSettings.Set(Key, "dpapi:" + Convert.ToBase64String(bytes));
-            }
+            Save((token ?? "").Trim());
             AppSettings.Set(Online.RbRefusedKey, null);
             AppSettings.Set(Online.RbRefusedMessageKey, null);
         }
-    }
 
+#if NETFRAMEWORK
+        const string Key = "RepeaterBookToken";
+        static readonly byte[] Entropy = Encoding.UTF8.GetBytes("W6OZZ-CPS RepeaterBook token");
+
+        static string Load()
+        {
+            string saved = AppSettings.Get(Key);
+            if (string.IsNullOrEmpty(saved) || !saved.StartsWith("dpapi:", StringComparison.Ordinal)) return null;
+            return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(saved.Substring(6)), Entropy, DataProtectionScope.CurrentUser));
+        }
+
+        static void Save(string token)
+        {
+            if (token.Length == 0) { AppSettings.Set(Key, null); return; }
+            var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(token), Entropy, DataProtectionScope.CurrentUser);
+            AppSettings.Set(Key, "dpapi:" + Convert.ToBase64String(bytes));
+        }
+#else
+        static string FilePath => Path.Combine(AppSettings.Folder, "repeaterbook-token");
+
+        static string Load()
+        {
+            return File.Exists(FilePath) ? File.ReadAllText(FilePath, Encoding.UTF8) : null;
+        }
+
+        static void Save(string token)
+        {
+            if (token.Length == 0) { if (File.Exists(FilePath)) File.Delete(FilePath); return; }
+            Directory.CreateDirectory(AppSettings.Folder);
+            if (File.Exists(FilePath)) File.Delete(FilePath);
+            if (!OperatingSystem.IsWindows())
+            {
+                // Create it owner-only before writing, so the token is never readable by others, even briefly.
+                using (var fs = new FileStream(FilePath, new FileStreamOptions
+                {
+                    Mode = FileMode.CreateNew, Access = FileAccess.Write,
+                    UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                }))
+                using (var w = new StreamWriter(fs, new UTF8Encoding(false)))
+                    w.Write(token);
+            }
+            else File.WriteAllText(FilePath, token, new UTF8Encoding(false)); // the Mac build run on Windows (dev): the user's own AppData
+        }
+#endif
+    }
     static partial class Online
     {
         internal const string RbRefusedKey = "RepeaterBookRefused";

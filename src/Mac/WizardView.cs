@@ -235,7 +235,7 @@ namespace CodeplugBuilder.Mac
     sealed class RadioStepView : WizStep
     {
         readonly TextBox txtCall, txtId, txtName, txtHsRx, txtHsTx;
-        readonly TextBlock lblLookup, lblProblem;
+        readonly TextBlock lblLookup, lblProblem, lblRbToken, lblRbStatus;
         readonly ComboBox cboPower;
         readonly CheckBox chkHotspot, chkNoaa, chkSimplex;
         readonly NumericUpDown numCC;
@@ -282,7 +282,23 @@ namespace CodeplugBuilder.Mac
             p.Children.Add(chkHotspot);
             p.Children.Add(hotspotFields);
             p.Children.Add(UiKit.Hint("You pick the hotspot's talkgroups with the zones, two pages on. A simplex hotspot (Pi-Star, WPSD) usually carries everything on slot 2."));
+
+            p.Children.Add(Section("RepeaterBook token (recommended)"));
+            lblRbToken = UiKit.Label("");
+            lblRbStatus = UiKit.Hint("");
+            p.Children.Add(Pair("Your token", UiKit.Row(lblRbToken, UiKit.Button("Paste token...", async () =>
+            {
+                if (await RepeaterBookUi.ShowTokenWindow(Owner)) State.Download?.FetchRegionRepeaterBook(); // the states picked on the first map
+                ShowRepeaterBookToken();
+            }), RepeaterBookUi.Link("Get a token on RepeaterBook (API Apps)", RepeaterBookApi.TokenPageUrl))));
+            p.Children.Add(lblRbStatus);
+            p.Children.Add(UiKit.Hint("DMR repeaters and their talkgroups come from RadioID.net and BrandMeister. With your own RepeaterBook token, the program also " +
+                                      "downloads RepeaterBook's analog (FM) repeaters, and DMR repeaters RadioID.net doesn't list, for the states you picked (up to " +
+                                      RepeaterBookApi.MaxStatesPerAction + "), so they're on the next page too. Sign in on RepeaterBook, open API Apps, generate a token " +
+                                      "for this program and paste it here. " + RepeaterBookToken.WhereKept + ". Without one, the codeplug has DMR repeaters only."));
+            p.Children.Add(RepeaterBookUi.Link(RepeaterBookApi.Attribution, RepeaterBookApi.SiteUrl));
             p.Children.Add(lblProblem);
+            s.DownloadChanged += (o, e) => { if (IsVisible) ShowRepeaterBookToken(); };
             Content = new ScrollViewer { Content = p };
 
             txtCall.KeyDown += async (o, e) => { if (e.Key == Key.Enter) { e.Handled = true; await LookUp(); } };
@@ -296,6 +312,19 @@ namespace CodeplugBuilder.Mac
             UiKit.OnText(txtHsRx, () => { if (!loading) Store(); });
             UiKit.OnText(txtHsTx, () => { if (!loading) Store(); });
             numCC.ValueChanged += (o, e) => { if (!loading) Store(); };
+        }
+
+        void ShowRepeaterBookToken()
+        {
+            if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) { Avalonia.Threading.Dispatcher.UIThread.Post(ShowRepeaterBookToken); return; }
+            lblRbToken.Text = RepeaterBookUi.Status;
+            if (RepeaterBookToken.IsSet) lblRbToken.Foreground = Brushes.ForestGreen; else lblRbToken.ClearValue(TextBlock.ForegroundProperty); // null would hide the text
+            var d = State.Download;
+            var states = d == null ? new List<string>() : RegionDownload.UsStates(d.Areas);
+            lblRbStatus.Text = !RepeaterBookToken.IsSet ? ""
+                : d?.RepeaterBookNote != null ? d.RepeaterBookNote
+                : states.Count == 0 ? "RepeaterBook covers US states here; on the next page, click states or counties to bring in theirs."
+                : d.Done ? "" : "RepeaterBook: " + string.Join(", ", states) + " follow" + (states.Count == 1 ? "s" : "") + " as soon as the repeater download is done.";
         }
 
         public override string Title => "Your radio";
@@ -329,6 +358,7 @@ namespace CodeplugBuilder.Mac
             txtHsTx.Text = State.HotspotTx > 0 && State.HotspotTx != State.HotspotRx ? UiKit.FormatMHz(State.HotspotTx) : "";
             numCC.Value = Math.Max(0, Math.Min(15, State.HotspotCC));
             loading = false;
+            ShowRepeaterBookToken();
             CheckFields();
         }
 
@@ -415,7 +445,8 @@ namespace CodeplugBuilder.Mac
         public override string Title => "Which repeaters?";
         public override string Hint =>
             "The first map only chose what to download. Here you choose what goes in the codeplug: click counties, states or countries to take every " +
-            "repeater in them (switch the level above the map). Dots are repeaters; red ones are picked. " +
+            "repeater in them (switch the level above the map). Dots are DMR repeaters from RadioID.net and BrandMeister; red ones are picked. " +
+            "With your RepeaterBook token, RepeaterBook's analog and extra DMR repeaters for your states are on the List tab and in the counts on the map, and clicking an area takes them too. " +
             "The List tab lets you tick or untick single repeaters, including ones the map couldn't place.";
 
         public override bool CanGoNext => State.Download != null && State.Download.Done && (chooser.Picked().Count > 0 || State.Hotspot);
@@ -432,6 +463,7 @@ namespace CodeplugBuilder.Mac
                 chooser.Bind(bound, null);
             }
             else chooser.Reload();
+            bound?.FetchRegionRepeaterBook(); // a token saved after the download finished
         }
 
         public override async Task<bool> LeaveForward()
@@ -470,10 +502,13 @@ namespace CodeplugBuilder.Mac
         {
             public ZoneInfo Zone;
             public string Name { get; set; }
-            public string Repeaters { get; set; }
+            public string Dmr { get; set; }
+            public string Fm { get; set; }
             public string Channels { get; set; }
             public string Includes { get; set; }
         }
+
+        readonly TextBlock lblSources;
 
         public ZonesStepView(WizardState s, Window owner) : base(s, owner)
         {
@@ -496,15 +531,18 @@ namespace CodeplugBuilder.Mac
 
             list = UiKit.Grid(false);
             list.IsReadOnly = true;
-            list.Columns.Add(UiKit.Col("Zone", "Name", true, 200));
-            list.Columns.Add(UiKit.Col("Repeaters", "Repeaters", true, 90));
-            list.Columns.Add(UiKit.Col("Channels so far", "Channels", true, 120));
-            list.Columns.Add(UiKit.Col("Includes", "Includes", true, 380));
+            list.Columns.Add(UiKit.Col("Zone", "Name", true, 170));
+            list.Columns.Add(UiKit.Col("DMR", "Dmr", true, 70));
+            list.Columns.Add(UiKit.Col("FM", "Fm", true, 62));
+            list.Columns.Add(UiKit.Col("Channels so far", "Channels", true, 150));
+            list.Columns.Add(UiKit.Col("Includes", "Includes", true, 400));
+            lblSources = new TextBlock { Opacity = 0.7, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
             var buttons = UiKit.Row(UiKit.Button("Rename / merge...", async () => await Rename()), UiKit.Button("Move up", () => MoveZone(-1)), UiKit.Button("Move down", () => MoveZone(1)));
             buttons.Margin = new Thickness(0, 6, 0, 0);
             var right = new DockPanel();
             DockPanel.SetDock(buttons, Dock.Bottom);
-            right.Children.Add(buttons); right.Children.Add(list);
+            DockPanel.SetDock(lblSources, Dock.Bottom);
+            right.Children.Add(buttons); right.Children.Add(lblSources); right.Children.Add(list);
 
             var dock = new DockPanel();
             DockPanel.SetDock(left, Dock.Left);
@@ -576,12 +614,20 @@ namespace CodeplugBuilder.Mac
                 rows.Add(new ZRow
                 {
                     Zone = z, Name = z.Name,
-                    Repeaters = reps.Count.ToString(CultureInfo.InvariantCulture),
+                    Dmr = reps.Count(r => r.IsDigital).ToString(CultureInfo.InvariantCulture),
+                    Fm = reps.Count(r => !r.IsDigital).ToString(CultureInfo.InvariantCulture),
                     Channels = p.ZoneChannelCount(z.Name).ToString(CultureInfo.InvariantCulture),
                     Includes = string.Join(", ", places.Take(8)) + (places.Count > 8 ? " and " + (places.Count - 8) + " more" : ""),
                 });
             }
             list.ItemsSource = rows;
+            // Where the repeaters came from, so RepeaterBook's are visible here (its credit goes with them).
+            bool Rb(Repeater r) { return (r.Notes ?? "").StartsWith(RepeaterBookImport.Site, StringComparison.Ordinal); }
+            var all = p.ActiveRepeaters().Where(r => r != p.Hotspot && !Presets.IsPreset(r)).ToList();
+            int rb = all.Count(Rb), rbFm = all.Count(r => Rb(r) && !r.IsDigital);
+            lblSources.Text = all.Count(r => r.IsDigital && !Rb(r)) + " DMR repeaters from RadioID.net and BrandMeister" +
+                              (rb > 0 ? ", " + rb + " from RepeaterBook (" + rbFm + " FM, " + (rb - rbFm) + " DMR). " + RepeaterBookApi.Attribution
+                                      : RepeaterBookToken.IsSet ? ". None from RepeaterBook: on the previous page, click the counties they're in, or tick them on the List tab." : ".");
             var pick = select != null ? rows.FirstOrDefault(r => Project.SameZone(r.Name, select)) : null;
             if (pick != null) list.SelectedItem = pick;
         }
@@ -632,7 +678,8 @@ namespace CodeplugBuilder.Mac
             public ZoneInfo Zone;
             public Project P;
             public string Name => Zone.Name;
-            public string Repeaters => P.ZoneRepeaters(Zone.Name).Count.ToString(CultureInfo.InvariantCulture);
+            public string Dmr => P.ZoneRepeaters(Zone.Name).Count.ToString(CultureInfo.InvariantCulture);
+            public string Fm => P.ActiveRepeaters().Count(r => !r.IsDigital && Project.SameZone(r.Zone, Zone.Name)).ToString(CultureInfo.InvariantCulture);
             public string Channels => P.ZoneChannelCount(Zone.Name).ToString(CultureInfo.InvariantCulture);
         }
 
@@ -640,10 +687,11 @@ namespace CodeplugBuilder.Mac
         {
             zones = UiKit.Grid(false);
             zones.IsReadOnly = true;
-            zones.Width = 310;
-            zones.Columns.Add(UiKit.Col("Zone", "Name", true, 150));
-            zones.Columns.Add(UiKit.Col("Repeaters", "Repeaters", true, 80));
-            zones.Columns.Add(UiKit.Col("Channels", "Channels", true, 76));
+            zones.Width = 370;
+            zones.Columns.Add(UiKit.Col("Zone", "Name", true, 128));
+            zones.Columns.Add(UiKit.Col("DMR", "Dmr", true, 64));
+            zones.Columns.Add(UiKit.Col("FM", "Fm", true, 54));
+            zones.Columns.Add(UiKit.Col("Channels", "Channels", true, 92));
             editor = new ZoneTalkgroupsView(owner) { Margin = new Thickness(10, 0, 0, 0) };
             var dock = new DockPanel();
             DockPanel.SetDock(zones, Dock.Left);
@@ -655,7 +703,8 @@ namespace CodeplugBuilder.Mac
 
         public override string Title => "Talkgroups in each zone";
         public override string Hint =>
-            "Each talkgroup on a repeater becomes a channel. Repeaters already bring the talkgroups they list on RadioID.net; tick more for a whole zone at once. " +
+            "Each talkgroup on a DMR repeater becomes a channel; FM repeaters are one channel each and need none. Repeaters already bring the talkgroups they list on " +
+            "RadioID.net (RepeaterBook lists none); tick more for a whole zone at once. " +
             "Quick start: pick a zone, click Starter set, then Copy ticked to all zones.";
 
         public override bool CanGoNext => State.Project != null && State.Project.ChannelCount() > 0;
@@ -667,10 +716,12 @@ namespace CodeplugBuilder.Mac
             loading = true;
             var p = State.Project;
             var used = p.UsedZoneNames();
-            rows = p.Zones.Where(z => used.Contains(z.Name) && p.TakesZoneTalkgroups(z.Name)).Select(z => new ZRow { Zone = z, P = p }).ToList();
+            // The same zones as the step before, FM-only ones too (they need no talkgroups, but they're part of the codeplug).
+            rows = p.Zones.Where(z => used.Contains(z.Name)).Select(z => new ZRow { Zone = z, P = p }).ToList();
             zones.ItemsSource = rows;
             loading = false;
-            if (rows.Count > 0) zones.SelectedItem = rows[0];
+            var first = rows.FirstOrDefault(r => p.TakesZoneTalkgroups(r.Name)) ?? rows.FirstOrDefault();
+            if (first != null) zones.SelectedItem = first;
             else editor.Bind(p, null);
         }
     }

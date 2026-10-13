@@ -68,6 +68,42 @@ namespace CodeplugBuilder.Mac
 namespace CodeplugBuilder.Mac
 {
     /// <summary>
+    /// <c>--repeaterbook-check answer.json out.png</c>: opens Repeaters > From RepeaterBook on an empty project with a saved
+    /// RepeaterBook answer (no download), saves a picture, adds the ticked repeaters and logs what was added.
+    /// </summary>
+    static class RepeaterBookCheck
+    {
+        public static void Run(Avalonia.Controls.Window host, string json, string png)
+        {
+            host.Opened += async (s, e) =>
+            {
+                var log = new System.Collections.Generic.List<string>();
+                try
+                {
+                    var session = new CodeplugBuilder.App.Session();
+                    session.Project.RadioIdName = "Test"; session.Project.RadioId = 1;
+                    var w = new RepeaterBookWindow(session);
+                    w.Show();
+                    string body = File.ReadAllText(json);
+                    var atlas = GeoAtlas.BuiltIn();
+                    w.LoadListings(RepeaterBookApi.ParseListings(body, RepeaterBookApi.DmrMode, null, null, atlas)
+                                   .Concat(RepeaterBookApi.ParseListings(body, RepeaterBookApi.AnalogMode, null, null, atlas)).ToList());
+                    await Task.Delay(800);
+                    var size = new PixelSize((int)w.Width, (int)w.Height);
+                    using (var bmp = new RenderTargetBitmap(size)) { bmp.Render(w); bmp.Save(png); }
+                    await w.AddPicked();
+                    var r = w.Result;
+                    log.Add("added " + (r?.Added.Count ?? 0) + ": " + string.Join("; ", (r?.Added ?? new System.Collections.Generic.List<Repeater>()).Select(x => x.Name + " " + (x.IsDigital ? "DMR CC" + x.ColorCode + " TGs " + x.Talkgroups.Count : "FM") + " zone " + x.Zone)));
+                    if (r != null) log.AddRange(r.Notes);
+                }
+                catch (Exception ex) { log.Add("ERROR " + ex); }
+                File.WriteAllLines(Path.ChangeExtension(png, ".log"), log);
+                host.Close();
+            };
+        }
+    }
+
+    /// <summary>
     /// <c>--addmap-check out.png</c>: opens Add from map on an empty project (region from the settings, set it with
     /// CODEPLUGBUILDER_SETTINGS), waits for the real RadioID/BrandMeister download, picks Tom Green County, saves a picture, logs.
     /// </summary>
@@ -159,9 +195,21 @@ namespace CodeplugBuilder.Mac
                     await Task.Delay(500);
                     log.Add("download: " + w.Data.Download?.Status + " (" + (w.Data.Download?.Repeaters.Count ?? 0) + " repeaters)");
                     log.Add("off the air (BrandMeister, over a year): " + w.Data.Download.Repeaters.Count(r => r.IsOffAir));
+                    string rbSample = Environment.GetEnvironmentVariable("CODEPLUGBUILDER_WALK_RB"); // a saved RepeaterBook answer to mix in (dev only, no network)
+                    if (!string.IsNullOrEmpty(rbSample))
+                    {
+                        string body = File.ReadAllText(rbSample);
+                        var rb = RepeaterBookApi.ParseListings(body, RepeaterBookApi.DmrMode, null, "Texas", atlas).Concat(RepeaterBookApi.ParseListings(body, RepeaterBookApi.AnalogMode, null, "Texas", atlas)).ToList();
+                        w.Data.Download.MarkRepeaterBook(new[] { "Texas" }, true);
+                        log.Add("RepeaterBook sample: " + rb.Count + " listings, " + w.Data.Download.AddRepeaterBook(rb).Count + " added");
+                        areas.Chooser.Reload();
+                    }
                     areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == "Tom Green County"));
                     areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == "Travis County" && c.Parent.Code == "US-TX"));
                     await Shot("3-areas");
+                    log.Add("RepeaterBook picked on step 3: " + areas.Chooser.Picked().Count(r => r.Source == RepeaterBookImport.Site) +
+                            "; Texas badge: " + areas.Chooser.Picker.Map.Badge?.Invoke(atlas.Find("US-TX")) + "; Tom Green badge: " +
+                            areas.Chooser.Picker.Map.Badge?.Invoke(atlas.Counties.First(c => c.Name == "Tom Green County")));
                     await w.PressNext();
 
                     // 4 zones
