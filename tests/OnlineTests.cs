@@ -176,7 +176,7 @@ namespace CodeplugBuilder.Tests
             Assert.Equal("Orleans Parish", RepeaterBookApi.CountyName("Orleans", "Louisiana"), "parish");
             Assert.Equal("Brown County", RepeaterBookApi.CountyName("Brown County", "Texas"), "already named");
             Assert.Equal("https://www.repeaterbook.com/api/export.php?state_id=08&mode=analog", RepeaterBookApi.ExportUrl(8, RepeaterBookApi.AnalogMode), "export URL: two-digit FIPS, one mode");
-            Assert.Equal(1, RepeaterBookApi.ParseListings("[" + RbExport.Substring(RbExport.IndexOf("{\"State ID\"", StringComparison.Ordinal)).Split('\n')[0].TrimEnd(',') + "]", RepeaterBookApi.AnalogMode).Count, "a bare array works too");
+            Assert.Equal(1, RepeaterBookApi.ParseListings("[" + RbExport.Substring(RbExport.IndexOf("{\"State ID\"", StringComparison.Ordinal)).Split('\n')[0].TrimEnd('\r', ',') + "]", RepeaterBookApi.AnalogMode).Count, "a bare array works too");
         }
 
         [Test]
