@@ -21,8 +21,9 @@ namespace CodeplugBuilder.App
         readonly Session session;
         readonly ComboBox cboPower;
         readonly ListView list;
+        readonly ListSorter sorter;
         readonly Label lblFile, lblStatus, lblToken;
-        readonly TextBox txtStates;
+        readonly TextBox txtStates, txtCounty, txtCity, txtCall, txtMHz;
         readonly CheckBox chkDmr, chkAnalog, chkStarter;
         readonly Button btnDownload, btnStop, btnAdd;
         readonly LinkLabel linkDetail;
@@ -48,8 +49,8 @@ namespace CodeplugBuilder.App
             MinimumSize = new Size(Ui.S(780), Ui.S(520));
             Padding = new Padding(Ui.S(10));
 
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 9 };
-            for (int i = 0; i < 9; i++) root.RowStyles.Add(i == 4 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.AutoSize));
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 10 };
+            for (int i = 0; i < 10; i++) root.RowStyles.Add(i == 5 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.AutoSize));
 
             root.Controls.Add(Ui.Hint("Download DMR and analog (FM) repeaters from RepeaterBook with your own RepeaterBook token, up to " +
                                       RepeaterBookApi.MaxStatesPerAction + " states at a time, then tick the ones you want. RepeaterBook doesn't list " +
@@ -72,8 +73,16 @@ namespace CodeplugBuilder.App
             btnStop.Enabled = false;
             root.Controls.Add(Ui.Row(Ui.Label("States (up to " + RepeaterBookApi.MaxStatesPerAction + ")"), txtStates, chkDmr, chkAnalog, btnDownload, btnStop), 0, 2);
 
+            // Optional terms inside those states (RepeaterBook's own search fields); Enter in any of them downloads.
+            txtCounty = SearchBox("e.g. Brown", 140);
+            txtCity = SearchBox("e.g. Brownwood", 140);
+            txtCall = SearchBox("e.g. W5* or K5ABC", 130);
+            txtMHz = SearchBox("e.g. 146.94", 90);
+            root.Controls.Add(Ui.Row(Ui.Label("Narrow it down (optional):"), Ui.Label("County"), txtCounty, Ui.Label("City"), txtCity,
+                                     Ui.Label("Callsign"), txtCall, Ui.Label("MHz"), txtMHz), 0, 3);
+
             lblFile = new Label { AutoSize = true, ForeColor = Ui.HintColor, Margin = new Padding(3, Ui.S(6), 3, 3), Text = "Type your states and click Download." };
-            root.Controls.Add(lblFile, 0, 3);
+            root.Controls.Add(lblFile, 0, 4);
 
             list = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, CheckBoxes = true, HideSelection = false, Margin = new Padding(3, 6, 3, 6) };
             Ui.DoubleBuffer(list);
@@ -86,17 +95,18 @@ namespace CodeplugBuilder.App
             list.Columns.Add("Color code / tone", Ui.S(130));
             list.Columns.Add("Use", Ui.S(70));
             list.Columns.Add("", Ui.S(220));
-            root.Controls.Add(list, 0, 4);
+            sorter = Ui.Sortable(list, Refill);
+            root.Controls.Add(list, 0, 5);
 
             // RepeaterBook's terms: the credit and a link wherever its data is shown, and each repeater's page when practical.
             var credit = new LinkLabel { Text = RepeaterBookApi.Attribution, AutoSize = true, Margin = new Padding(3, 0, Ui.S(16), Ui.S(4)) };
             credit.LinkClicked += (s, e) => RepeaterBookTokenDialog.Open(this, RepeaterBookApi.SiteUrl);
             linkDetail = new LinkLabel { Text = "Open the selected repeater on RepeaterBook", AutoSize = true, Enabled = false, Margin = new Padding(3, 0, 3, Ui.S(4)) };
             linkDetail.LinkClicked += (s, e) => OpenSelectedDetail();
-            root.Controls.Add(Ui.Row(credit, linkDetail), 0, 5);
+            root.Controls.Add(Ui.Row(credit, linkDetail), 0, 6);
 
             lblStatus = new Label { AutoSize = true, ForeColor = Ui.HintColor, Margin = new Padding(3, 0, 3, Ui.S(6)) };
-            root.Controls.Add(lblStatus, 0, 6);
+            root.Controls.Add(lblStatus, 0, 7);
 
             var opts = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, AutoSize = true, Margin = new Padding(0) };
             opts.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -120,7 +130,7 @@ namespace CodeplugBuilder.App
             opts.SetColumnSpan(optCity, 3);
             opts.Controls.Add(chkStarter, 0, 3);
             opts.SetColumnSpan(chkStarter, 3);
-            root.Controls.Add(opts, 0, 7);
+            root.Controls.Add(opts, 0, 8);
 
             var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = new Padding(0, Ui.S(8), 0, 0) };
             buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -131,7 +141,7 @@ namespace CodeplugBuilder.App
             right.Controls.Add(btnAdd);
             right.Controls.Add(cancel);
             buttons.Controls.Add(right, 1, 0);
-            root.Controls.Add(buttons, 0, 8);
+            root.Controls.Add(buttons, 0, 9);
             Controls.Add(root);
             CancelButton = cancel;
 
@@ -140,11 +150,19 @@ namespace CodeplugBuilder.App
             foreach (var opt in new[] { optOne, optCounty, optCity }) opt.CheckedChanged += (s, e) => UpdateStatus();
             // Windows raises ItemChecked for every item while the ListView creates its handle; ignore those.
             list.HandleCreated += (s, e) => { creatingHandle = true; list.BeginInvoke((Action)(() => creatingHandle = false)); };
-            list.ItemChecked += (s, e) => { if (!loading && !creatingHandle) UpdateStatus(); };
+            list.ItemChecked += (s, e) => { if (!loading && !creatingHandle && !sorter.Sorting) UpdateStatus(); };
             list.SelectedIndexChanged += (s, e) => linkDetail.Enabled = Selected()?.DetailUrl != null;
             list.DoubleClick += (s, e) => OpenSelectedDetail();
             FormClosed += (s, e) => downloadCancel?.Cancel();
             ShowToken();
+        }
+
+        TextBox SearchBox(string cue, int width)
+        {
+            var box = Ui.Text(cue);
+            box.Width = Ui.S(width);
+            box.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Download(); } };
+            return box;
         }
 
         OnlineRepeater Selected()
@@ -195,6 +213,8 @@ namespace CodeplugBuilder.App
             if (chkDmr.Checked) modes.Add(RepeaterBookApi.DmrMode);
             if (chkAnalog.Checked) modes.Add(RepeaterBookApi.AnalogMode);
             if (modes.Count == 0) { Ui.Error(this, "Tick DMR, Analog (FM), or both."); return; }
+            var query = RepeaterBookQuery.Parse(txtCounty.Text, txtCity.Text, txtCall.Text, txtMHz.Text, out string problem);
+            if (query == null) { Ui.Error(this, problem); return; }
             if (!RepeaterBookToken.IsSet) { RepeaterBookTokenDialog.Show(this); ShowToken(); if (!RepeaterBookToken.IsSet) return; }
             string blocked = Online.RepeaterBookBlocked();
             if (blocked != null) { Ui.Error(this, blocked); return; }
@@ -209,7 +229,7 @@ namespace CodeplugBuilder.App
             RepeaterBookDownload got = null;
             try
             {
-                got = await Online.RepeaterBookStatesAsync(states, modes, new Progress<string>(s => lblFile.Text = s), downloadCancel.Token);
+                got = await Online.RepeaterBookStatesAsync(states, modes, new Progress<string>(s => lblFile.Text = s), downloadCancel.Token, query);
             }
             catch (OperationCanceledException) { lblFile.Text = "Stopped."; }
             catch (Exception ex) { Ui.Error(this, "RepeaterBook download failed:\n\n" + ex.Message); }
@@ -220,7 +240,8 @@ namespace CodeplugBuilder.App
             }
             if (got == null || IsDisposed) return;
             if (got.Listings.Count > 0) LoadListings(got.Listings);
-            lblFile.Text = "From RepeaterBook: " + string.Join(" ", got.Notes) + (got.Listings.Count == 0 && got.Failure == null ? " Nothing to add." : "");
+            lblFile.Text = "From RepeaterBook" + (query.IsEmpty ? "" : " (" + query.Describe() + ")") + ": " + string.Join(" ", got.Notes) +
+                           (got.Listings.Count == 0 && got.Failure == null ? " Nothing matched." : "");
             if (got.Failure != null) Ui.Error(this, got.Failure.Message + (got.Listings.Count > 0 ? "\n\nWhat was downloaded before that is listed." : ""));
         }
 
@@ -275,6 +296,7 @@ namespace CodeplugBuilder.App
                 list.Items.Add(it);
             }
             list.EndUpdate();
+            sorter.Apply();
             loading = false;
             UpdateStatus();
         }

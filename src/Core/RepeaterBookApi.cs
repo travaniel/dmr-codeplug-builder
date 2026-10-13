@@ -52,9 +52,15 @@ namespace CodeplugBuilder.Core
         /// The repeaters of one mode (<see cref="AnalogMode"/> or <see cref="DmrMode"/>) in one US state (FIPS
         /// <paramref name="stateFips"/>), North America endpoint. Only the modes the radio uses are asked for.
         /// </summary>
-        public static string ExportUrl(int stateFips, string mode)
+        public static string ExportUrl(int stateFips, string mode, RepeaterBookQuery query = null)
         {
-            return SiteUrl + "/api/export.php?state_id=" + stateFips.ToString("00", CultureInfo.InvariantCulture) + "&mode=" + Uri.EscapeDataString(mode);
+            string url = SiteUrl + "/api/export.php?state_id=" + stateFips.ToString("00", CultureInfo.InvariantCulture) + "&mode=" + Uri.EscapeDataString(mode);
+            if (query == null) return url;
+            if (query.County.Length > 0) url += "&county=" + Uri.EscapeDataString(query.CountyBare);
+            if (query.City.Length > 0) url += "&city=" + Uri.EscapeDataString(query.City);
+            if (query.Callsign.Length > 0) url += "&callsign=" + Uri.EscapeDataString(query.CallsignPattern);
+            if (query.Frequency > 0) url += "&frequency=" + query.Frequency.ToString("0.0####", CultureInfo.InvariantCulture);
+            return url;
         }
 
         public const string AnalogMode = "analog";
@@ -290,6 +296,87 @@ namespace CodeplugBuilder.Core
                 return "Off";
             }
             return n;
+        }
+    }
+
+    /// <summary>
+    /// Optional search terms inside the chosen states (RepeaterBook's export takes county, city, callsign and frequency;
+    /// "%" is its wildcard). Empty = the whole state. <see cref="Matches"/> applies the same terms to the answer, so the
+    /// list is right even when the server ignores one.
+    /// </summary>
+    public sealed class RepeaterBookQuery
+    {
+        public string County { get; set; } = "";
+        public string City { get; set; } = "";
+        public string Callsign { get; set; } = "";
+        /// <summary>Output or input frequency in MHz; 0 = any.</summary>
+        public decimal Frequency { get; set; }
+
+        public bool IsEmpty => County.Length == 0 && City.Length == 0 && Callsign.Length == 0 && Frequency <= 0;
+
+        /// <summary>"Brown County" → "Brown" (RepeaterBook's county names have no suffix).</summary>
+        public string CountyBare => System.Text.RegularExpressions.Regex.Replace(County.Trim(), @"\s+(County|Parish|Borough|Co\.?)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>A callsign as a prefix search ("W5" → "W5%"), unless it has its own wildcard.</summary>
+        public string CallsignPattern => Callsign.Contains("%") ? Callsign.ToUpperInvariant() : Callsign.ToUpperInvariant() + "%";
+
+        /// <summary>Reads the typed terms; null with <paramref name="problem"/> set when one can't be used.</summary>
+        public static RepeaterBookQuery Parse(string county, string city, string callsign, string frequency, out string problem)
+        {
+            problem = null;
+            var q = new RepeaterBookQuery
+            {
+                County = (county ?? "").Trim(),
+                City = (city ?? "").Trim(),
+                Callsign = (callsign ?? "").Trim().Replace("*", "%"),
+            };
+            string f = (frequency ?? "").Trim();
+            if (f.Length > 0)
+            {
+                if (!decimal.TryParse(f, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal mhz) || mhz < 1 || mhz > 10000)
+                {
+                    problem = "Type the frequency in MHz, like 146.94";
+                    return null;
+                }
+                q.Frequency = mhz;
+            }
+            if (q.Callsign.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(q.Callsign, @"^[A-Za-z0-9/%]{1,12}$"))
+            {
+                problem = "A callsign has letters and numbers only (use * for \"anything\", like W5*).";
+                return null;
+            }
+            return q;
+        }
+
+        /// <summary>True when a listing fits the terms (case-insensitive; the callsign as a prefix or with % wildcards; frequency to 1 kHz).</summary>
+        public bool Matches(OnlineRepeater r)
+        {
+            if (County.Length > 0)
+            {
+                string want = CountyBare;
+                string have = r.Analog != null ? r.Analog.County : r.Location?.County?.Name ?? "";
+                have = System.Text.RegularExpressions.Regex.Replace(have, @"\s+(County|Parish|Borough)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!string.Equals(have, want, StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            if (City.Length > 0 && (r.City ?? "").IndexOf(City.Replace("%", ""), StringComparison.OrdinalIgnoreCase) < 0) return false;
+            if (Callsign.Length > 0)
+            {
+                string rx = "^" + System.Text.RegularExpressions.Regex.Escape(CallsignPattern).Replace("%", ".*") + "$";
+                if (!System.Text.RegularExpressions.Regex.IsMatch(r.Callsign ?? "", rx, System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return false;
+            }
+            if (Frequency > 0 && Math.Abs(r.RxMHz - Frequency) > 0.0005m && Math.Abs(r.TxMHz - Frequency) > 0.0005m) return false;
+            return true;
+        }
+
+        /// <summary>"in Brown County, callsign W5*", for status lines; "" when empty.</summary>
+        public string Describe()
+        {
+            var parts = new List<string>();
+            if (County.Length > 0) parts.Add(CountyBare + " County");
+            if (City.Length > 0) parts.Add("near " + City);
+            if (Callsign.Length > 0) parts.Add("callsign " + CallsignPattern.Replace("%", "*"));
+            if (Frequency > 0) parts.Add(Frequency.ToString("0.0####", CultureInfo.InvariantCulture) + " MHz");
+            return string.Join(", ", parts);
         }
     }
 

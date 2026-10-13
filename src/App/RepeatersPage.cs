@@ -13,6 +13,7 @@ namespace CodeplugBuilder.App
     {
         readonly Session session;
         readonly ListView list;
+        readonly ListSorter sorter;
         readonly ComboBox cboFilter;
         readonly RepeaterEditor editor;
         readonly Label lblEmpty;
@@ -70,6 +71,9 @@ namespace CodeplugBuilder.App
             list.Columns.Add("RX MHz", Ui.S(68), HorizontalAlignment.Right);
             list.Columns.Add("From home", Ui.S(78));
             left.Controls.Add(list, 0, 2);
+            // Click a header to sort; Up/Down change the real order, so they wait until the sort is off.
+            sorter = Ui.Sortable(list, () => Reload(Selected));
+            sorter.Changed += (s, e) => btnUp.Enabled = btnDown.Enabled = Filter == null && !sorter.Active;
 
             btnUp = Ui.Button("Up", (s, e) => MoveItem(-1));
             btnDown = Ui.Button("Down", (s, e) => MoveItem(1));
@@ -115,7 +119,7 @@ namespace CodeplugBuilder.App
             list.HandleCreated += (s, e) => { creatingHandle = true; list.BeginInvoke((Action)(() => creatingHandle = false)); };
             list.ItemChecked += (s, e) =>
             {
-                if (loading || creatingHandle) return;
+                if (loading || creatingHandle || sorter.Sorting) return;
                 var r = e.Item.Tag as Repeater;
                 if (r == null || r.Enabled == e.Item.Checked) return;
                 r.Enabled = e.Item.Checked;
@@ -169,10 +173,11 @@ namespace CodeplugBuilder.App
                     if (r == select) { item.Selected = true; item.Focused = true; }
                 }
                 list.EndUpdate();
+                sorter.Apply();
                 if (list.SelectedItems.Count == 0 && list.Items.Count > 0 && select == null && editor.Repeater == null)
                     list.Items[0].Selected = true;
                 if (list.SelectedItems.Count > 0) list.SelectedItems[0].EnsureVisible();
-                btnUp.Enabled = btnDown.Enabled = filter == null;
+                btnUp.Enabled = btnDown.Enabled = filter == null && !sorter.Active;
             }
             finally { loading = false; }
             BindSelected();
@@ -341,7 +346,7 @@ namespace CodeplugBuilder.App
         void MoveItem(int delta)
         {
             var r = Selected;
-            if (r == null || Filter != null) return;
+            if (r == null || Filter != null || sorter.Active) return;
             var all = session.Project.Repeaters;
             int i = all.IndexOf(r), j = i + delta;
             if (j < 0 || j >= all.Count) return;

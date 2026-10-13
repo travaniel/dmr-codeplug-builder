@@ -97,6 +97,18 @@ namespace CodeplugBuilder.App
                         return 0;
                     }
                     var counties = new List<string> { "Tom Green County", "Taylor County", "Lubbock County" };
+                    // With a RepeaterBook token, the picked states arrive by themselves after the download: wait for them (up to a minute).
+                    for (int w = 0; w < 600 && RepeaterBookToken.IsSet && (wiz.State.Download.RepeaterBookBusy || wiz.State.Download.RepeaterBookNote == null); w++) Pump(100);
+                    if (RepeaterBookToken.IsSet) { areas.Chooser.Reload(); log.Add("RepeaterBook (live): " + wiz.State.Download.RepeaterBookNote + " / listings in download: " + wiz.State.Download.Repeaters.Count(r => r.Source == RepeaterBookImport.Site)); }
+                    string rbSample = Environment.GetEnvironmentVariable("CODEPLUGBUILDER_WALK_RB"); // a saved RepeaterBook answer to mix in (dev only, no network)
+                    if (!string.IsNullOrEmpty(rbSample))
+                    {
+                        string body = File.ReadAllText(rbSample);
+                        var rb = RepeaterBookApi.ParseListings(body, RepeaterBookApi.DmrMode, null, "Texas", atlas).Concat(RepeaterBookApi.ParseListings(body, RepeaterBookApi.AnalogMode, null, "Texas", atlas)).ToList();
+                        wiz.State.Download.MarkRepeaterBook(new[] { "Texas" }, true);
+                        log.Add("RepeaterBook sample: " + rb.Count + " listings, " + wiz.State.Download.AddRepeaterBook(rb).Count + " added");
+                        areas.Chooser.Reload();
+                    }
                     foreach (var county in counties)
                         areas.Chooser.Picker.Map.ClickArea(atlas.Counties.First(c => c.Name == county && c.ParentCode == "US-TX"));
                     areas.Chooser.Picker.Map.ZoomToAreas(new[] { atlas.Find("US-TX") });
@@ -110,13 +122,25 @@ namespace CodeplugBuilder.App
                     var zones = (ZonesStep)wiz.Current;
                     Shot("zones");
                     var p = wiz.State.Project;
+                    var rbPicked = wiz.State.Picked.Where(r => r.Source == RepeaterBookImport.Site).ToList();
+                    log.Add("RepeaterBook picked on step 3: " + rbPicked.Count + " (" + rbPicked.Count(r => r.IsAnalog) + " FM); in the project after step 3: " +
+                            p.Repeaters.Count(r => (r.Notes ?? "").StartsWith(RepeaterBookImport.Site)) + " (" + p.Repeaters.Count(r => !r.IsDigital) + " analog in all)");
+                    log.AddRange(wiz.State.Notes.Select(x => "note: " + (x.Length > 300 ? x.Substring(0, 300) : x)));
                     log.Add("zones: " + string.Join(", ", p.Zones.Select(z => z.Name + " (" + p.ZoneChannelCount(z.Name) + ")")) + "; scheme " + wiz.State.Scheme);
+                    string scheme = Environment.GetEnvironmentVariable("CODEPLUGBUILDER_WALK_SCHEME"); // e.g. City: regroup on step 4 like a user would
+                    if (!string.IsNullOrEmpty(scheme))
+                    {
+                        zones.Choose((ZoneScheme)Enum.Parse(typeof(ZoneScheme), scheme));
+                        Shot("zones-regrouped");
+                        log.Add("regrouped (" + scheme + "): " + string.Join(", ", p.Zones.Select(z => z.Name + " (" + p.ZoneChannelCount(z.Name) + ")")));
+                    }
                     log.Add("talkgroups from BrandMeister: " + string.Join(", ", wiz.State.Picked.Where(r => r.TalkgroupSource != null).Select(r => r.Callsign + " " + string.Join("/", r.Talkgroups.Select(t => t.Id + ":" + t.Slot)))) +
                             "; from RadioID.net: " + wiz.State.Picked.Count(r => r.TalkgroupSource == null && r.Talkgroups.Count > 0) + "; none listed: " + wiz.State.Picked.Count(r => r.Talkgroups.Count == 0));
                     wiz.PressNext();
 
                     var tgs = (ZoneTalkgroupsStep)wiz.Current;
                     Shot("zone-talkgroups-before");
+                    log.Add("step 5 zones listed: " + tgs.ZoneCount + "; editor zone: " + (tgs.Editor.Zone ?? "(none)"));
                     int before = p.ChannelCount();
                     tgs.Editor.PressStarterSet();
                     foreach (var z in p.Zones.Where(z => z.Name != tgs.Editor.Zone && p.ZoneRepeaters(z.Name).Count > 0).ToList())
@@ -405,6 +429,12 @@ namespace CodeplugBuilder.App
     /// </summary>
     static class RepeaterBookSnapshot
     {
+        static ListView FindList(Control c)
+        {
+            foreach (Control x in c.Controls) { if (x is ListView l) return l; var f = FindList(x); if (f != null) return f; }
+            return null;
+        }
+
         public static int Run(string projectPath, string json, string folder)
         {
             Directory.CreateDirectory(folder);
@@ -427,6 +457,16 @@ namespace CodeplugBuilder.App
                     {
                         d.DrawToBitmap(bmp, new Rectangle(Point.Empty, d.Size));
                         bmp.Save(Path.Combine(folder, "repeaterbook-dialog.png"), ImageFormat.Png);
+                    }
+                    // Click "Output MHz" twice: sorted highest first (header shows the arrow).
+                    var lv = FindList(d);
+                    var click = typeof(ListView).GetMethod("OnColumnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    for (int c = 0; c < 2; c++) click.Invoke(lv, new object[] { new ColumnClickEventArgs(4) });
+                    log.Add("sorted by " + lv.Columns[4].Text + ": " + string.Join(", ", lv.Items.Cast<ListViewItem>().Select(i => i.SubItems[4].Text)));
+                    using (var bmp = new Bitmap(d.Width, d.Height))
+                    {
+                        d.DrawToBitmap(bmp, new Rectangle(Point.Empty, d.Size));
+                        bmp.Save(Path.Combine(folder, "repeaterbook-sorted.png"), ImageFormat.Png);
                     }
                     var adding = d.AddPicked();
                     while (!adding.IsCompleted) { Application.DoEvents(); Thread.Sleep(15); }

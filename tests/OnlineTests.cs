@@ -180,6 +180,25 @@ namespace CodeplugBuilder.Tests
         }
 
         [Test]
+        static void RepeaterBookSearchInsideAState()
+        {
+            var q = RepeaterBookQuery.Parse("Brown County", "", "k0t", "444.7", out string problem);
+            Assert.True(q != null && problem == null, "parses");
+            Assert.Equal("https://www.repeaterbook.com/api/export.php?state_id=48&mode=analog&county=Brown&callsign=K0T%25&frequency=444.7",
+                         RepeaterBookApi.ExportUrl(48, RepeaterBookApi.AnalogMode, q), "county without suffix, callsign as a prefix, frequency");
+            Assert.Equal("https://www.repeaterbook.com/api/export.php?state_id=48&mode=DMR", RepeaterBookApi.ExportUrl(48, RepeaterBookApi.DmrMode, new RepeaterBookQuery()), "empty: the whole state");
+
+            var all = RepeaterBookApi.ParseListings(RbExport, RepeaterBookApi.AnalogMode, null, null, GeoAtlas.BuiltIn());
+            Assert.Equal("K0TSTA", string.Join(",", all.Where(q.Matches).Select(r => r.Callsign)), "county + callsign prefix + output frequency");
+            Assert.Equal(1, all.Count(RepeaterBookQuery.Parse("", "", "", "146.34", out _).Matches), "input frequency matches too");
+            Assert.Equal(1, all.Count(RepeaterBookQuery.Parse("", "brownw", "", "", out _).Matches), "city: part of the name");
+            Assert.Equal(1, all.Count(RepeaterBookQuery.Parse("", "", "*DCS", "", out _).Matches), "* as a wildcard");
+            Assert.True(RepeaterBookQuery.Parse("", "", "", "abc", out problem) == null && problem.Contains("MHz"), "bad frequency explained");
+            Assert.True(RepeaterBookQuery.Parse("", "", "K5 ABC", "", out problem) == null, "spaces aren't a callsign");
+            Assert.Equal("Brown County, callsign K0T*, 444.7 MHz", q.Describe(), "status text");
+        }
+
+        [Test]
         static void RepeaterBookErrorsStopTheRightWay()
         {
             Assert.Equal(RepeaterBookFailureKind.RateLimited, RepeaterBookApi.Classify(429, "").Kind, "429 backs off");

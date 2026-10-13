@@ -261,7 +261,15 @@ namespace CodeplugBuilder.App
             int max = Math.Max(1, project.Options.MaxZoneChannels);
             int total = project.ChannelCount();
             int bare = reps.Count(r => r.Talkgroups.Count == 0);
-            string text = reps.Count + " DMR repeater" + (reps.Count == 1 ? "" : "s") + " in this zone, " + chans + " channel" + (chans == 1 ? "" : "s") +
+            int fm = project.ActiveRepeaters().Count(r => !r.IsDigital && Project.SameZone(r.Zone, zone));
+            if (reps.Count == 0 && fm > 0)
+            {
+                lblCount.Text = "This zone has only FM (analog) repeaters: " + fm + " channel" + (fm == 1 ? "" : "s") + ", no talkgroups needed.   Whole codeplug: " +
+                                total + " of " + project.Options.MaxChannels + " channels.";
+                lblCount.ForeColor = total > project.Options.MaxChannels ? Color.Firebrick : Ui.HintColor;
+                return;
+            }
+            string text = reps.Count + " DMR repeater" + (reps.Count == 1 ? "" : "s") + (fm > 0 ? " and " + fm + " FM" : "") + " in this zone, " + chans + " channel" + (chans == 1 ? "" : "s") +
                           (chans > max ? " (more than " + max + ": the radio gets it as " + ((chans + max - 1) / max) + " zones)" : "") +
                           ".   Whole codeplug: " + total + " of " + project.Options.MaxChannels + " channels.";
             if (bare > 0) text += "\n" + bare + " repeater" + (bare == 1 ? " has" : "s have") + " no talkgroups yet, so no channels: tick or add some here.";

@@ -13,7 +13,7 @@ namespace CodeplugBuilder.App
     /// country is fetched, because state names there are free text. Results are kept for the rest of the run,
     /// so Repeaters > Add from map doesn't download a region twice.
     /// </summary>
-    sealed class RegionDownload
+    sealed partial class RegionDownload
     {
         static readonly Dictionary<string, List<OnlineRepeater>> cache = new Dictionary<string, List<OnlineRepeater>>(StringComparer.OrdinalIgnoreCase);
         static readonly object cacheLock = new object();
@@ -155,6 +155,7 @@ namespace CodeplugBuilder.App
                 {
                     Done = true;
                     Report(Summary());
+                    ui.Post(_ => DownloadDone(), null);
                 }
             }
             // The user can pick now; which BrandMeister repeaters are off the air follows in the background.
@@ -210,6 +211,9 @@ namespace CodeplugBuilder.App
             public StatusProgress(Action<string> report) { this.report = report; }
             public void Report(string value) { report(value); }
         }
+
+        /// <summary>Runs on the UI thread once the download is done (Windows: RepeaterBook for the picked states).</summary>
+        partial void DownloadDone();
 
         static bool Same(OnlineRepeater a, OnlineRepeater b)
         {

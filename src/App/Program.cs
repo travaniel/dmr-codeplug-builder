@@ -43,7 +43,10 @@ namespace CodeplugBuilder.App
                 {
                     // Dev check: one state with the token saved in the RepeaterBook dialog; writes field names and two listings, no token.
                     string report;
-                    try { report = Online.RepeaterBookSample(args[i + 1]); } catch (Exception ex) { report = "Error: " + ex.Message; }
+                    // Optional search terms after the file: county, city, callsign, MHz ("" to skip one).
+                    string Arg(int k) { return i + k < args.Length ? args[i + k] : ""; }
+                    var query = RepeaterBookQuery.Parse(Arg(3), Arg(4), Arg(5), Arg(6), out _);
+                    try { report = Online.RepeaterBookSample(args[i + 1], query); } catch (Exception ex) { report = "Error: " + ex.Message; }
                     File.WriteAllText(args[i + 2], report);
                     return 0;
                 }

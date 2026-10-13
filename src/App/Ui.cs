@@ -210,6 +210,16 @@ namespace CodeplugBuilder.App
             DoubleBuffer(g);
         }
 
+        /// <summary>
+        /// Click a column header to sort the list by it, again to reverse, a third time for the list's own order
+        /// (<paramref name="unsorted"/> refills it). Numbers sort as numbers ("9 mi" before "148 mi"); empty cells go last.
+        /// Call <see cref="ListSorter.Apply"/> after refilling the list.
+        /// </summary>
+        public static ListSorter Sortable(ListView list, Action unsorted = null)
+        {
+            return new ListSorter(list, unsorted);
+        }
+
         /// <summary>Turns on double buffering for controls that flicker when repainted often.</summary>
         public static void DoubleBuffer(Control c)
         {

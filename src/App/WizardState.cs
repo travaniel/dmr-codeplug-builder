@@ -98,6 +98,8 @@ namespace CodeplugBuilder.App
             if (Noaa) Presets.AddNoaaWeather(p);
             SortZones(p);
             Notes = result.Notes;
+            if (Picked.Any(r => r.Source == RepeaterBookImport.Site))
+                Notes.Add("Repeaters marked RepeaterBook in their notes: " + RepeaterBookApi.Attribution + " (" + RepeaterBookApi.SiteUrl + ")");
             Project = p;
         }
 

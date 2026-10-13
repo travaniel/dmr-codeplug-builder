@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using CodeplugBuilder.Core;
 
@@ -17,8 +18,10 @@ namespace CodeplugBuilder.App
         public readonly RegionPicker Picker;
         readonly TabControl tabs;
         readonly ListView list;
+        readonly ListSorter sorter;
         readonly TextBox txtFilter;
         readonly Label lblSummary, lblWaiting;
+        readonly LinkLabel lblSources, lblRepeaterBook;
         readonly HashSet<OnlineRepeater> manualOn = new HashSet<OnlineRepeater>(), manualOff = new HashSet<OnlineRepeater>();
         readonly Dictionary<GeoArea, int> counts = new Dictionary<GeoArea, int>();
         RegionDownload download;
@@ -59,6 +62,7 @@ namespace CodeplugBuilder.App
             list.Columns.Add("Network", Ui.S(110));
             list.Columns.Add("Talkgroups listed", Ui.S(110), HorizontalAlignment.Right);
             list.Columns.Add("", Ui.S(180));
+            sorter = Ui.Sortable(list, Refill);
             var listPage = new TabPage("List") { UseVisualStyleBackColor = true, Padding = new Padding(Ui.S(4)) };
             listPage.Controls.Add(list);
             listPage.Controls.Add(filterRow);
@@ -68,8 +72,24 @@ namespace CodeplugBuilder.App
             lblSummary = new Label { Dock = DockStyle.Bottom, AutoSize = false, Height = Ui.S(26), Font = Ui.BoldFont, TextAlign = ContentAlignment.MiddleLeft };
             lblWaiting = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Ui.HintColor, Visible = false };
 
+            // Where the listings come from, with links (RepeaterBook's terms: the credit and a link wherever its data is shown).
+            lblSources = Links("Repeaters from RadioID.net and BrandMeister (DMR repeaters and their talkgroups) and RepeaterBook (analog FM repeaters, and DMR ones " +
+                               "RadioID.net doesn't list). " + RepeaterBookApi.Attribution,
+                               new[] { "RadioID.net", "https://radioid.net" }, new[] { "BrandMeister", "https://brandmeister.network" },
+                               new[] { "RepeaterBook", RepeaterBookApi.SiteUrl }, new[] { "RepeaterBook.com", RepeaterBookApi.SiteUrl });
+            lblRepeaterBook = new LinkLabel { Dock = DockStyle.Bottom, AutoSize = false, Height = Ui.S(24), TextAlign = ContentAlignment.MiddleLeft, ForeColor = Ui.HintColor };
+            lblRepeaterBook.LinkClicked += (s, e) =>
+            {
+                if (!RepeaterBookTokenDialog.Show(FindForm())) return;
+                ShowRepeaterBook();
+                download?.FetchRegionRepeaterBook();
+                FetchRepeaterBook();
+            };
+
             Controls.Add(tabs);
             Controls.Add(lblWaiting);
+            Controls.Add(lblRepeaterBook);
+            Controls.Add(lblSources);
             Controls.Add(lblSummary);
             tabs.BringToFront();
 
@@ -81,7 +101,7 @@ namespace CodeplugBuilder.App
             list.HandleCreated += (s, e) => { creatingHandle = true; list.BeginInvoke((Action)(() => creatingHandle = false)); };
             list.ItemChecked += (s, e) =>
             {
-                if (loading || creatingHandle) return;
+                if (loading || creatingHandle || sorter.Sorting) return;
                 var r = (OnlineRepeater)e.Item.Tag;
                 if (InProject(r)) { loading = true; e.Item.Checked = false; loading = false; return; }
                 SetPicked(r, e.Item.Checked);
@@ -114,7 +134,9 @@ namespace CodeplugBuilder.App
         {
             all = download == null ? new List<OnlineRepeater>() : download.Repeaters.Where(r => r.InRadioBand && InScope(r)).ToList();
             counts.Clear();
-            foreach (var r in all.Where(x => !x.IsAnalog)) // badges count DMR repeaters from RadioID.net and BrandMeister only
+            // Badges count every repeater in an area ("18 repeaters"), RepeaterBook's too (only ones a click takes: not the off-air
+            // ones). RepeaterBook rows are counted, never drawn as dots.
+            foreach (var r in all.Where(x => !FromRepeaterBook(x) || Takeable(x)))
             {
                 var loc = r.Location ?? GeoLocation.Unknown;
                 foreach (var a in new[] { loc.Country, loc.State, loc.County })
@@ -129,6 +151,7 @@ namespace CodeplugBuilder.App
             UpdateMap();
             if (tabs.SelectedIndex == 1) Refill();
             UpdateSummary();
+            ShowRepeaterBook();
         }
 
         /// <summary>Areas inside the downloaded region (an area, or anything within it).</summary>
@@ -166,14 +189,24 @@ namespace CodeplugBuilder.App
         public bool IsPicked(OnlineRepeater r)
         {
             if (InProject(r) || manualOff.Contains(r)) return false;
-            return manualOn.Contains(r) || (InPickedArea(r) && !r.IsOffAir); // off-air repeaters only when ticked one by one
+            return manualOn.Contains(r) || (InPickedArea(r) && Takeable(r)); // off-air repeaters only when ticked one by one
+        }
+
+        static bool FromRepeaterBook(OnlineRepeater r) { return r.Source == RepeaterBookImport.Site; }
+
+        /// <summary>Taken by area clicks: not off the air (BrandMeister's health check or RepeaterBook's status), and addable.</summary>
+        static bool Takeable(OnlineRepeater r)
+        {
+            if (r.IsOffAir) return false;
+            if (FromRepeaterBook(r) && (r.Status == "OFF-AIR" || (r.Analog != null && RepeaterBookImport.Problem(r.Analog) != null))) return false;
+            return true;
         }
 
         void SetPicked(OnlineRepeater r, bool on)
         {
             manualOn.Remove(r);
             manualOff.Remove(r);
-            bool byArea = InPickedArea(r) && !r.IsOffAir;
+            bool byArea = InPickedArea(r) && Takeable(r);
             if (on && !byArea) manualOn.Add(r);
             if (!on && byArea) manualOff.Add(r);
         }
@@ -199,6 +232,71 @@ namespace CodeplugBuilder.App
             manualOn.RemoveWhere(Inside);
             manualOff.RemoveWhere(Inside);
             Changed();
+            FetchRepeaterBook();
+        }
+
+        /// <summary>
+        /// RepeaterBook for the US states of the clicked areas that the download doesn't have yet, with the user's own token:
+        /// each click is the user's request, up to <see cref="RepeaterBookApi.MaxStatesPerAction"/> states a batch, one batch at
+        /// a time. Areas already clicked take the new listings at once (<see cref="Reload"/> follows the download's Changed).
+        /// </summary>
+        async void FetchRepeaterBook()
+        {
+            var d = download;
+            if (d == null || !d.Done) return;
+            if (!RepeaterBookToken.IsSet) { ShowRepeaterBook(); return; }
+            var states = RegionDownload.UsStates(Picker.Map.Selected).Where(s => !d.HasRepeaterBook(s)).ToList();
+            if (states.Count == 0)
+            {
+                if (Picker.Map.Selected.Any(a => a.Level == AreaLevel.Country && a.CountryCode == "US") && !d.RepeaterBookBusy)
+                    SetLine("RepeaterBook: click states or counties (not the whole country) to bring in its repeaters.", null);
+                return;
+            }
+            if (d.RepeaterBookBusy) return; // this runs again when that batch is done
+            bool ok = await d.FetchRepeaterBookAsync(states);
+            if (IsDisposed || d != download) return;
+            Reload();
+            PickedChanged?.Invoke(this, EventArgs.Empty);
+            if (ok) FetchRepeaterBook(); // areas clicked while that ran
+        }
+
+        /// <summary>The RepeaterBook line under the map: the download's last news, else how to turn it on.</summary>
+        void ShowRepeaterBook()
+        {
+            const string add = "Add your RepeaterBook token";
+            if (!RepeaterBookToken.IsSet)
+                SetLine("RepeaterBook: " + add + " to also bring in analog (FM) repeaters, and DMR ones RadioID.net doesn't list, for your states.", add);
+            else
+                SetLine(download?.RepeaterBookNote ?? "RepeaterBook: clicking a state or county also brings in its analog (FM) repeaters, and DMR ones RadioID.net doesn't list.", null);
+        }
+
+        /// <summary>
+        /// Sets the RepeaterBook line, with <paramref name="link"/> (if any) as its only link. Setting a LinkLabel's text makes
+        /// all of it one link, so the links are reset after the text.
+        /// </summary>
+        void SetLine(string text, string link)
+        {
+            if (lblRepeaterBook.InvokeRequired) { lblRepeaterBook.BeginInvoke((Action)(() => SetLine(text, link))); return; }
+            lblRepeaterBook.Text = text;
+            lblRepeaterBook.Links.Clear();
+            int i = link == null ? -1 : text.IndexOf(link, StringComparison.Ordinal);
+            if (i >= 0) lblRepeaterBook.Links.Add(i, link.Length);
+        }
+        /// <summary>A label with some words linked to web pages: pairs of { text, url }.</summary>
+        static LinkLabel Links(string text, params string[][] links)
+        {
+            var l = new LinkLabel { Dock = DockStyle.Bottom, AutoSize = false, Height = Ui.S(24), TextAlign = ContentAlignment.MiddleLeft, Text = text };
+            l.Links.Clear();
+            int from = 0;
+            foreach (var pair in links)
+            {
+                int i = text.IndexOf(pair[0], from, StringComparison.Ordinal);
+                if (i < 0) continue;
+                l.Links.Add(i, pair[0].Length, pair[1]);
+                from = i + pair[0].Length;
+            }
+            l.LinkClicked += (s, e) => { if (e.Link.LinkData is string url) RepeaterBookTokenDialog.Open(l.FindForm(), url); };
+            return l;
         }
 
         string Badge(GeoArea a)
@@ -226,8 +324,8 @@ namespace CodeplugBuilder.App
 
         void UpdateMap()
         {
-            // RepeaterBook (analog) rows are listed on the List tab only, never drawn on the map.
-            Picker.Map.Dots = all.Where(r => !r.IsAnalog && r.Location?.Lat != null)
+            // RepeaterBook rows are listed on the List tab only, never drawn on the map (no map of RepeaterBook data).
+            Picker.Map.Dots = all.Where(r => !FromRepeaterBook(r) && r.Location?.Lat != null)
                                  .Select(r => new MapDot { Lon = r.Location.Lon.Value, Lat = r.Location.Lat.Value, Highlight = IsPicked(r), Analog = r.IsAnalog, OffAir = r.IsOffAir, Tag = r })
                                  .ToList();
         }
@@ -238,7 +336,7 @@ namespace CodeplugBuilder.App
             int listed = picked.Sum(r => r.Talkgroups.Count);
             int already = all.Count(InProject);
             int unplaced = all.Count(r => r.Location == null || r.Location.Lat == null);
-            int offAir = all.Count(r => r.IsOffAir && !IsPicked(r) && !InProject(r));
+            int offAir = all.Count(r => !Takeable(r) && !IsPicked(r) && !InProject(r));
             string offAirText = offAir == 0 ? "" : "   " + offAir + " look off the air (grey) and aren't taken by clicks.";
             if (picked.Count == 0 && all.Count > 0)
             {
@@ -257,7 +355,8 @@ namespace CodeplugBuilder.App
         string Status(OnlineRepeater r)
         {
             if (InProject(r)) return "in your project";
-            string off = r.IsOffAir ? "off the air since " + r.OffAirSince.Value.Year.ToString(CultureInfo.InvariantCulture) : "";
+            string off = r.IsOffAir ? "off the air since " + r.OffAirSince.Value.Year.ToString(CultureInfo.InvariantCulture)
+                       : FromRepeaterBook(r) && !Takeable(r) ? (r.Status == "OFF-AIR" ? "off the air (RepeaterBook)" : RepeaterBookImport.Problem(r.Analog)) : "";
             return IsPicked(r) ? (off.Length > 0 ? "picked (" + off + ")" : "picked") : off;
         }
 
@@ -296,14 +395,15 @@ namespace CodeplugBuilder.App
                     item.SubItems.Add(Where(r));
                     item.SubItems.Add(r.RxMHz.ToString("0.0000", CultureInfo.InvariantCulture));
                     item.SubItems.Add(r.IsAnalog ? "" : r.ColorCode.ToString(CultureInfo.InvariantCulture));
-                    item.SubItems.Add(r.IsAnalog ? "FM (analog)" : r.Network);
+                    item.SubItems.Add(r.IsAnalog ? "FM, RepeaterBook" : FromRepeaterBook(r) ? "DMR, RepeaterBook" : r.Network);
                     item.SubItems.Add(r.IsAnalog ? "" : r.Talkgroups.Count == 0 ? "none" : r.Talkgroups.Count.ToString(CultureInfo.InvariantCulture) + (r.TalkgroupSource != null ? " (" + r.TalkgroupSource + ")" : ""));
                     if (r.IsAnalog && !InProject(r)) item.ForeColor = Color.FromArgb(20, 110, 55);
                     item.SubItems.Add(Status(r));
-                    if (InProject(r) || (r.IsOffAir && !IsPicked(r))) item.ForeColor = SystemColors.GrayText;
+                    if (InProject(r) || (!Takeable(r) && !IsPicked(r))) item.ForeColor = SystemColors.GrayText;
                     list.Items.Add(item);
                 }
                 list.EndUpdate();
+                sorter.Apply();
             }
             finally { loading = false; }
         }

@@ -94,7 +94,8 @@ namespace CodeplugBuilder.App
         /// time, spaced and capped by <see cref="RequestBudget"/>. Stops at once on a 429 (and waits before any later request) or
         /// a refusal (not sent again with the same token). Results are only returned, never stored.
         /// </summary>
-        public static Task<RepeaterBookDownload> RepeaterBookStatesAsync(IList<string> states, IList<string> modes, IProgress<string> progress, CancellationToken cancel)
+        public static Task<RepeaterBookDownload> RepeaterBookStatesAsync(IList<string> states, IList<string> modes, IProgress<string> progress, CancellationToken cancel,
+                                                                        RepeaterBookQuery query = null)
         {
             return Task.Run(() =>
             {
@@ -114,12 +115,13 @@ namespace CodeplugBuilder.App
                             cancel.ThrowIfCancellationRequested();
                             string what = mode == RepeaterBookApi.DmrMode ? "DMR" : "analog";
                             progress?.Report("Asking RepeaterBook for " + what + " repeaters in " + state + "...");
-                            string body = Fetch(RepeaterBookApi.ExportUrl(fips, mode), cancel, out var failure);
+                            string body = Fetch(RepeaterBookApi.ExportUrl(fips, mode, query), cancel, out var failure);
                             if (failure != null) { result.Failure = failure; return result; }
                             var notes = new List<string>();
                             List<OnlineRepeater> found;
                             try { found = RepeaterBookApi.ParseListings(body, mode, notes, state, atlas); }
                             catch (Exception ex) { result.Failure = new RepeaterBookFailure { Message = "RepeaterBook's answer for " + state + " couldn't be read (" + ex.Message + ")." }; return result; }
+                            if (query != null && !query.IsEmpty) found = found.Where(query.Matches).ToList(); // in case the server ignored a term
                             result.Listings.AddRange(found);
                             result.Notes.Add(state + ": " + found.Count + " " + what + (notes.Count > 0 ? " (" + string.Join(" ", notes) + ")" : "") + ".");
                         }
@@ -227,7 +229,7 @@ namespace CodeplugBuilder.App
         /// two listings and what the parser made of them. For checking the parser against a real answer; the token never
         /// appears in it.
         /// </summary>
-        public static string RepeaterBookSample(string state)
+        public static string RepeaterBookSample(string state, RepeaterBookQuery query = null)
         {
             int fips = BrandMeister.UsStates.Where(s => s.Key.Equals(state, StringComparison.OrdinalIgnoreCase)).Select(s => s.Value).FirstOrDefault();
             if (fips == 0) return "Unknown US state: " + state;
@@ -235,7 +237,7 @@ namespace CodeplugBuilder.App
             sb.AppendLine("User-Agent: " + RepeaterBookApi.UserAgent);
             foreach (string mode in new[] { RepeaterBookApi.AnalogMode, RepeaterBookApi.DmrMode })
             {
-                string url = RepeaterBookApi.ExportUrl(fips, mode);
+                string url = RepeaterBookApi.ExportUrl(fips, mode, query);
                 sb.AppendLine();
                 sb.AppendLine("=== GET " + url);
                 string body = Fetch(url, CancellationToken.None, out var failure);
@@ -254,6 +256,7 @@ namespace CodeplugBuilder.App
                 var notes = new List<string>();
                 var parsed = RepeaterBookApi.ParseListings(body, mode, notes, state, GeoAtlas.BuiltIn());
                 sb.AppendLine("--- parsed: " + parsed.Count + ". " + string.Join(" ", notes));
+                if (query != null && !query.IsEmpty) sb.AppendLine("--- of those, matching " + query.Describe() + ": " + parsed.Count(query.Matches) + " (server filtered " + (parsed.All(query.Matches) ? "fully" : "NOT fully") + ")");
                 foreach (var r in parsed.Take(5))
                     sb.AppendLine("  " + r.Callsign + " | " + r.City + " | " + (r.Location?.County?.Name ?? "-") + " | " + r.RxMHz + " / " + r.TxMHz + " | CC " + r.ColorCode +
                                   " | " + r.Network + " | " + r.Status + " | " + r.Details + " | " + r.DetailUrl);

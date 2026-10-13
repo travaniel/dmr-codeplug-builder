@@ -391,8 +391,20 @@ the code meets them:
   APCO P-25, P-25 NAC, M17, M17 CAN, Tetra, Tetra MCC, Tetra MNC, System Fusion, Notes, Last Update`. No DMR network or
   talkgroups. Values are strings. `mode=DMR` returns multi-mode machines too (FM Analog Yes and DMR Yes). Analog includes
   6 m / 10 m / 220 (left out as outside the radio's bands). Dev check: `--repeaterbook-sample Texas report.txt`.
-- Still open: Canada and the rest of the world (`exportROW.php`, approved), the Mac dialog, and RepeaterBook repeaters in
-  the map step (wizard, Add from map).
+- Map step (wizard step 3 and Add from map): with a token (wizard step 2 or Settings), the states picked on the first map are
+  fetched as soon as the RadioID.net download is done, or when the token is saved on step 2 (`RegionDownload.FetchRegionRepeaterBook`,
+  only when they are 5 or fewer; more, and the user clicks the ones they want). Each click on a US county or state of another
+  state fetches that state (`AreaChooser.FetchRepeaterBook`). Each state's DMR and analog listings are fetched once per download (up to 5 states a batch, one batch at a
+  time; a whole-country click fetches nothing). They join the download in memory only (`RegionDownload.AddRepeaterBook`; DMR
+  ones RadioID.net or BrandMeister already list are dropped), sit on the List tab, are counted in the county/state badges ("18 repeaters"; not the off-air ones) but never drawn as dots (the application promised "never as dots on a map"; counts were added 2026-10-12 at the user's request) and clicked
+  areas take them (not off-air ones). The sources line under the map links RadioID.net, BrandMeister and RepeaterBook.
+- Search inside the chosen states (Repeaters > From RepeaterBook, "Narrow it down"): `county` (no "County" suffix), `city`,
+  `callsign` (sent as a prefix, `W5%`; `*` typed = `%`) and `frequency` (MHz, "444.7" matches 444.70000) on the export URL
+  (`RepeaterBookQuery`). Checked live 2026-10-12: Texas + county Brown + 444.7 returned only K5BWD. The answer is also filtered
+  locally (`RepeaterBookQuery.Matches`) in case the server ignores a term. A state is still required: a nationwide callsign
+  search would need RepeaterBook's OK (the approval says at most five states per action). Dev: `--repeaterbook-sample State
+  report.txt [county] [city] [callsign] [MHz]`.
+- Still open: Canada and the rest of the world (`exportROW.php`, approved), and RepeaterBook on the Mac.
 ## 4c. The built-in map (atlas)
 
 `src/Core/Geo/atlas.gz` (~3.7 MB, embedded as `CodeplugBuilder.Geo.atlas.gz`) is made by `tools/GeoBuild`
