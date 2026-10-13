@@ -264,4 +264,4 @@ transmit, repeater health from BrandMeister, safety checks, a simplex preset), t
 distance, scan lists 2-8, GPS zone switching, route builder, check for updates). Also still open:
 
 1. Click through the wizard and Add from map on screen (hover, wheel zoom, drag, county picking, list ticks).
-2. RepeaterBook: Canada / rest of world (`exportROW.php`). The Mac has RepeaterBook since 2026-10-13 (docs/MAC.md); still to port there: Find online, Browse BrandMeister.
+2. RepeaterBook: Canada / rest of world (`exportROW.php`). The Mac has RepeaterBook, Find online and Browse BrandMeister since 2026-10-13 (docs/MAC.md).

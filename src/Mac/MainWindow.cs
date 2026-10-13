@@ -212,7 +212,9 @@ namespace CodeplugBuilder.Mac
             add.Click += (s, e) => AddTalkgroup();
             var del = new Button { Content = "Delete selected" };
             del.Click += async (s, e) => await DeleteTalkgroups();
-            var tgBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { add, del } };
+            var browse = new Button { Content = "Browse BrandMeister..." };
+            browse.Click += async (s, e) => await BrowseBrandMeister();
+            var tgBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 8), Children = { add, browse, del } };
             var tgPage = new DockPanel { Margin = new Thickness(12) };
             DockPanel.SetDock(tgBar, Dock.Top);
             tgPage.Children.Add(tgBar);
@@ -556,6 +558,27 @@ namespace CodeplugBuilder.Mac
             talkgroupGrid.ItemsSource = session.Project.Talkgroups.ToList();
             talkgroupGrid.SelectedItem = t;
             talkgroupGrid.ScrollIntoView(t, talkgroupGrid.Columns[0]);
+            session.NotifyTalkgroupsChanged();
+        }
+
+        /// <summary>Talkgroups > Browse BrandMeister: adds the picked ones (a name already used gets its number: "Parrot 9990").</summary>
+        async Task BrowseBrandMeister()
+        {
+            var picked = await TalkgroupBrowserWindow.Run(this, session.Project);
+            if (picked.Count == 0) return;
+            var added = new List<Talkgroup>();
+            foreach (var c in picked)
+            {
+                if (session.Project.Talkgroups.Any(x => x.Id == c.Id)) continue;
+                var t = c.Clone();
+                t.Name = Naming.UniqueTalkgroupName(t.Name, t.Id, x => session.Project.Talkgroups.Any(o => string.Equals(o.Name, x, StringComparison.OrdinalIgnoreCase)));
+                session.Project.Talkgroups.Add(t);
+                added.Add(t);
+            }
+            if (added.Count == 0) { await Dialogs.Info(this, "Those talkgroups are already in your list."); return; }
+            talkgroupGrid.ItemsSource = session.Project.Talkgroups.ToList();
+            talkgroupGrid.SelectedItem = added[0];
+            talkgroupGrid.ScrollIntoView(added[0], talkgroupGrid.Columns[0]);
             session.NotifyTalkgroupsChanged();
         }
 

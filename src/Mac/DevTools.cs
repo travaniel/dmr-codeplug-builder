@@ -104,6 +104,54 @@ namespace CodeplugBuilder.Mac
     }
 
     /// <summary>
+    /// <c>--online-check folder</c>: opens Find online (real RadioID.net download of Texas, filter "San Angelo", ticks them, adds)
+    /// and Browse BrandMeister (search "Texas", ticks 3), saves a picture of each and logs what was added.
+    /// </summary>
+    static class OnlineCheck
+    {
+        public static void Run(Avalonia.Controls.Window host, string folder)
+        {
+            host.Opened += async (s, e) =>
+            {
+                Directory.CreateDirectory(folder);
+                var log = new System.Collections.Generic.List<string>();
+                async Task Shot(Avalonia.Controls.Window w, string name)
+                {
+                    await Task.Delay(600);
+                    var size = new PixelSize((int)w.Width, (int)w.Height);
+                    using (var bmp = new RenderTargetBitmap(size)) { bmp.Render(w); bmp.Save(Path.Combine(folder, name + ".png")); }
+                }
+                try
+                {
+                    var session = new CodeplugBuilder.App.Session();
+                    session.Project.RadioIdName = "Test"; session.Project.RadioId = 1;
+                    var online = new OnlineRepeaterWindow(session);
+                    online.Show();
+                    bool ok = await online.DevPick("Texas", "San Angelo");
+                    log.Add("Find online: download " + (ok ? "done" : "FAILED"));
+                    await Shot(online, "find-online");
+                    await online.DevAdd();
+                    var r = online.Result;
+                    log.Add("added " + (r?.Added.Count ?? 0) + " repeaters, " + (r?.Channels ?? 0) + " channels, zones " + string.Join(", ", (r?.Added ?? new System.Collections.Generic.List<Repeater>()).Select(x => x.Zone).Distinct()) +
+                            ", NOAA " + online.NoaaAdded.Count + ", new talkgroups " + (r?.NewTalkgroups.Count ?? 0));
+                    if (r != null) log.AddRange(r.Notes.Select(n => "  note: " + n));
+
+                    var browse = new TalkgroupBrowserWindow(session.Project);
+                    browse.Show();
+                    int found = await browse.DevPick("Texas", 3);
+                    log.Add("Browse BrandMeister: " + found + " named Texas");
+                    await Shot(browse, "browse-brandmeister");
+                    browse.DevFinish();
+                    log.Add("picked: " + string.Join(", ", browse.Selected.Select(t => t.Name + " (" + t.Id + ")")));
+                }
+                catch (Exception ex) { log.Add("ERROR " + ex); }
+                File.WriteAllLines(Path.Combine(folder, "online.log"), log);
+                host.Close();
+            };
+        }
+    }
+
+    /// <summary>
     /// <c>--addmap-check out.png</c>: opens Add from map on an empty project (region from the settings, set it with
     /// CODEPLUGBUILDER_SETTINGS), waits for the real RadioID/BrandMeister download, picks Tom Green County, saves a picture, logs.
     /// </summary>

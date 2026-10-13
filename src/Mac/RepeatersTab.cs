@@ -82,6 +82,7 @@ namespace CodeplugBuilder.Mac
             buttons.Children.Add(btnDown); btnDown.Margin = new Thickness(0, 0, 6, 6);
             AddButton("Add from map...", async () => await AddFromMap());
             AddButton("Add route...", async () => await AddRoute());
+            AddButton("Find online...", async () => await FindOnline());
             AddButton("From RepeaterBook...", async () => await FromRepeaterBook());
             AddButton("Add NOAA weather", async () => await AddWeather());
             AddButton("Add simplex", async () => await AddSimplex());
@@ -100,7 +101,7 @@ namespace CodeplugBuilder.Mac
             editor = new RepeaterEditorView(false);
             empty = new TextBlock
             {
-                Text = "Click \"Add from map...\" to add DMR repeaters near you from RadioID.net and BrandMeister, or add one by hand with the buttons on the left, or File > Import from a CPS export to load your current codeplug.\n\n(Find online comes in a later step of the Mac port.)",
+                Text = "Click \"Add from map...\" to add DMR repeaters near you from RadioID.net and BrandMeister, or add one by hand with the buttons on the left, or File > Import from a CPS export to load your current codeplug. Find online and From RepeaterBook add more by state.",
                 Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap, TextAlignment = Avalonia.Media.TextAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 420,
             };
@@ -199,6 +200,15 @@ namespace CodeplugBuilder.Mac
         async System.Threading.Tasks.Task AddFromMap()
         {
             var first = await AddFromMapWindow.Run(owner, session);
+            if (first == null) return;
+            cboFilter.SelectedIndex = 0;
+            Reload(first);
+        }
+
+        /// <summary>Opens Repeaters > Find online (RadioID.net by state) and shows what it added.</summary>
+        async System.Threading.Tasks.Task FindOnline()
+        {
+            var first = await OnlineRepeaterWindow.Run(owner, session);
             if (first == null) return;
             cboFilter.SelectedIndex = 0;
             Reload(first);

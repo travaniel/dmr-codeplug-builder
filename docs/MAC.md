@@ -76,7 +76,9 @@ and generates the result: 13 repeaters, 41 channels, 0 errors, CSVs written.
 Not ported yet, in the order I would do them:
 
 1. (done) editors and zones, the map, Add from map, the wizard.
-2. Find repeaters online, Browse BrandMeister. (From RepeaterBook: done 2026-10-13, see below.)
+2. (done 2026-10-13) Find repeaters online (`OnlineRepeaterWindow.cs`), Browse BrandMeister (`TalkgroupBrowserWindow.cs`, Talkgroups tab),
+   From RepeaterBook (see below). Checked with `--online-check folder`: real RadioID.net download of Texas, San Angelo ticked and added
+   (8 repeaters, 31 channels, NOAA), BrandMeister search "Texas" (7 found, 3 added).
 4. Settings tab extras (CPS format folder, merge mode, renumber), radio settings editor, About with the credits.
 5. App icon (`.icns`), signing and notarization if the app is shared outside this Mac.
 
@@ -100,7 +102,8 @@ The Mac app now has everything the Windows app gained on 2026-10-12/13:
 - Checked on Windows with the Mac build: `--wizard-walkthrough` with `CODEPLUGBUILDER_WALK_RB=<saved answer>` (offline RepeaterBook
   sample: picked on step 3, in the zones, 0 errors) and the new `--repeaterbook-check answer.json out.png`. Not yet on a real Mac, and the
   live RepeaterBook download not from the Mac build.
-- Avalonia note: `TextBlock.Foreground = null` hides the text (no brush); use `ClearValue(TextBlock.ForegroundProperty)` for the default.
+- Avalonia notes: an AutoCompleteBox given only `Text` in code can show empty; set `SelectedItem` too when the value is in its list.
+  `TextBlock.Foreground = null` hides the text (no brush); use `ClearValue(TextBlock.ForegroundProperty)` for the default.
 
 ## Getting ready to test on a Mac (2026-10-07)
 
