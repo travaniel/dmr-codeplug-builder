@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag such as v1.3.1 to build, test and publish a GitHub release "W6OZZ CPS 1.3.1" with W6OZZ-CPS-windows-1.3.1.zip attached.
+# Push a tag such as v1.4.0 to build, test and publish a GitHub release "W6OZZ CPS 1.4.0" with W6OZZ-CPS-windows-1.4.0.zip attached.
 on:
   push:
     tags: ['v*']

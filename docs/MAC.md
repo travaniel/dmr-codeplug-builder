@@ -117,6 +117,21 @@ The Mac app now has everything the Windows app gained on 2026-10-12/13:
 - `.github/workflows/mac.yml`: a macOS GitHub runner builds the app, runs the engine tests, prints the diagnostics report, draws the
   start page, the map and every wizard step to PNGs, and packages ad-hoc signed `.app` zips (artifacts of the run).
 
+## Release 1.4.0 (2026-10-22)
+
+The Mac version ships with the 1.4.0 release as a **pre-release**.
+
+Checked by a person on a real Mac (MacBook Air, Apple Silicon, 2026-10-07): build, `--diagnose`, the app starting, map drag, the wizard from the
+region step through the zones step, radio detection, Radio > Read codeplug from radio, and Radio > Write codeplug to radio (a small project,
+read back identical). Fixed from that test: the wizard zones step, the 250 RX group list limit, the diagnostics USB line, and unticked zone
+talkgroups staying in the list.
+
+Not yet checked by a person on a real Mac, only built and drawn in CI and driven by the dev switches: the Repeaters / Hotspot / Zones tabs,
+Save / Open, Export CSV, trackpad pinch and wheel zoom, RepeaterBook (needs the user's own token), Find repeaters online, Browse BrandMeister,
+Check repeaters for updates, the route builder, GPS zone switching, zone views, Radio > Restore, the radio settings editor, and the signed
+`.app` from the workflow. The Mac zips are the `mac-app-zips` artifact of the *Mac build and checks* run on the release commit; they are
+attached to the release by hand (`gh release upload`).
+
 ## First real-Mac test (2026-10-07)
 
 Run on an Apple Silicon MacBook Air (macOS 25.6 / Darwin 25.6.0, arm64, .NET 8.0.425 SDK, runtime 8.0.31), built from source with

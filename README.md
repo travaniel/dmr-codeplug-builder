@@ -123,8 +123,8 @@ hotspot; analog channels, zones and channel names are kept.
 Output: `src/App/bin/Release/net48/CodeplugBuilder.exe`.
 
 Tests: `dotnet run --project tests -- [path-to-CPS-export]`. Without an export folder the round-trip tests are
-skipped. GitHub Actions builds and tests every push (`.github/workflows/build.yml`); pushing a tag like `v1.3.1`
-makes a release "W6OZZ CPS 1.3.1" with `W6OZZ-CPS-windows-1.3.1.zip` (the exe, its config and `docs/README.txt`;
+skipped. GitHub Actions builds and tests every push (`.github/workflows/build.yml`); pushing a tag like `v1.4.0`
+makes a release "W6OZZ CPS 1.4.0" with `W6OZZ-CPS-windows-1.4.0.zip` (the exe, its config and `docs/README.txt`;
 `release.yml`). Set the same version in both `.csproj` files first.
 
 ### Command line

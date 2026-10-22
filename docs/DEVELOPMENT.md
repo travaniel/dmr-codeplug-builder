@@ -163,11 +163,20 @@ programmatic changes don't fire edits.
 
 ## Status
 
+- **1.4.0 (2026-10-22):** the release of everything below: the 1.4 and 1.5 roadmap work (safety checks, polite transmit, simplex preset,
+  caller names and APRS, repeater health, zones as views, order that matches use, check for updates, scan lists 2-8, GPS zone switching,
+  route builder) and the RepeaterBook API on Windows and Mac. 120 tests (103 run without a CPS export folder; the 17 that need one run on
+  the author's Windows machine). The User-Agent for RepeaterBook stays `W6OZZ-CPS/1.3 (...)` on purpose: it must match the approved value.
+  The Mac version is published as a pre-release. Checked by a person on a real Mac (2026-10-07, MacBook Air, Apple Silicon): build,
+  diagnostics, wizard start to zones, radio detection, read from the radio and a whole-codeplug write (docs/MAC.md). Everything added after
+  that on the Mac (RepeaterBook, Find repeaters online, Browse BrandMeister, check for updates, route builder, zone views, click-to-sort)
+  has run only in CI and the Windows-hosted dev switches so far.
+
 - **RepeaterBook API (2026-10-12):** RepeaterBook approved per-user tokens. *Repeaters > From RepeaterBook* now downloads DMR and analog
   repeaters with the user's token (Settings > RepeaterBook); the CHIRP-file imports (that dialog and the map step's *Add analog repeaters from
   CHIRP files*) are removed. Conditions and what's still to check: HANDOFF 4b.
 
-- **1.5 (in progress, from 2026-10-08):** roadmap HANDOFF 7, items 7-12 in the order 7, 8, 9, 12, 10, 11. Done: **zones as views**
+- **1.5 items (from 2026-10-08, shipped in 1.4.0):** roadmap HANDOFF 7, items 7-12 in the order 7, 8, 9, 12, 10, 11. Done: **zones as views**
   (item 7): zone kinds (Area, Favorites, Talkgroup, Utility), a channel in several zones (`ZoneInfo.Members`, `Project.ZoneChannels`),
   talkgroup zones (`RuleTalkgroups` / `RuleZones`), the importer keeps every zone a CPS channel is in, Zones tab and *Add to zone...* on
   Windows and Mac. Older projects' output unchanged. Checked in the CPS.
@@ -186,7 +195,7 @@ programmatic changes don't fire edits.
   **Route builder** (item 11, built and checked in the CPS; still to try on the radio): Repeaters > Add route finds a route on the built-in
   highways (`Routes.cs`), lists the repeaters near it in driving order, adds new ones by county and makes a route zone; GPS zone switching
   puts the route's counties first. Dev `--route-snapshot`. 118 tests.
-- **1.4 (in progress, from 2026-10-08):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
+- **1.4 items (from 2026-10-08, shipped in 1.4.0):** roadmap HANDOFF 7. Done: **safety checks** (item 5): warnings for transmit outside the
   amateur bands unless receive only (the user's "Tall Oaks Ranch" 154.570 MURS channel is the one warning their codeplug gets),
   and for the hotspot or DMR simplex in the satellite sub-bands, on or next to APRS/calling/ISS frequencies, or (US) in the
   other Part 97.201(b) segments. Output unchanged. **Polite transmit** (item 3): `GenerationOptions.PoliteTransmit` (Settings,
