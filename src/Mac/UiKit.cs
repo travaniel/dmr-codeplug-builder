@@ -36,6 +36,26 @@ namespace CodeplugBuilder.Mac
             return new TextBlock { Text = text, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
         }
 
+        /// <summary>
+        /// Two panes side by side with a divider the user can drag. <paramref name="left"/> starts <paramref name="leftWidth"/> wide
+        /// (it must not set its own Width); <paramref name="right"/> takes the rest.
+        /// </summary>
+        public static Avalonia.Controls.Grid SplitView(Control left, Control right, double leftWidth, double leftMin = 260, double rightMin = 340)
+        {
+            var g = new Avalonia.Controls.Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(leftWidth)) { MinWidth = leftMin });
+            g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            g.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(1, GridUnitType.Star)) { MinWidth = rightMin });
+            var splitter = new GridSplitter
+            {
+                Width = 6, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext,
+                Background = Avalonia.Media.Brushes.Gray, Opacity = 0.25, Margin = new Thickness(0, 8),
+            };
+            Avalonia.Controls.Grid.SetColumn(left, 0); Avalonia.Controls.Grid.SetColumn(splitter, 1); Avalonia.Controls.Grid.SetColumn(right, 2);
+            g.Children.Add(left); g.Children.Add(splitter); g.Children.Add(right);
+            return g;
+        }
+
         public static TextBlock Heading(string text)
         {
             return new TextBlock { Text = text, FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
@@ -78,7 +98,8 @@ namespace CodeplugBuilder.Mac
         public static DataGridTextColumn Col(string header, string path, bool readOnly = false, double width = 0)
         {
             var c = new DataGridTextColumn { Header = header, Binding = new Avalonia.Data.Binding(path), IsReadOnly = readOnly };
-            if (width > 0) c.Width = new DataGridLength(width);
+            // Proportional, so the columns share a wider window; never narrower than the width asked for (the grid then scrolls).
+            if (width > 0) { c.Width = new DataGridLength(width, DataGridLengthUnitType.Star); c.MinWidth = width; }
             return c;
         }
 

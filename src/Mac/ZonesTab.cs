@@ -76,7 +76,7 @@ namespace CodeplugBuilder.Mac
                 UiKit.Button("Sort by distance", async () => await SortZones()),
             })
             { b.Margin = new Thickness(0, 0, 6, 6); leftButtons.Children.Add(b); }
-            var left = new DockPanel { Width = 400, Margin = new Thickness(10, 8, 6, 8) };
+            var left = new DockPanel { Margin = new Thickness(10, 8, 6, 8) };
             var heading = UiKit.Heading("Zones");
             var hint = UiKit.Hint("Zones are built from each repeater's Zone field, in the order of the Repeaters list. Set the order they appear on the radio, rename them, and pick talkgroups for a whole zone at once. A channel can also be in more zones: a Favorites zone holds channels you pick, a Talkgroup zone every channel of some talkgroups.");
             DockPanel.SetDock(heading, Dock.Top); DockPanel.SetDock(hint, Dock.Top); DockPanel.SetDock(leftButtons, Dock.Bottom);
@@ -134,11 +134,7 @@ namespace CodeplugBuilder.Mac
             d.Children.Add(lblZone); d.Children.Add(ab); d.Children.Add(tabs);
             detail = d;
 
-            var dock = new DockPanel();
-            DockPanel.SetDock(left, Dock.Left);
-            dock.Children.Add(left);
-            dock.Children.Add(detail);
-            Content = dock;
+            Content = UiKit.SplitView(left, detail, 400);
 
             list.SelectionChanged += (s, e) => { if (!loading) ShowDetail(); };
             cboA.SelectionChanged += (s, e) => SetSide(true);

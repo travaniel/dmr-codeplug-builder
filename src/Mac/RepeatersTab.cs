@@ -93,7 +93,7 @@ namespace CodeplugBuilder.Mac
             filterRow.Children.Add(show);
             filterRow.Children.Add(cboFilter);
 
-            var left = new DockPanel { Width = 600, Margin = new Thickness(10, 8, 6, 8) };
+            var left = new DockPanel { Margin = new Thickness(10, 8, 6, 8) };
             var head = UiKit.Heading("Repeaters and channels");
             DockPanel.SetDock(head, Dock.Top); DockPanel.SetDock(filterRow, Dock.Top); DockPanel.SetDock(buttons, Dock.Bottom);
             left.Children.Add(head); left.Children.Add(filterRow); left.Children.Add(buttons); left.Children.Add(list);
@@ -107,11 +107,7 @@ namespace CodeplugBuilder.Mac
             };
             var right = new Grid { Children = { editor, empty } };
 
-            var dock = new DockPanel();
-            DockPanel.SetDock(left, Dock.Left);
-            dock.Children.Add(left);
-            dock.Children.Add(right);
-            Content = dock;
+            Content = UiKit.SplitView(left, right, 600);
 
             list.SelectionChanged += (s, e) => { if (!loading) BindSelected(); };
             cboFilter.SelectionChanged += (s, e) => { if (!loading) Reload(Selected); };
