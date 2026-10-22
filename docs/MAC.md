@@ -126,8 +126,12 @@ region step through the zones step, radio detection, Radio > Read codeplug from 
 read back identical). Fixed from that test: the wizard zones step, the 250 RX group list limit, the diagnostics USB line, and unticked zone
 talkgroups staying in the list.
 
-Not yet checked by a person on a real Mac, only built and drawn in CI and driven by the dev switches: the Repeaters / Hotspot / Zones tabs,
-Save / Open, Export CSV, trackpad pinch and wheel zoom, RepeaterBook (needs the user's own token), Find repeaters online, Browse BrandMeister,
+Checked by a person on the packaged release app (the signed `.app` from the zip; it opens after the one-time Gatekeeper step, because the
+signature is ad-hoc and not notarized; 2026-10-22): the Repeaters, Hotspot and Zones tabs (editing a frequency, adding a talkgroup to a
+repeater, renaming a zone), File > Save as and reopening the project, and Export > Export CSV files for the CPS (files written). The export
+could not be imported into the BTECH CPS on the Mac, which is Windows-only; the generator is the same code the Windows version uses.
+
+Not yet checked by a person on a real Mac, only built and drawn in CI and driven by the dev switches: trackpad pinch and wheel zoom, RepeaterBook (needs the user's own token), Find repeaters online, Browse BrandMeister,
 Check repeaters for updates, the route builder, GPS zone switching, zone views, Radio > Restore, the radio settings editor, and the signed
 `.app` from the workflow. The Mac zips are the `mac-app-zips` artifact of the *Mac build and checks* run on the release commit; they are
 attached to the release by hand (`gh release upload`).
