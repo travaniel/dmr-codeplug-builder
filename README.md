@@ -1,18 +1,39 @@
 # DMR Codeplug Builder
 
-A small Windows program that builds a CSV codeplug for the **BTECH DMR-6X2 PRO** customer programming
-software (CPS). You manage talkgroups, repeaters and your hotspot in a simple GUI; it writes the CSV
-files plus a `.LST` file list that the CPS imports in one step.
+Builds a codeplug for the **BTECH DMR-6X2 PRO** and **writes it straight to the radio over USB, with no CPS needed**,
+on Windows and on a Mac. You manage talkgroups, repeaters and your hotspot in a simple GUI (or start from a map wizard that
+pulls in the repeaters near you); **Radio > Write codeplug to radio** shows what will change, saves what was on the radio
+first, sends the new codeplug the way the CPS does and checks it. **Radio > Read codeplug from radio** brings what is on the
+radio into a project. If you would rather use the BTECH CPS, it also writes the CSV files plus a `.LST` file list that the CPS
+imports in one step.
 
-It runs on Windows 10 and 11 with the .NET Framework 4.8 that Windows already includes, so there is
-nothing to install.
-
-A Mac version (an Avalonia app over the same engine) is in progress in `src/Mac`; see `docs/MAC.md`.
+- **Windows 10 and 11:** runs on the .NET Framework 4.8 that Windows already includes; nothing to install. Download
+  `W6OZZ-CPS-windows-x.y.z.zip` from [Releases](https://github.com/travaniel/dmr-codeplug-builder/releases).
+- **Mac (Apple Silicon and Intel):** an Avalonia app over the same engine, published as a pre-release
+  (`W6OZZ CPS x.y.z for Mac (preview)`). Reading and writing the radio has been tried on a real Mac. Install steps and what has
+  been tested are on the release page and in `docs/MAC.md`.
 
 > **Unofficial.** This is an independent hobby project. It is not made by, endorsed by or affiliated with BTECH,
 > RepeaterBook, RadioID.net or BrandMeister. Check what it writes before you load it into your radio, and keep
 > a backup of your codeplug (a CPS `.rdt` file); you use it at your own risk.
 
+
+## Writing straight to the radio (no CPS)
+
+With the programming cable connected and the BTECH CPS closed, **Radio > Write codeplug to radio...** reads the
+radio, writes this project's channels, zones, talkgroups, receive group lists, scan lists and radio ID into it, shows
+what will change, and after you confirm sends it the way the CPS does and checks it. The radio's settings stay as
+they are, except that it offers once to turn on *Send talker alias* (so other radios and network dashboards show your
+name), if it's off. What was on the radio is saved first (Documents\DMR Codeplug Builder\Radio reads), and **Radio > Restore
+codeplug from a backup...** writes any saved read back. Keep a CPS codeplug file (.rdt) as well, just in case.
+**Radio > Read codeplug from radio** opens what's on the radio as a project. The **Read from radio** and **Write to radio** buttons at the bottom right of the window do the same.
+
+On a Mac the radio shows up as `/dev/cu.usbmodem...`; if it is not found, **Radio > Radio port...** lets you pick the port, and
+**Help > Diagnostics** shows what the Mac sees. (Restoring a backup has not been tried on a Mac yet.) Backups of the radio are kept in `~/Documents/DMR Codeplug Builder/Radio reads`. Reads and writes use the same
+protocol on Windows and on the Mac.
+
+**Always keep a CPS backup (`.rdt`) of your codeplug before the first write.** A write replaces the channels, zones, talkgroups,
+receive group lists, scan lists and radio ID in the radio with what is in your project.
 
 ## Using it
 
@@ -56,8 +77,8 @@ per-zone talkgroup editor, and *Talkgroups > Browse BrandMeister...* searches ev
    *Caller names* (off by default) adds DigitalContactList.CSV with DMR users from RadioID.net (the whole world, countries
    or US states), so the radio shows who is calling. *APRS* (off by default) adds APRS.CSV with your callsign, SSID and
    frequency. Importing either replaces that part of the CPS's codeplug; after an APRS import, check the CPS's APRS screen.
-7. Click **Export > Export CSV files for the CPS** (Ctrl+G) and save the `.LST`. The CSVs are saved next to it.
-8. In the CPS: open your codeplug, **Tool > Import > Import From File List**, pick the `.LST`, click
+7. Click **Radio > Write codeplug to radio** (see above), **or**, to go through the CPS, click **Export > Export CSV files for the CPS** (Ctrl+G) and save the `.LST`. The CSVs are saved next to it.
+8. (CPS route only) In the CPS: open your codeplug, **Tool > Import > Import From File List**, pick the `.LST`, click
    **Import**, check a few channels, then write to the radio.
 
 The import replaces the CPS's **Channel, Zone, Talk Groups, Receive Group Call List and Radio ID
@@ -67,16 +88,6 @@ settings, APRS and the digital contact database, stays as it was.
 
 If the file list won't import, use **Tool > Import** and load each CSV yourself, in this order:
 TalkGroups, ReceiveGroupCallList, RadioIDList, Channel, ScanList, Zone.
-
-### Writing straight to the radio (no CPS)
-
-With the programming cable connected and the BTECH CPS closed, **Radio > Write codeplug to radio...** reads the
-radio, writes this project's channels, zones, talkgroups, receive group lists, scan lists and radio ID into it, shows
-what will change, and after you confirm sends it the way the CPS does and checks it. The radio's settings stay as
-they are, except that it offers once to turn on *Send talker alias* (so other radios and network dashboards show your
-name), if it's off. What was on the radio is saved first (Documents\DMR Codeplug Builder\Radio reads), and **Radio > Restore
-codeplug from a backup...** writes any saved read back. Keep a CPS codeplug file (.rdt) as well, just in case.
-**Radio > Read codeplug from radio** opens what's on the radio as a project. The **Read from radio** and **Write to radio** buttons at the bottom right of the window do the same.
 
 ### Starting from what's in the radio
 

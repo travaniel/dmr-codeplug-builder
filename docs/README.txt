@@ -18,11 +18,12 @@ Getting started
      your DMR ID from your callsign, and builds zones and talkgroups.
    - Or start from your radio: in the CPS read the radio, then Tool > Export > Export All, and in this
      program File > Import from CPS export... and pick the exported .LST.
-3. Export > Export CSV files for the CPS (Ctrl+G) and save the .LST. The CSV files are saved next to it.
-4. In the CPS: open your codeplug, Tool > Import > Import From File List, pick the .LST, check a few
-   channels, then write to the radio.
-   Or, with the programming cable connected and the CPS closed, click "Write to radio..." (bottom
-   right). It saves what was on the radio first; Radio > Restore codeplug from a backup puts it back.
+3. Write it straight to the radio, no CPS needed: connect the programming cable, close the CPS, and click
+   "Write to radio..." (bottom right) or Radio > Write codeplug to radio. It shows what will change, saves what
+   was on the radio first (Radio > Restore codeplug from a backup puts it back) and checks the result.
+   Keep a CPS backup (.rdt) of your codeplug before the first write.
+4. Or go through the CPS: Export > Export CSV files for the CPS (Ctrl+G) and save the .LST. In the CPS: open your
+   codeplug, Tool > Import > Import From File List, pick the .LST, check a few channels, then write to the radio.
 
 What the import replaces
 ------------------------
